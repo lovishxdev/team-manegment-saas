@@ -1,6 +1,6 @@
 import { createMcpHandler, withMcpAuth } from "mcp-handler";
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
+import { getUserIdByMcpToken } from "@/lib/identity-cache";
 import { verifyOAuthAccessToken } from "@/lib/services/oauth";
 import {
   createTask,
@@ -309,16 +309,13 @@ const authHandler = withMcpAuth(
     if (!bearerToken) return undefined;
 
     if (UUID_REGEX.test(bearerToken)) {
-      const user = await prisma.user.findUnique({
-        where: { mcpToken: bearerToken },
-        select: { id: true },
-      });
-      if (!user) return undefined;
+      const userId = await getUserIdByMcpToken(bearerToken);
+      if (!userId) return undefined;
       return {
         token: bearerToken,
-        clientId: user.id,
+        clientId: userId,
         scopes: ["tasks:read", "tasks:write"],
-        extra: { userId: user.id },
+        extra: { userId },
       };
     }
 

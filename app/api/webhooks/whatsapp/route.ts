@@ -5,7 +5,7 @@ import {
   TaskScope,
   TaskStatus,
 } from "@/lib/generated/prisma/client";
-import { prisma } from "@/lib/prisma";
+import { getUserIdByPhone } from "@/lib/identity-cache";
 import {
   createTask,
   deleteTask,
@@ -230,16 +230,13 @@ export async function POST(req: NextRequest) {
 async function handleMediaMessage(
   message: Extract<InboundMessage, { kind: "media" }>
 ) {
-  const user = await prisma.user.findUnique({
-    where: { phone: message.from },
-    select: { id: true },
-  });
-  if (!user) {
+  const userId = await getUserIdByPhone(message.from);
+  if (!userId) {
     await sendWhatsAppText(message.from, DENIED_MESSAGE);
     return;
   }
 
-  const ctx = await resolveUserWorkspaceContext(user.id);
+  const ctx = await resolveUserWorkspaceContext(userId);
   const file = await downloadWhatsAppMedia(message.mediaId);
 
   // "#N" anywhere in the caption attaches the file to that task; the rest
@@ -256,7 +253,7 @@ async function handleMediaMessage(
 
   await uploadAsset({
     workspaceId: ctx.workspaceId,
-    uploadedById: user.id,
+    uploadedById: userId,
     file,
     fileName: message.fileName,
     fileType: message.mimeType,
@@ -271,25 +268,22 @@ async function handleMediaMessage(
     ".";
   await sendWhatsAppText(message.from, reply);
   await recordExchange(
-    user.id,
+    userId,
     `[sent a file: ${message.fileName}]`,
     reply
   ).catch(() => {});
 }
 
 async function handleMessage(from: string, text: string) {
-  const user = await prisma.user.findUnique({
-    where: { phone: from },
-    select: { id: true },
-  });
-  if (!user) {
+  const userId = await getUserIdByPhone(from);
+  if (!userId) {
     await sendWhatsAppText(from, DENIED_MESSAGE);
     return;
   }
 
   // Recent exchanges give Haiku the context to resolve follow-ups like
   // "make that one high priority" (the prior reply names the task #N).
-  const history = await getRecentConversation(user.id);
+  const history = await getRecentConversation(userId);
 
   const anthropic = new Anthropic();
   const response = await anthropic.messages.create({
@@ -306,7 +300,7 @@ async function handleMessage(from: string, text: string) {
 
   let reply: string;
   if (toolUse) {
-    reply = await executeAction(user.id, toolUse.name, toolUse.input as any);
+    reply = await executeAction(userId, toolUse.name, toolUse.input as any);
   } else {
     const textBlock = response.content.find(
       (block): block is Anthropic.TextBlock => block.type === "text"
@@ -317,7 +311,7 @@ async function handleMessage(from: string, text: string) {
   }
 
   await sendWhatsAppText(from, reply);
-  await recordExchange(user.id, text, reply).catch((err) =>
+  await recordExchange(userId, text, reply).catch((err) =>
     console.error("Failed to record conversation:", err)
   );
 }

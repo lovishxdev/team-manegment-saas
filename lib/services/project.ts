@@ -1,3 +1,4 @@
+import { cache } from "react";
 import {
   Prisma,
   TaskPriority,
@@ -28,11 +29,24 @@ export class ServiceError extends Error {
   }
 }
 
+/**
+ * The acting user's membership, memoized per request with React.cache.
+ * Pages often hit several service functions that each re-check membership
+ * (e.g. getBoardState + getWorkspaceMembers); within one render pass that
+ * now costs a single query. In route handlers cache() is a transparent
+ * passthrough. Only use this for the ACTOR's permission checks -- target
+ * lookups around mutations must stay uncached.
+ */
+export const getActorMembership = cache(
+  async (userId: string, workspaceId: string) =>
+    prisma.workspaceMembership.findUnique({
+      where: { userId_workspaceId: { userId, workspaceId } },
+    })
+);
+
 /** Asserts the user belongs to the workspace; returns their membership. */
 async function assertMembership(userId: string, workspaceId: string) {
-  const membership = await prisma.workspaceMembership.findUnique({
-    where: { userId_workspaceId: { userId, workspaceId } },
-  });
+  const membership = await getActorMembership(userId, workspaceId);
   if (!membership) {
     throw new ServiceError(
       "You are not a member of this workspace",
@@ -44,8 +58,10 @@ async function assertMembership(userId: string, workspaceId: string) {
 
 /** Records the workspace a user last acted in (powers context resolution). */
 async function touchLastActiveWorkspace(userId: string, workspaceId: string) {
-  await prisma.user.update({
-    where: { id: userId },
+  // updateMany so the no-op case (already the active workspace, by far the
+  // most common) skips the row write entirely.
+  await prisma.user.updateMany({
+    where: { id: userId, NOT: { lastActiveWorkspaceId: workspaceId } },
     data: { lastActiveWorkspaceId: workspaceId },
   });
 }
@@ -501,6 +517,8 @@ export async function deleteAsset(input: {
 export async function getBoardState(workspaceId: string, userId: string) {
   await assertMembership(userId, workspaceId);
 
+  // The "touch" write doesn't depend on the reads -- run all three together
+  // so the board view pays for one round trip, not two.
   const [workspace, tasks] = await Promise.all([
     prisma.workspace.findUniqueOrThrow({
       where: { id: workspaceId },
@@ -517,6 +535,7 @@ export async function getBoardState(workspaceId: string, userId: string) {
         },
       },
     }),
+    touchLastActiveWorkspace(userId, workspaceId),
   ]);
 
   const grouped: Record<TaskStatus, typeof tasks> = {
@@ -526,6 +545,5 @@ export async function getBoardState(workspaceId: string, userId: string) {
   };
   for (const task of tasks) grouped[task.status].push(task);
 
-  await touchLastActiveWorkspace(userId, workspaceId);
   return { workspace, board: grouped, totalTasks: tasks.length };
 }

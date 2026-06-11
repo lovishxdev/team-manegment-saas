@@ -1,6 +1,7 @@
 import { Role } from "@/lib/generated/prisma/client";
+import { invalidateMcpToken, invalidatePhone } from "@/lib/identity-cache";
 import { prisma } from "@/lib/prisma";
-import { ServiceError } from "@/lib/services/project";
+import { getActorMembership, ServiceError } from "@/lib/services/project";
 
 export async function createWorkspace(userId: string, name: string) {
   const workspace = await prisma.workspace.create({
@@ -36,9 +37,7 @@ export async function listUserWorkspaces(userId: string) {
 }
 
 export async function getWorkspaceMembers(workspaceId: string, userId: string) {
-  const self = await prisma.workspaceMembership.findUnique({
-    where: { userId_workspaceId: { userId, workspaceId } },
-  });
+  const self = await getActorMembership(userId, workspaceId);
   if (!self) {
     throw new ServiceError("You are not a member of this workspace", "FORBIDDEN");
   }
@@ -58,9 +57,7 @@ export async function createInvite(
   userId: string,
   options?: { maxUses?: number; expiresInHours?: number }
 ) {
-  const membership = await prisma.workspaceMembership.findUnique({
-    where: { userId_workspaceId: { userId, workspaceId } },
-  });
+  const membership = await getActorMembership(userId, workspaceId);
   if (!membership || !INVITER_ROLES.includes(membership.role)) {
     throw new ServiceError(
       "Only leaders and sub-leaders can create invites",
@@ -131,9 +128,7 @@ export async function acceptInvite(inviteId: string, userId: string) {
 }
 
 async function requireLeader(workspaceId: string, userId: string) {
-  const membership = await prisma.workspaceMembership.findUnique({
-    where: { userId_workspaceId: { userId, workspaceId } },
-  });
+  const membership = await getActorMembership(userId, workspaceId);
   if (!membership || membership.role !== Role.LEADER) {
     throw new ServiceError("Only leaders can do this", "FORBIDDEN");
   }
@@ -237,9 +232,7 @@ export async function deleteWorkspace(workspaceId: string, userId: string) {
 
 /** Active + spent invites for the management UI. LEADER/SUB_LEADER. */
 export async function listInvites(workspaceId: string, userId: string) {
-  const membership = await prisma.workspaceMembership.findUnique({
-    where: { userId_workspaceId: { userId, workspaceId } },
-  });
+  const membership = await getActorMembership(userId, workspaceId);
   if (!membership || !INVITER_ROLES.includes(membership.role)) {
     throw new ServiceError(
       "Only leaders and sub-leaders can view invites",
@@ -264,11 +257,7 @@ export async function revokeInvite(inviteId: string, userId: string) {
   });
   if (!invite) throw new ServiceError("Invite not found", "NOT_FOUND");
 
-  const membership = await prisma.workspaceMembership.findUnique({
-    where: {
-      userId_workspaceId: { userId, workspaceId: invite.workspaceId },
-    },
-  });
+  const membership = await getActorMembership(userId, invite.workspaceId);
   if (!membership || !INVITER_ROLES.includes(membership.role)) {
     throw new ServiceError(
       "Only leaders and sub-leaders can revoke invites",
@@ -281,9 +270,7 @@ export async function revokeInvite(inviteId: string, userId: string) {
 
 /** Whiteboard state. Any member can read and draw. */
 export async function getExcalidrawState(workspaceId: string, userId: string) {
-  const membership = await prisma.workspaceMembership.findUnique({
-    where: { userId_workspaceId: { userId, workspaceId } },
-  });
+  const membership = await getActorMembership(userId, workspaceId);
   if (!membership) {
     throw new ServiceError("You are not a member of this workspace", "FORBIDDEN");
   }
@@ -299,9 +286,7 @@ export async function saveExcalidrawState(
   userId: string,
   state: unknown
 ) {
-  const membership = await prisma.workspaceMembership.findUnique({
-    where: { userId_workspaceId: { userId, workspaceId } },
-  });
+  const membership = await getActorMembership(userId, workspaceId);
   if (!membership) {
     throw new ServiceError("You are not a member of this workspace", "FORBIDDEN");
   }
@@ -313,11 +298,18 @@ export async function saveExcalidrawState(
 
 /** Issues a fresh MCP token, invalidating the old one immediately. */
 export async function regenerateMcpToken(userId: string) {
-  return prisma.user.update({
+  const current = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { mcpToken: true },
+  });
+  const updated = await prisma.user.update({
     where: { id: userId },
     data: { mcpToken: crypto.randomUUID() },
     select: { mcpToken: true },
   });
+  // Evict the old token from the auth cache so revocation is instant.
+  invalidateMcpToken(current?.mcpToken);
+  return updated;
 }
 
 /** Meta sends phone numbers as E.164 without the plus sign. */
@@ -330,8 +322,16 @@ export async function updateUserPhone(userId: string, phone: string | null) {
       "INVALID_INPUT"
     );
   }
-  return prisma.user.update({
+  const current = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { phone: true },
+  });
+  const updated = await prisma.user.update({
     where: { id: userId },
     data: { phone },
   });
+  // Evict both numbers so the WhatsApp bot sees the change immediately.
+  invalidatePhone(current?.phone);
+  invalidatePhone(phone);
+  return updated;
 }
