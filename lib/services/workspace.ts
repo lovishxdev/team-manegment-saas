@@ -130,6 +130,187 @@ export async function acceptInvite(inviteId: string, userId: string) {
   });
 }
 
+async function requireLeader(workspaceId: string, userId: string) {
+  const membership = await prisma.workspaceMembership.findUnique({
+    where: { userId_workspaceId: { userId, workspaceId } },
+  });
+  if (!membership || membership.role !== Role.LEADER) {
+    throw new ServiceError("Only leaders can do this", "FORBIDDEN");
+  }
+  return membership;
+}
+
+async function countLeaders(workspaceId: string): Promise<number> {
+  return prisma.workspaceMembership.count({
+    where: { workspaceId, role: Role.LEADER },
+  });
+}
+
+/** LEADER only. Guards against demoting the last leader. */
+export async function updateMemberRole(
+  workspaceId: string,
+  actorId: string,
+  targetUserId: string,
+  role: Role
+) {
+  await requireLeader(workspaceId, actorId);
+
+  const target = await prisma.workspaceMembership.findUnique({
+    where: { userId_workspaceId: { userId: targetUserId, workspaceId } },
+  });
+  if (!target) {
+    throw new ServiceError("That user is not a member", "NOT_FOUND");
+  }
+
+  if (target.role === Role.LEADER && role !== Role.LEADER) {
+    if ((await countLeaders(workspaceId)) <= 1) {
+      throw new ServiceError(
+        "Promote someone else to leader first - a workspace needs at least one",
+        "INVALID_INPUT"
+      );
+    }
+  }
+
+  return prisma.workspaceMembership.update({
+    where: { userId_workspaceId: { userId: targetUserId, workspaceId } },
+    data: { role },
+  });
+}
+
+/** LEADER only. Cannot remove the last leader (leave/delete instead). */
+export async function removeMember(
+  workspaceId: string,
+  actorId: string,
+  targetUserId: string
+) {
+  await requireLeader(workspaceId, actorId);
+
+  const target = await prisma.workspaceMembership.findUnique({
+    where: { userId_workspaceId: { userId: targetUserId, workspaceId } },
+  });
+  if (!target) {
+    throw new ServiceError("That user is not a member", "NOT_FOUND");
+  }
+  if (target.role === Role.LEADER && (await countLeaders(workspaceId)) <= 1) {
+    throw new ServiceError(
+      "The last leader can't be removed",
+      "INVALID_INPUT"
+    );
+  }
+
+  await prisma.workspaceMembership.delete({
+    where: { userId_workspaceId: { userId: targetUserId, workspaceId } },
+  });
+}
+
+/** Anyone can leave, except the last leader of a non-empty workspace. */
+export async function leaveWorkspace(workspaceId: string, userId: string) {
+  const membership = await prisma.workspaceMembership.findUnique({
+    where: { userId_workspaceId: { userId, workspaceId } },
+  });
+  if (!membership) {
+    throw new ServiceError("You are not a member of this workspace", "FORBIDDEN");
+  }
+
+  if (membership.role === Role.LEADER && (await countLeaders(workspaceId)) <= 1) {
+    const otherMembers = await prisma.workspaceMembership.count({
+      where: { workspaceId, userId: { not: userId } },
+    });
+    if (otherMembers > 0) {
+      throw new ServiceError(
+        "You're the only leader - promote someone else before leaving, or delete the workspace",
+        "INVALID_INPUT"
+      );
+    }
+  }
+
+  await prisma.workspaceMembership.delete({
+    where: { userId_workspaceId: { userId, workspaceId } },
+  });
+}
+
+/** LEADER only. Cascade deletes tasks, assets, memberships, invites. */
+export async function deleteWorkspace(workspaceId: string, userId: string) {
+  await requireLeader(workspaceId, userId);
+  await prisma.workspace.delete({ where: { id: workspaceId } });
+}
+
+/** Active + spent invites for the management UI. LEADER/SUB_LEADER. */
+export async function listInvites(workspaceId: string, userId: string) {
+  const membership = await prisma.workspaceMembership.findUnique({
+    where: { userId_workspaceId: { userId, workspaceId } },
+  });
+  if (!membership || !INVITER_ROLES.includes(membership.role)) {
+    throw new ServiceError(
+      "Only leaders and sub-leaders can view invites",
+      "FORBIDDEN"
+    );
+  }
+
+  const invites = await prisma.workspaceInvite.findMany({
+    where: { workspaceId },
+    orderBy: { createdAt: "desc" },
+  });
+  const now = new Date();
+  return invites.map((invite) => ({
+    ...invite,
+    active: invite.expiresAt > now && invite.usesCount < invite.maxUses,
+  }));
+}
+
+export async function revokeInvite(inviteId: string, userId: string) {
+  const invite = await prisma.workspaceInvite.findUnique({
+    where: { id: inviteId },
+  });
+  if (!invite) throw new ServiceError("Invite not found", "NOT_FOUND");
+
+  const membership = await prisma.workspaceMembership.findUnique({
+    where: {
+      userId_workspaceId: { userId, workspaceId: invite.workspaceId },
+    },
+  });
+  if (!membership || !INVITER_ROLES.includes(membership.role)) {
+    throw new ServiceError(
+      "Only leaders and sub-leaders can revoke invites",
+      "FORBIDDEN"
+    );
+  }
+
+  await prisma.workspaceInvite.delete({ where: { id: inviteId } });
+}
+
+/** Whiteboard state. Any member can read and draw. */
+export async function getExcalidrawState(workspaceId: string, userId: string) {
+  const membership = await prisma.workspaceMembership.findUnique({
+    where: { userId_workspaceId: { userId, workspaceId } },
+  });
+  if (!membership) {
+    throw new ServiceError("You are not a member of this workspace", "FORBIDDEN");
+  }
+  const workspace = await prisma.workspace.findUniqueOrThrow({
+    where: { id: workspaceId },
+    select: { id: true, name: true, excalidrawState: true },
+  });
+  return workspace;
+}
+
+export async function saveExcalidrawState(
+  workspaceId: string,
+  userId: string,
+  state: unknown
+) {
+  const membership = await prisma.workspaceMembership.findUnique({
+    where: { userId_workspaceId: { userId, workspaceId } },
+  });
+  if (!membership) {
+    throw new ServiceError("You are not a member of this workspace", "FORBIDDEN");
+  }
+  await prisma.workspace.update({
+    where: { id: workspaceId },
+    data: { excalidrawState: state as object },
+  });
+}
+
 /** Issues a fresh MCP token, invalidating the old one immediately. */
 export async function regenerateMcpToken(userId: string) {
   return prisma.user.update({

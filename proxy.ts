@@ -34,10 +34,11 @@ export async function proxy(request: NextRequest) {
     }
   );
 
-  // Required: refreshes the token if expired. Do not remove.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // getClaims validates the JWT locally (cached JWKS) instead of a network
+  // round trip to Supabase Auth on every navigation, and still refreshes
+  // expired sessions. Do not remove.
+  const { data } = await supabase.auth.getClaims();
+  const user = data?.claims ? { id: data.claims.sub } : null;
 
   const { pathname } = request.nextUrl;
   const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));

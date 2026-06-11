@@ -15,6 +15,12 @@ import { createSupabaseBrowser } from "@/lib/supabase-browser";
 import { updateTaskAction } from "@/lib/actions/workspace";
 import { TaskDetailModal } from "@/components/task-detail-modal";
 
+export type TaskAttachment = {
+  id: string;
+  url: string;
+  fileType: string;
+};
+
 export type BoardTask = {
   id: string;
   shortId: number;
@@ -27,6 +33,7 @@ export type BoardTask = {
   dueDate: string | null;
   assigneeId: string | null;
   assigneeEmail: string | null;
+  attachments: TaskAttachment[];
 };
 
 export type BoardMember = {
@@ -58,7 +65,9 @@ function formatDue(iso: string): { label: string; overdue: boolean } {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const overdue = due < today;
-  const label = due.toLocaleDateString(undefined, {
+  // Explicit locale: server and browser locales can differ, and a mismatch
+  // ("13 Jun" vs "Jun 13") breaks React hydration.
+  const label = due.toLocaleDateString("en-GB", {
     month: "short",
     day: "numeric",
   });
@@ -124,6 +133,11 @@ function TaskCard({
           >
             {due.overdue && task.status !== "DONE" ? "overdue " : "due "}
             {due.label}
+          </span>
+        )}
+        {task.attachments.length > 0 && (
+          <span className="text-[10px] text-zinc-500">
+            📎 {task.attachments.length}
           </span>
         )}
         {task.assigneeEmail && (
@@ -208,22 +222,47 @@ export function TaskBoard({
 
   useEffect(() => {
     const supabase = createSupabaseBrowser();
-    const channel = supabase
-      .channel(`board-${workspaceId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "Task",
-          filter: `workspaceId=eq.${workspaceId}`,
-        },
-        () => router.refresh()
-      )
-      .subscribe();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let cancelled = false;
+
+    async function connect() {
+      // Events are filtered per-user through RLS, so the realtime socket
+      // must carry the user's JWT -- without it Supabase silently delivers
+      // zero events.
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (cancelled) return;
+      if (session?.access_token) {
+        await supabase.realtime.setAuth(session.access_token);
+      }
+
+      channel = supabase
+        .channel(`board-${workspaceId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "Task",
+            filter: `workspaceId=eq.${workspaceId}`,
+          },
+          () => router.refresh()
+        )
+        .subscribe((status, err) => {
+          if (status === "SUBSCRIBED") {
+            console.log("[realtime] board subscription active");
+          } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+            console.warn(`[realtime] ${status}`, err?.message ?? "");
+          }
+        });
+    }
+
+    connect();
 
     return () => {
-      supabase.removeChannel(channel);
+      cancelled = true;
+      if (channel) supabase.removeChannel(channel);
     };
   }, [workspaceId, router]);
 
@@ -330,7 +369,9 @@ export function TaskBoard({
         </p>
       )}
 
-      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+      {/* Stable id: dnd-kit otherwise autogenerates one that differs between
+          server and client render, causing a hydration mismatch. */}
+      <DndContext id={`board-dnd-${workspaceId}`} sensors={sensors} onDragEnd={handleDragEnd}>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           {COLUMNS.map((col) => (
             <Column

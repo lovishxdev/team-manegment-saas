@@ -6,6 +6,7 @@ import {
   createTask,
   deleteTask,
   getBoardState,
+  listAssets,
   resolveUserWorkspaceContext,
   ServiceError,
   updateTask,
@@ -205,6 +206,37 @@ const handler = createMcpHandler(
           });
           return text(
             `Deleted task #${task.shortId} "${task.title}" from workspace "${ctx.workspaceName}".`
+          );
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.tool(
+      "list_assets",
+      "List files/assets uploaded to the workspace (images, documents)",
+      {
+        workspace: workspaceParam,
+      },
+      async ({ workspace }, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const ctx = await resolveUserWorkspaceContext(userId, workspace);
+          const assets = await listAssets(ctx.workspaceId, userId);
+          if (assets.length === 0) {
+            return text(`No assets in workspace "${ctx.workspaceName}" yet.`);
+          }
+          return text(
+            `Assets in "${ctx.workspaceName}" (${assets.length}):\n` +
+              assets
+                .map(
+                  (a) =>
+                    `- ${a.url}\n  type: ${a.fileType}` +
+                    (a.tags.length ? `, tags: ${a.tags.join(", ")}` : "") +
+                    (a.uploadedBy.email ? `, by ${a.uploadedBy.email}` : "")
+                )
+                .join("\n")
           );
         } catch (err) {
           return toolError(err);

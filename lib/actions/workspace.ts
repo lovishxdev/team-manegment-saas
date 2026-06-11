@@ -11,15 +11,24 @@ import { requireUser } from "@/lib/auth";
 import {
   assignTask,
   createTask,
+  deleteAsset,
   deleteTask,
   ServiceError,
   updateTask,
   updateTaskStatus,
+  uploadAsset,
 } from "@/lib/services/project";
+import { Role } from "@/lib/generated/prisma/client";
 import {
   acceptInvite,
   createInvite,
   createWorkspace,
+  deleteWorkspace,
+  leaveWorkspace,
+  removeMember,
+  revokeInvite,
+  saveExcalidrawState,
+  updateMemberRole,
 } from "@/lib/services/workspace";
 
 export type ActionState = { error?: string };
@@ -165,6 +174,151 @@ export async function createInviteAction(
   } catch (err) {
     return { error: errorMessage(err) };
   }
+}
+
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // keep in sync with next.config bodySizeLimit
+
+export async function uploadAssetAction(
+  workspaceId: string,
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const user = await requireUser();
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) {
+    return { error: "Choose a file to upload" };
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return { error: "File is too large (max 10 MB)" };
+  }
+
+  const tags = String(formData.get("tags") ?? "")
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const taskId = String(formData.get("taskId") ?? "") || undefined;
+
+  try {
+    await uploadAsset({
+      workspaceId,
+      uploadedById: user.id,
+      file: Buffer.from(await file.arrayBuffer()),
+      fileName: file.name,
+      fileType: file.type || "application/octet-stream",
+      tags,
+      taskId,
+    });
+  } catch (err) {
+    return { error: errorMessage(err) };
+  }
+  revalidatePath(`/w/${workspaceId}/assets`);
+  revalidatePath(`/w/${workspaceId}`);
+  return {};
+}
+
+export async function deleteAssetAction(
+  workspaceId: string,
+  assetId: string
+): Promise<ActionState> {
+  const user = await requireUser();
+  try {
+    await deleteAsset({ workspaceId, assetId, userId: user.id });
+  } catch (err) {
+    return { error: errorMessage(err) };
+  }
+  revalidatePath(`/w/${workspaceId}/assets`);
+  return {};
+}
+
+export async function saveWhiteboardAction(
+  workspaceId: string,
+  serialized: string
+): Promise<ActionState> {
+  const user = await requireUser();
+
+  let state: unknown;
+  try {
+    state = JSON.parse(serialized);
+  } catch {
+    return { error: "Invalid whiteboard data" };
+  }
+
+  try {
+    await saveExcalidrawState(workspaceId, user.id, state);
+  } catch (err) {
+    return { error: errorMessage(err) };
+  }
+  // No revalidatePath: the canvas owns its state client-side; revalidating
+  // would needlessly re-render the page on every autosave.
+  return {};
+}
+
+export async function updateMemberRoleAction(
+  workspaceId: string,
+  targetUserId: string,
+  role: Role
+): Promise<ActionState> {
+  const user = await requireUser();
+  try {
+    await updateMemberRole(workspaceId, user.id, targetUserId, role);
+  } catch (err) {
+    return { error: errorMessage(err) };
+  }
+  revalidatePath(`/w/${workspaceId}/members`);
+  return {};
+}
+
+export async function removeMemberAction(
+  workspaceId: string,
+  targetUserId: string
+): Promise<ActionState> {
+  const user = await requireUser();
+  try {
+    await removeMember(workspaceId, user.id, targetUserId);
+  } catch (err) {
+    return { error: errorMessage(err) };
+  }
+  revalidatePath(`/w/${workspaceId}/members`);
+  return {};
+}
+
+export async function leaveWorkspaceAction(
+  workspaceId: string
+): Promise<ActionState> {
+  const user = await requireUser();
+  try {
+    await leaveWorkspace(workspaceId, user.id);
+  } catch (err) {
+    return { error: errorMessage(err) };
+  }
+  redirect("/dashboard");
+}
+
+export async function deleteWorkspaceAction(
+  workspaceId: string
+): Promise<ActionState> {
+  const user = await requireUser();
+  try {
+    await deleteWorkspace(workspaceId, user.id);
+  } catch (err) {
+    return { error: errorMessage(err) };
+  }
+  redirect("/dashboard");
+}
+
+export async function revokeInviteAction(
+  workspaceId: string,
+  inviteId: string
+): Promise<ActionState> {
+  const user = await requireUser();
+  try {
+    await revokeInvite(inviteId, user.id);
+  } catch (err) {
+    return { error: errorMessage(err) };
+  }
+  revalidatePath(`/w/${workspaceId}/members`);
+  return {};
 }
 
 export async function acceptInviteAction(inviteId: string): Promise<ActionState> {

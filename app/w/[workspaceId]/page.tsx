@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { getBoardState, ServiceError } from "@/lib/services/project";
@@ -47,6 +48,7 @@ export default async function WorkspacePage({
       dueDate: t.dueDate?.toISOString() ?? null,
       assigneeId: t.assignedTo?.id ?? null,
       assigneeEmail: t.assignedTo?.email ?? null,
+      attachments: t.attachments,
     }));
 
   const boardMembers: BoardMember[] = members.map((m) => ({
@@ -65,14 +67,26 @@ export default async function WorkspacePage({
             <h1 className="text-xl font-semibold tracking-tight">
               {workspace.name}
             </h1>
-            <p className="mt-1 text-xs text-zinc-500">
-              {members.length} member{members.length === 1 ? "" : "s"} ·{" "}
-              {members
-                .slice(0, 4)
-                .map((m) => m.user.email ?? "unknown")
-                .join(", ")}
-              {members.length > 4 && ` +${members.length - 4} more`}
-            </p>
+            <div className="mt-1 flex gap-3 text-xs text-zinc-500">
+              <Link
+                href={`/w/${workspace.id}/members`}
+                className="transition hover:text-indigo-300"
+              >
+                {members.length} member{members.length === 1 ? "" : "s"} →
+              </Link>
+              <Link
+                href={`/w/${workspace.id}/assets`}
+                className="transition hover:text-indigo-300"
+              >
+                assets →
+              </Link>
+              <Link
+                href={`/w/${workspace.id}/whiteboard`}
+                className="transition hover:text-indigo-300"
+              >
+                whiteboard →
+              </Link>
+            </div>
           </div>
           {canInvite && <InviteButton workspaceId={workspace.id} />}
         </div>

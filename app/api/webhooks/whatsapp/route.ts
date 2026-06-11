@@ -13,11 +13,18 @@ import {
   resolveUserWorkspaceContext,
   ServiceError,
   updateTask,
+  uploadAsset,
 } from "@/lib/services/project";
 import {
+  getRecentConversation,
+  recordExchange,
+} from "@/lib/services/conversation";
+import {
+  downloadWhatsAppMedia,
   extractInboundMessage,
   sendWhatsAppText,
   verifyMetaSignature,
+  type InboundMessage,
 } from "@/lib/whatsapp";
 
 /**
@@ -28,7 +35,8 @@ import {
  * text sent back via Graph API.
  */
 
-const HAIKU_MODEL = "claude-3-5-haiku-20241022";
+// claude-3-5-haiku reached end-of-life; Haiku 4.5 is the current fast model.
+const HAIKU_MODEL = "claude-haiku-4-5";
 
 const DENIED_MESSAGE =
   "Sorry, this number isn't linked to any account. Ask your team leader for an invite, then add your phone number in the dashboard settings.";
@@ -48,6 +56,7 @@ Rules:
 - Infer priority only when stated or strongly implied (e.g. "urgent" = HIGH); otherwise omit it.
 - Resolve relative due dates ("Friday", "tomorrow", "next week") to a concrete YYYY-MM-DD date using today's date above.
 - "assign to me" means assignee "me"; a named person means part of their email or name as the assignee parameter.
+- Use the conversation history to resolve references: "that task" / "it" usually means the task #N mentioned in your most recent reply.
 - If the user names a specific workspace/project, pass it as the "workspace" parameter; otherwise omit it.
 - If the message is NOT an actionable board request (greetings, questions, chit-chat), do not call a tool. Reply with one short, friendly sentence telling them what you can do.
 - Never invent task IDs or titles.`;
@@ -201,7 +210,11 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    await handleMessage(message.from, message.text);
+    if (message.kind === "text") {
+      await handleMessage(message.from, message.text);
+    } else {
+      await handleMediaMessage(message);
+    }
   } catch (err) {
     console.error("WhatsApp handler error:", err);
     await sendWhatsAppText(
@@ -211,6 +224,57 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ status: "ok" });
+}
+
+/** Images/documents become workspace assets in the user's active workspace. */
+async function handleMediaMessage(
+  message: Extract<InboundMessage, { kind: "media" }>
+) {
+  const user = await prisma.user.findUnique({
+    where: { phone: message.from },
+    select: { id: true },
+  });
+  if (!user) {
+    await sendWhatsAppText(message.from, DENIED_MESSAGE);
+    return;
+  }
+
+  const ctx = await resolveUserWorkspaceContext(user.id);
+  const file = await downloadWhatsAppMedia(message.mediaId);
+
+  // "#N" anywhere in the caption attaches the file to that task; the rest
+  // of the caption becomes comma-separated tags.
+  const taskRef = message.caption?.match(/#(\d+)/);
+  const taskShortId = taskRef ? Number(taskRef[1]) : undefined;
+  const tags = message.caption
+    ? message.caption
+        .replace(/#\d+/g, "")
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean)
+    : [];
+
+  await uploadAsset({
+    workspaceId: ctx.workspaceId,
+    uploadedById: user.id,
+    file,
+    fileName: message.fileName,
+    fileType: message.mimeType,
+    tags,
+    taskShortId,
+  });
+
+  const reply =
+    `Saved "${message.fileName}" to ${ctx.workspaceName}` +
+    (taskShortId ? `, attached to task #${taskShortId}` : "'s assets") +
+    (tags.length ? ` (tags: ${tags.join(", ")})` : "") +
+    ".";
+  await sendWhatsAppText(message.from, reply);
+  await recordExchange(
+    user.id,
+    `[sent a file: ${message.fileName}]`,
+    reply
+  ).catch(() => {});
 }
 
 async function handleMessage(from: string, text: string) {
@@ -223,13 +287,17 @@ async function handleMessage(from: string, text: string) {
     return;
   }
 
+  // Recent exchanges give Haiku the context to resolve follow-ups like
+  // "make that one high priority" (the prior reply names the task #N).
+  const history = await getRecentConversation(user.id);
+
   const anthropic = new Anthropic();
   const response = await anthropic.messages.create({
     model: HAIKU_MODEL,
     max_tokens: 1024,
     system: buildSystemPrompt(),
     tools: TOOLS,
-    messages: [{ role: "user", content: text }],
+    messages: [...history, { role: "user" as const, content: text }],
   });
 
   const toolUse = response.content.find(
@@ -249,6 +317,9 @@ async function handleMessage(from: string, text: string) {
   }
 
   await sendWhatsAppText(from, reply);
+  await recordExchange(user.id, text, reply).catch((err) =>
+    console.error("Failed to record conversation:", err)
+  );
 }
 
 function parseInputDueDate(value: unknown): Date | null | undefined {

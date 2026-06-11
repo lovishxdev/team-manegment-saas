@@ -301,11 +301,40 @@ export interface UploadAssetInput {
   /** MIME type, e.g. "image/png". */
   fileType: string;
   tags?: string[];
+  /** Attach to a task in the same workspace (by UUID or shortId). */
+  taskId?: string;
+  taskShortId?: number;
 }
 
 export async function uploadAsset(input: UploadAssetInput) {
-  const { workspaceId, uploadedById, file, fileName, fileType, tags } = input;
+  const {
+    workspaceId,
+    uploadedById,
+    file,
+    fileName,
+    fileType,
+    tags,
+    taskId,
+    taskShortId,
+  } = input;
   await assertMembership(uploadedById, workspaceId);
+
+  let attachTaskId: string | null = null;
+  if (taskId || taskShortId !== undefined) {
+    const task = await prisma.task.findFirst({
+      where: taskId
+        ? { id: taskId, workspaceId }
+        : { workspaceId, shortId: taskShortId! },
+      select: { id: true },
+    });
+    if (!task) {
+      throw new ServiceError(
+        `Task ${taskId ?? `#${taskShortId}`} not found in this workspace`,
+        "NOT_FOUND"
+      );
+    }
+    attachTaskId = task.id;
+  }
 
   const supabase = getSupabaseAdmin();
   const storagePath = `${workspaceId}/${Date.now()}-${fileName.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
@@ -324,6 +353,7 @@ export async function uploadAsset(input: UploadAssetInput) {
   const asset = await prisma.asset.create({
     data: {
       workspaceId,
+      taskId: attachTaskId,
       url: publicUrl,
       fileType,
       tags: tags ?? [],
@@ -343,7 +373,7 @@ export interface DeleteTaskInput {
 
 export async function deleteTask(input: DeleteTaskInput) {
   const { workspaceId, userId, taskId, shortId } = input;
-  await assertMembership(userId, workspaceId);
+  const membership = await assertMembership(userId, workspaceId);
 
   if (!taskId && shortId === undefined) {
     throw new ServiceError("Provide either taskId or shortId", "INVALID_INPUT");
@@ -358,6 +388,17 @@ export async function deleteTask(input: DeleteTaskInput) {
     throw new ServiceError(
       `Task ${taskId ?? `#${shortId}`} not found in this workspace`,
       "NOT_FOUND"
+    );
+  }
+
+  // Deletion is destructive: restricted to leaders/sub-leaders and the
+  // task's creator (members can still create and update freely).
+  const isLeadership =
+    membership.role === "LEADER" || membership.role === "SUB_LEADER";
+  if (!isLeadership && existing.createdById !== userId) {
+    throw new ServiceError(
+      "Only leaders, sub-leaders, or the task's creator can delete it",
+      "FORBIDDEN"
     );
   }
 
@@ -406,6 +447,56 @@ export async function assignTask(input: AssignTaskInput) {
   return task;
 }
 
+export async function listAssets(workspaceId: string, userId: string) {
+  await assertMembership(userId, workspaceId);
+  return prisma.asset.findMany({
+    where: { workspaceId },
+    include: { uploadedBy: { select: { id: true, email: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+/** Same policy as task deletion: leadership or the uploader. */
+export async function deleteAsset(input: {
+  workspaceId: string;
+  assetId: string;
+  userId: string;
+}) {
+  const { workspaceId, assetId, userId } = input;
+  const membership = await assertMembership(userId, workspaceId);
+
+  const asset = await prisma.asset.findFirst({
+    where: { id: assetId, workspaceId },
+  });
+  if (!asset) {
+    throw new ServiceError("Asset not found in this workspace", "NOT_FOUND");
+  }
+
+  const isLeadership =
+    membership.role === "LEADER" || membership.role === "SUB_LEADER";
+  if (!isLeadership && asset.uploadedById !== userId) {
+    throw new ServiceError(
+      "Only leaders, sub-leaders, or the uploader can delete an asset",
+      "FORBIDDEN"
+    );
+  }
+
+  // Best effort storage cleanup: the DB row is the source of truth.
+  const supabase = getSupabaseAdmin();
+  const prefix = `/storage/v1/object/public/${ASSETS_BUCKET}/`;
+  const idx = asset.url.indexOf(prefix);
+  if (idx !== -1) {
+    const path = decodeURIComponent(asset.url.slice(idx + prefix.length));
+    await supabase.storage
+      .from(ASSETS_BUCKET)
+      .remove([path])
+      .catch(() => {});
+  }
+
+  await prisma.asset.delete({ where: { id: asset.id } });
+  return asset;
+}
+
 /** Full board snapshot: tasks grouped by status. Used by MCP + WhatsApp. */
 export async function getBoardState(workspaceId: string, userId: string) {
   await assertMembership(userId, workspaceId);
@@ -418,7 +509,13 @@ export async function getBoardState(workspaceId: string, userId: string) {
     prisma.task.findMany({
       where: { workspaceId },
       orderBy: { shortId: "asc" },
-      include: { assignedTo: { select: { id: true, email: true } } },
+      include: {
+        assignedTo: { select: { id: true, email: true } },
+        attachments: {
+          select: { id: true, url: true, fileType: true },
+          orderBy: { createdAt: "asc" },
+        },
+      },
     }),
   ]);
 

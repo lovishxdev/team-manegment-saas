@@ -5,26 +5,26 @@ import { createSupabaseServer } from "@/lib/supabase-server";
 /**
  * Returns the authenticated user's profile row, or redirects to /login.
  *
- * The profile normally exists already (created by the handle_new_user
- * trigger on auth.users), but we upsert as a safety net so the app also
- * works on databases where supabase/setup.sql hasn't been applied.
+ * Auth check is a local JWT validation (getClaims, no network round trip).
+ * The profile is read-only on the hot path; the create fallback only fires
+ * on a user's very first request if the handle_new_user trigger is missing.
  */
 export async function requireUser() {
   const supabase = await createSupabaseServer();
-  const {
-    data: { user: authUser },
-  } = await supabase.auth.getUser();
+  const { data } = await supabase.auth.getClaims();
+  const claims = data?.claims;
 
-  if (!authUser) redirect("/login");
+  if (!claims?.sub) redirect("/login");
 
-  const user = await prisma.user.upsert({
-    where: { id: authUser.id },
-    update: {},
-    create: {
-      id: authUser.id,
-      email: authUser.email ?? null,
+  const existing = await prisma.user.findUnique({
+    where: { id: claims.sub },
+  });
+  if (existing) return existing;
+
+  return prisma.user.create({
+    data: {
+      id: claims.sub,
+      email: typeof claims.email === "string" ? claims.email : null,
     },
   });
-
-  return user;
 }

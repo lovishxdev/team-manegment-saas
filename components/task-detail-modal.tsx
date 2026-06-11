@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import {
   deleteTaskAction,
   updateTaskAction,
+  uploadAssetAction,
   type TaskEdit,
 } from "@/lib/actions/workspace";
 import type { BoardMember, BoardTask } from "@/components/task-board";
@@ -39,6 +40,21 @@ export function TaskDetailModal({
     task.dueDate ? task.dueDate.slice(0, 10) : ""
   );
   const [assigneeId, setAssigneeId] = useState(task.assigneeId ?? "");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  async function attachFile(file: File) {
+    setError(null);
+    setUploading(true);
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("taskId", task.id);
+    const result = await uploadAssetAction(workspaceId, {}, formData);
+    setUploading(false);
+    if (result.error) setError(result.error);
+    // New attachment arrives via revalidation; close so the fresh data shows.
+    else onClose();
+  }
 
   function save() {
     if (!title.trim()) {
@@ -184,6 +200,61 @@ export function TaskDetailModal({
                   </option>
                 ))}
               </select>
+            </div>
+          </div>
+
+          <div>
+            <label className={labelCls}>
+              Attachments ({task.attachments.length})
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {task.attachments.map((att) =>
+                att.fileType.startsWith("image/") ? (
+                  <a
+                    key={att.id}
+                    href={att.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block overflow-hidden rounded-lg border border-zinc-800"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={att.url}
+                      alt="attachment"
+                      className="h-16 w-16 object-cover transition hover:opacity-80"
+                    />
+                  </a>
+                ) : (
+                  <a
+                    key={att.id}
+                    href={att.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex h-16 w-16 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950 text-xl transition hover:border-zinc-600"
+                  >
+                    📄
+                  </a>
+                )
+              )}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="flex h-16 w-16 items-center justify-center rounded-lg border border-dashed border-zinc-700 text-lg text-zinc-500 transition hover:border-indigo-500 hover:text-indigo-300 disabled:opacity-60"
+                title="Attach image or file"
+              >
+                {uploading ? "…" : "+"}
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,.pdf,.doc,.docx,.txt"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) attachFile(file);
+                }}
+              />
             </div>
           </div>
 

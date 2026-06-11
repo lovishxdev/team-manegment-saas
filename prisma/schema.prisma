@@ -56,6 +56,7 @@ model User {
   uploadedAssets Asset[]
   oauthCodes     OAuthCode[]
   oauthTokens    OAuthToken[]
+  whatsappMessages WhatsAppMessage[]
 }
 
 model Workspace {
@@ -104,9 +105,10 @@ model Task {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  workspace  Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  assignedTo User?     @relation("AssignedTasks", fields: [assignedToId], references: [id], onDelete: SetNull)
-  createdBy  User?     @relation("CreatedTasks", fields: [createdById], references: [id], onDelete: SetNull)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  assignedTo  User?     @relation("AssignedTasks", fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdBy   User?     @relation("CreatedTasks", fields: [createdById], references: [id], onDelete: SetNull)
+  attachments Asset[]
 
   @@unique([workspaceId, shortId])
   @@index([workspaceId, status])
@@ -116,6 +118,8 @@ model Task {
 model Asset {
   id           String   @id @default(uuid()) @db.Uuid
   workspaceId  String   @db.Uuid
+  /// Optional task attachment; asset stays in the workspace if the task goes
+  taskId       String?  @db.Uuid
   url          String
   fileType     String
   tags         String[] @default([])
@@ -123,9 +127,27 @@ model Asset {
   createdAt    DateTime @default(now())
 
   workspace  Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  task       Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
   uploadedBy User      @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
+  @@index([taskId])
+}
+
+/// Short-lived WhatsApp conversation history, so the bot can resolve
+/// follow-up references ("make that one high priority"). Pruned per user;
+/// only the recent window is ever sent to the model.
+model WhatsAppMessage {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  /// "user" or "assistant"
+  role      String
+  content   String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }
 
 /// OAuth 2.1 authorization server models -- lets MCP clients (claude.ai web

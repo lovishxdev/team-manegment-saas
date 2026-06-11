@@ -80,6 +80,48 @@ create policy "users_read_self" on public."User"
   for select using (id = auth.uid());
 
 -- ============================================================
+-- 3b. Whiteboard live collaboration: private broadcast channels
+--     (topic "whiteboard-<workspaceId>"), members only
+-- ============================================================
+-- Safe cast helper: policies must not error on malformed topics, and SQL
+-- AND does not guarantee evaluation order.
+create or replace function public.is_workspace_member_text(ws text)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+stable
+as $$
+begin
+  return public.is_workspace_member(ws::uuid);
+exception when others then
+  return false;
+end;
+$$;
+
+drop policy if exists "whiteboard_broadcast_read" on realtime.messages;
+create policy "whiteboard_broadcast_read" on realtime.messages
+  for select to authenticated
+  using (
+    realtime.topic() like 'whiteboard-%'
+    and realtime.messages.extension in ('broadcast', 'presence')
+    and public.is_workspace_member_text(
+      replace(realtime.topic(), 'whiteboard-', '')
+    )
+  );
+
+drop policy if exists "whiteboard_broadcast_write" on realtime.messages;
+create policy "whiteboard_broadcast_write" on realtime.messages
+  for insert to authenticated
+  with check (
+    realtime.topic() like 'whiteboard-%'
+    and realtime.messages.extension in ('broadcast', 'presence')
+    and public.is_workspace_member_text(
+      replace(realtime.topic(), 'whiteboard-', '')
+    )
+  );
+
+-- ============================================================
 -- 4. Realtime: broadcast Task changes to subscribed dashboards
 --    (events are filtered per-user through the RLS policy above)
 -- ============================================================
