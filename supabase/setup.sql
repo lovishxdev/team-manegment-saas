@@ -1,0 +1,96 @@
+-- Supabase-side setup that lives OUTSIDE Prisma migrations
+-- (touches the auth schema / realtime publication, which Prisma's shadow
+-- database can't replay). Idempotent: safe to run multiple times.
+--
+-- Apply with:  npx prisma db execute --file supabase/setup.sql
+-- or paste into the Supabase SQL Editor.
+
+-- ============================================================
+-- 1. Mirror auth.users -> public."User" (profile row on signup)
+-- ============================================================
+-- mcpToken must be generated here: Prisma's @default(uuid()) is applied by
+-- the Prisma client, not the database, so trigger inserts need their own.
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public."User" (id, email, "mcpToken", "createdAt")
+  values (new.id, new.email, gen_random_uuid(), now())
+  on conflict (id) do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
+
+-- ============================================================
+-- 2. Membership check helper (security definer avoids recursive
+--    RLS lookups inside policies)
+-- ============================================================
+create or replace function public.is_workspace_member(ws_id uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from public."WorkspaceMembership" m
+    where m."workspaceId" = ws_id
+      and m."userId" = auth.uid()
+  );
+$$;
+
+-- ============================================================
+-- 3. RLS read policies (web clients read via Realtime/PostgREST;
+--    all WRITES go through the backend service layer, which
+--    connects as the table owner and bypasses RLS)
+-- ============================================================
+alter table public."User"                enable row level security;
+alter table public."Workspace"           enable row level security;
+alter table public."WorkspaceMembership" enable row level security;
+alter table public."Task"                enable row level security;
+alter table public."Asset"               enable row level security;
+alter table public."WorkspaceInvite"     enable row level security;
+
+drop policy if exists "members_read_tasks" on public."Task";
+create policy "members_read_tasks" on public."Task"
+  for select using (public.is_workspace_member("workspaceId"));
+
+drop policy if exists "members_read_workspace" on public."Workspace";
+create policy "members_read_workspace" on public."Workspace"
+  for select using (public.is_workspace_member(id));
+
+drop policy if exists "members_read_memberships" on public."WorkspaceMembership";
+create policy "members_read_memberships" on public."WorkspaceMembership"
+  for select using (public.is_workspace_member("workspaceId"));
+
+drop policy if exists "members_read_assets" on public."Asset";
+create policy "members_read_assets" on public."Asset"
+  for select using (public.is_workspace_member("workspaceId"));
+
+drop policy if exists "users_read_self" on public."User";
+create policy "users_read_self" on public."User"
+  for select using (id = auth.uid());
+
+-- ============================================================
+-- 4. Realtime: broadcast Task changes to subscribed dashboards
+--    (events are filtered per-user through the RLS policy above)
+-- ============================================================
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'Task'
+  ) then
+    alter publication supabase_realtime add table public."Task";
+  end if;
+end $$;

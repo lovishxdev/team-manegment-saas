@@ -1,36 +1,48 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Teams Management SaaS — Backend
 
-## Getting Started
+High-density project management tool operating through a **Triad** of interfaces:
 
-First, run the development server:
+1. **Web Dashboard** (Next.js, frontend not yet built)
+2. **WhatsApp bot** — Meta Cloud API webhook, intent parsing by Claude Haiku
+3. **Claude App** — Remote MCP connector with per-user bearer tokens
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+All three are thin adapters over a single shared service layer.
+
+## Stack
+
+Next.js (App Router) · Supabase (Postgres, Storage, Realtime) · Prisma 7 · Anthropic SDK · `mcp-handler`
+
+## Layout
+
+```
+prisma/schema.prisma                  Database schema (single source of truth)
+prisma.config.ts                      Prisma CLI config (migrations use DIRECT_URL)
+lib/prisma.ts                         Prisma client singleton (pooled, pg adapter)
+lib/supabase.ts                       Server-side Supabase admin client (Storage)
+lib/whatsapp.ts                       Graph API send + webhook signature verify
+lib/services/project.ts               Business logic shared by every interface
+app/api/mcp/route.ts                  Remote MCP endpoint (Streamable HTTP)
+app/api/webhooks/whatsapp/route.ts    WhatsApp webhook (verify + ingest)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Quick start
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm install
+cp .env.example .env      # fill in values -- see SETUP.md
+npx prisma migrate dev    # create tables
+npm run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Full walkthrough for Supabase, Anthropic, Meta WhatsApp, and the Claude App
+connector: see [SETUP.md](SETUP.md).
 
-## Learn More
+## Useful commands
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Start the dev server |
+| `npm run typecheck` | TypeScript check |
+| `npx prisma migrate dev` | Apply schema changes |
+| `npx prisma studio` | Browse/edit data in a GUI |
+| `npm run prisma:generate` | Regenerate the Prisma client |

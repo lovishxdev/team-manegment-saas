@@ -1,0 +1,185 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  LEADER
+  SUB_LEADER
+  MEMBER
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+enum TaskScope {
+  FRONTEND
+  BACKEND
+  DESIGN
+  GENERAL
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+/// Identity (passwords, OAuth) lives in Supabase Auth (auth.users).
+/// This table is the app profile; its id mirrors auth.users.id, kept in
+/// sync by the handle_new_user trigger (supabase/setup.sql).
+model User {
+  id            String  @id @default(uuid()) @db.Uuid
+  email         String? @unique
+  /// E.164 format (e.g. 919876543210) - used to route incoming WhatsApp messages
+  phone         String? @unique
+  /// User-level secret for the Claude App Remote MCP connector
+  mcpToken      String  @unique @default(uuid()) @db.Uuid
+  lastIpAddress String?
+  createdAt     DateTime @default(now())
+
+  /// Pointer to the workspace the user most recently acted in.
+  /// Kept up to date by the service layer; powers resolveUserWorkspaceContext.
+  lastActiveWorkspaceId String?    @db.Uuid
+  lastActiveWorkspace   Workspace? @relation("LastActiveWorkspace", fields: [lastActiveWorkspaceId], references: [id], onDelete: SetNull)
+
+  memberships    WorkspaceMembership[]
+  assignedTasks  Task[]                @relation("AssignedTasks")
+  createdTasks   Task[]                @relation("CreatedTasks")
+  uploadedAssets Asset[]
+  oauthCodes     OAuthCode[]
+  oauthTokens    OAuthToken[]
+}
+
+model Workspace {
+  id              String   @id @default(uuid()) @db.Uuid
+  name            String
+  excalidrawState Json     @default("{}")
+  createdAt       DateTime @default(now())
+
+  memberships     WorkspaceMembership[]
+  tasks           Task[]
+  assets          Asset[]
+  invites         WorkspaceInvite[]
+  lastActiveUsers User[]                @relation("LastActiveWorkspace")
+}
+
+model WorkspaceMembership {
+  userId      String   @db.Uuid
+  workspaceId String   @db.Uuid
+  role        Role     @default(MEMBER)
+  joinedAt    DateTime @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@id([userId, workspaceId])
+  @@index([workspaceId])
+}
+
+model Task {
+  id          String     @id @default(uuid()) @db.Uuid
+  /// Human-friendly ID, auto-incremented per workspace by the service layer
+  /// (allocated as max(shortId)+1 inside a transaction; the unique constraint
+  /// below guards against concurrent allocation races)
+  shortId     Int
+  workspaceId String       @db.Uuid
+  title       String
+  description String?
+  status      TaskStatus   @default(TODO)
+  scope       TaskScope    @default(GENERAL)
+  priority    TaskPriority @default(MEDIUM)
+  dueDate     DateTime?
+
+  assignedToId String? @db.Uuid
+  createdById  String? @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace  Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  assignedTo User?     @relation("AssignedTasks", fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdBy  User?     @relation("CreatedTasks", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, shortId])
+  @@index([workspaceId, status])
+  @@index([assignedToId])
+}
+
+model Asset {
+  id           String   @id @default(uuid()) @db.Uuid
+  workspaceId  String   @db.Uuid
+  url          String
+  fileType     String
+  tags         String[] @default([])
+  uploadedById String   @db.Uuid
+  createdAt    DateTime @default(now())
+
+  workspace  Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  uploadedBy User      @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+}
+
+/// OAuth 2.1 authorization server models -- lets MCP clients (claude.ai web
+/// and mobile connectors) authenticate users via the standard OAuth flow
+/// instead of a manually copied bearer token.
+model OAuthClient {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String
+  redirectUris String[]
+  createdAt    DateTime @default(now())
+
+  codes  OAuthCode[]
+  tokens OAuthToken[]
+}
+
+model OAuthCode {
+  /// The authorization code handed to the client (single use, short lived)
+  code          String   @id
+  clientId      String   @db.Uuid
+  userId        String   @db.Uuid
+  redirectUri   String
+  /// PKCE S256 challenge
+  codeChallenge String
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+
+  client OAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model OAuthToken {
+  /// Access token value (opaque random string)
+  token        String    @id
+  refreshToken String?   @unique
+  clientId     String    @db.Uuid
+  userId       String    @db.Uuid
+  expiresAt    DateTime
+  createdAt    DateTime  @default(now())
+
+  client OAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model WorkspaceInvite {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  maxUses     Int      @default(1)
+  usesCount   Int      @default(0)
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+}
