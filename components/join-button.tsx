@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { acceptInviteAction } from "@/lib/actions/workspace";
+import { ui } from "@/components/ui";
 
 export function JoinButton({ inviteId }: { inviteId: string }) {
   const [pending, startTransition] = useTransition();
@@ -20,11 +21,11 @@ export function JoinButton({ inviteId }: { inviteId: string }) {
       <button
         onClick={join}
         disabled={pending}
-        className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:opacity-60"
+        className={`px-6 ${ui.btnPrimary}`}
       >
         {pending ? "Joining..." : "Join workspace"}
       </button>
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <p className={ui.errorText}>{error}</p>}
     </div>
   );
 }

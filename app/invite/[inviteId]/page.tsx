@@ -1,8 +1,10 @@
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getInvite } from "@/lib/services/workspace";
 import { createSupabaseServer } from "@/lib/supabase-server";
 import { JoinButton } from "@/components/join-button";
+import { ui } from "@/components/ui";
 
 export default async function InvitePage({
   params,
@@ -20,15 +22,22 @@ export default async function InvitePage({
 
   return (
     <main className="flex min-h-screen items-center justify-center px-4">
-      <div className="w-full max-w-sm rounded-2xl border border-zinc-800 bg-zinc-900/60 p-8 text-center shadow-xl">
-        <p className="text-sm text-zinc-400">You&apos;ve been invited to join</p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">
+      <div className="w-full max-w-sm rounded-lg border border-line bg-card p-8 text-center">
+        <Image
+          src="/euclis-logo.png"
+          alt="Euclis"
+          width={44}
+          height={44}
+          className="mx-auto mb-5 rounded-lg ring-1 ring-line"
+        />
+        <p className="text-sm text-ink-soft">You&apos;ve been invited to join</p>
+        <h1 className="mt-2 font-display text-3xl font-semibold tracking-tight">
           {invite.workspace.name}
         </h1>
 
         <div className="mt-6">
           {!invite.valid ? (
-            <p className="text-sm text-red-400">
+            <p className="text-sm text-red-300">
               {invite.expired
                 ? "This invite has expired."
                 : "This invite has no uses left."}{" "}
@@ -38,18 +47,18 @@ export default async function InvitePage({
             <JoinButton inviteId={invite.id} />
           ) : (
             <div className="flex flex-col gap-2">
-              <p className="mb-2 text-sm text-zinc-400">
+              <p className="mb-2 text-sm text-ink-soft">
                 Sign in or create an account to join.
               </p>
               <Link
                 href={`/login?next=/invite/${invite.id}`}
-                className="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-500"
+                className={`text-center ${ui.btnPrimary}`}
               >
                 Sign in
               </Link>
               <Link
                 href={`/signup?next=/invite/${invite.id}`}
-                className="rounded-lg border border-zinc-700 px-4 py-2.5 text-sm text-zinc-300 transition hover:border-zinc-500"
+                className={`text-center ${ui.btnSecondary}`}
               >
                 Create account
               </Link>

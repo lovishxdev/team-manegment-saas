@@ -10,10 +10,13 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
+import { restrictToWindowEdges } from "@dnd-kit/modifiers";
 import { createSupabaseBrowser } from "@/lib/supabase-browser";
 import { updateTaskAction } from "@/lib/actions/workspace";
 import { TaskDetailModal } from "@/components/task-detail-modal";
+import { Avatar, tagColor } from "@/components/ui";
 
 export type TaskAttachment = {
   id: string;
@@ -31,34 +34,60 @@ export type BoardTask = {
   priority: "LOW" | "MEDIUM" | "HIGH";
   /** ISO string or null */
   dueDate: string | null;
+  tags: string[];
   assigneeId: string | null;
-  assigneeEmail: string | null;
+  /** Username (preferred) or email of the assignee. */
+  assigneeLabel: string | null;
   attachments: TaskAttachment[];
 };
 
 export type BoardMember = {
   id: string;
-  email: string | null;
+  /** Username (preferred) or email. */
+  label: string | null;
 };
 
-const COLUMNS: { status: BoardTask["status"]; label: string }[] = [
-  { status: "TODO", label: "To Do" },
-  { status: "IN_PROGRESS", label: "In Progress" },
-  { status: "DONE", label: "Done" },
+const COLUMNS: {
+  status: BoardTask["status"];
+  label: string;
+  tint: string;
+  dot: string;
+}[] = [
+  {
+    status: "TODO",
+    label: "To Do",
+    tint: "bg-paper-deep",
+    dot: "bg-ink-faint",
+  },
+  {
+    status: "IN_PROGRESS",
+    label: "In Progress",
+    tint: "bg-paper-deep",
+    dot: "bg-amber-300",
+  },
+  {
+    status: "DONE",
+    label: "Done",
+    tint: "bg-paper-deep",
+    dot: "bg-accent",
+  },
 ];
 
 const SCOPE_STYLES: Record<BoardTask["scope"], string> = {
-  FRONTEND: "bg-sky-500/10 text-sky-300 border-sky-500/30",
-  BACKEND: "bg-amber-500/10 text-amber-300 border-amber-500/30",
-  DESIGN: "bg-fuchsia-500/10 text-fuchsia-300 border-fuchsia-500/30",
-  GENERAL: "bg-zinc-500/10 text-zinc-300 border-zinc-500/30",
+  FRONTEND: "bg-sky-400/15 text-sky-300",
+  BACKEND: "bg-violet-400/15 text-violet-300",
+  DESIGN: "bg-orange-400/15 text-orange-300",
+  GENERAL: "bg-white/[0.06] text-ink-soft",
 };
 
 const PRIORITY_STYLES: Record<BoardTask["priority"], string> = {
-  HIGH: "bg-red-500/10 text-red-300 border-red-500/30",
-  MEDIUM: "bg-yellow-500/10 text-yellow-300 border-yellow-500/30",
-  LOW: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30",
+  HIGH: "bg-rose-400/15 text-rose-300",
+  MEDIUM: "bg-amber-400/15 text-amber-300",
+  LOW: "bg-emerald-400/15 text-emerald-300",
 };
+
+/* Status chips: monospaced labels in low-opacity tints (Kinetic spec). */
+const chipCls = "rounded px-2 py-1 font-mono text-[10px] font-medium tracking-wide";
 
 function formatDue(iso: string): { label: string; overdue: boolean } {
   const due = new Date(iso);
@@ -85,103 +114,228 @@ function TaskCard({
     useDraggable({ id: task.id });
 
   const due = task.dueDate ? formatDue(task.dueDate) : null;
+  const isOverdue = due?.overdue && task.status !== "DONE";
+
+  const imageAttachments = task.attachments.filter((a) =>
+    a.fileType.startsWith("image/")
+  );
+  const fileCount = task.attachments.length - imageAttachments.length;
+  const cover = imageAttachments[0];
 
   return (
     <article
       ref={setNodeRef}
       {...listeners}
       {...attributes}
+      data-task-id={task.id}
       onClick={() => onOpen(task)}
       style={
         transform
-          ? { transform: `translate(${transform.x}px, ${transform.y}px)` }
+          ? { transform: `translate(${transform.x}px, ${transform.y}px) rotate(2deg)` }
           : undefined
       }
-      className={`cursor-grab rounded-xl border border-zinc-800 bg-zinc-950 p-3 transition-colors hover:border-zinc-600 ${
-        isDragging ? "z-10 opacity-80 shadow-2xl" : ""
+      className={`cursor-grab rounded-lg border bg-card p-4 ${
+        isDragging
+          ? // No transition while dragging: transform must track the pointer
+            // 1:1, otherwise the card lags behind on every move.
+            "z-10 border-accent/60 shadow-[0_0_24px_rgba(0,255,194,0.08)]"
+          : "border-line transition-colors hover:border-line-strong"
       }`}
     >
-      <p className="text-sm leading-snug">
-        <span className="mr-1.5 text-zinc-500">#{task.shortId}</span>
-        {task.title}
-      </p>
-      {task.description && (
-        <p className="mt-1 line-clamp-2 text-xs text-zinc-500">
-          {task.description}
-        </p>
-      )}
-      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-        <span
-          className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide ${SCOPE_STYLES[task.scope]}`}
-        >
-          {task.scope}
+      {/* Chips row: scope + priority + free-form tags + add affordance */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className={`${chipCls} uppercase ${SCOPE_STYLES[task.scope]}`}>
+          {task.scope.toLowerCase()}
         </span>
         {task.priority !== "MEDIUM" && (
           <span
-            className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide ${PRIORITY_STYLES[task.priority]}`}
+            className={`${chipCls} uppercase ${PRIORITY_STYLES[task.priority]}`}
           >
-            {task.priority}
+            {task.priority.toLowerCase()}
           </span>
         )}
-        {due && (
-          <span
-            className={`rounded-full border px-2 py-0.5 text-[10px] tracking-wide ${
-              due.overdue && task.status !== "DONE"
-                ? "border-red-500/40 bg-red-500/10 text-red-300"
-                : "border-zinc-700 text-zinc-400"
-            }`}
-          >
-            {due.overdue && task.status !== "DONE" ? "overdue " : "due "}
-            {due.label}
+        {task.tags.slice(0, 3).map((tag) => (
+          <span key={tag} className={`${chipCls} ${tagColor(tag)}`}>
+            {tag}
+          </span>
+        ))}
+        {task.tags.length > 3 && (
+          <span className={`${chipCls} bg-white/[0.06] text-ink-faint`}>
+            +{task.tags.length - 3}
           </span>
         )}
-        {task.attachments.length > 0 && (
-          <span className="text-[10px] text-zinc-500">
-            📎 {task.attachments.length}
-          </span>
-        )}
-        {task.assigneeEmail && (
-          <span className="ml-auto max-w-[40%] truncate text-[10px] text-zinc-500">
-            {task.assigneeEmail.split("@")[0]}
-          </span>
-        )}
+        <span
+          title="Add tag"
+          className="inline-flex h-[22px] w-[22px] items-center justify-center rounded bg-white/[0.06] text-[13px] leading-none text-ink-faint transition hover:bg-white/[0.1] hover:text-ink"
+        >
+          +
+        </span>
+        <span className="ml-auto font-mono text-[10px] font-medium text-ink-faint/70">
+          #{task.shortId}
+        </span>
+      </div>
+
+      {/* Image preview */}
+      {cover && (
+        <div className="relative mt-3 overflow-hidden rounded-md border border-line">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={cover.url}
+            alt=""
+            draggable={false}
+            className="h-32 w-full object-cover"
+          />
+          {imageAttachments.length > 1 && (
+            <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded bg-paper-deep/80 px-2 py-1 font-mono text-[10px] font-medium text-ink-soft backdrop-blur-sm">
+              <svg viewBox="0 0 14 14" fill="none" className="h-3 w-3" stroke="currentColor" strokeWidth="1.2">
+                <rect x="1.5" y="2.5" width="11" height="9" rx="1.5" />
+                <circle cx="4.8" cy="5.6" r="1" />
+                <path d="M1.5 9.5l3-2.5 2.6 2.2 2.6-1.8 2.8 2.1" />
+              </svg>
+              {imageAttachments.length - 1}+
+            </span>
+          )}
+        </div>
+      )}
+
+      <p className="mt-3 text-[15px] font-medium leading-snug text-ink">
+        {task.title}
+      </p>
+      {task.description && (
+        <p className="mt-1.5 line-clamp-2 text-[13px] leading-relaxed text-ink-faint">
+          {task.description}
+        </p>
+      )}
+
+      {/* Footer: assignee left, meta right */}
+      <div className="mt-4 flex items-center justify-between">
+        <div className="flex items-center">
+          {task.assigneeLabel ? (
+            <span className="rounded-full ring-2 ring-card">
+              <Avatar
+                seed={task.assigneeId ?? task.assigneeLabel}
+                label={task.assigneeLabel}
+                size="h-6 w-6 text-[10px]"
+              />
+            </span>
+          ) : (
+            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-dashed border-line-strong text-[11px] text-ink-faint">
+              +
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2.5 font-mono text-[10px] text-ink-faint">
+          {fileCount > 0 && (
+            <span className="inline-flex items-center gap-1">
+              <svg viewBox="0 0 14 14" fill="none" className="h-3 w-3" stroke="currentColor" strokeWidth="1.2">
+                <path d="M9.5 4 5 8.5a1.4 1.4 0 0 0 2 2L11.5 6a2.8 2.8 0 1 0-4-4L3 6.5a4.2 4.2 0 0 0 6 6l3-3" />
+              </svg>
+              {fileCount}
+            </span>
+          )}
+          {due && (
+            <span
+              className={`inline-flex items-center gap-1 ${
+                isOverdue ? "font-semibold text-red-400" : ""
+              }`}
+            >
+              <svg viewBox="0 0 14 14" fill="none" className="h-3 w-3" stroke="currentColor" strokeWidth="1.2">
+                <rect x="1.5" y="2.5" width="11" height="10" rx="1.5" />
+                <path d="M1.5 5.5h11M4.5 1.5v2M9.5 1.5v2" />
+              </svg>
+              {isOverdue ? "overdue " : ""}
+              {due.label}
+            </span>
+          )}
+        </div>
       </div>
     </article>
+  );
+}
+
+/**
+ * Ghost tile shown as a drop target while a task is being dragged.
+ * Sized to match the dragged card so the drop feels 1:1.
+ */
+function DropPlaceholder({
+  active,
+  height,
+}: {
+  active: boolean;
+  height: number | null;
+}) {
+  return (
+    <div
+      style={height ? { height } : undefined}
+      className={`flex min-h-28 flex-col items-center justify-center gap-2 rounded-lg border border-dashed p-4 transition-all ${
+        active
+          ? "border-accent/60 bg-accent-soft text-accent"
+          : "border-line-strong bg-card/40 text-ink-faint/80"
+      }`}
+    >
+      <svg
+        viewBox="0 0 20 20"
+        fill="none"
+        className="h-6 w-6"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      >
+        <rect x="6.5" y="3" width="10" height="12" rx="2" />
+        <path d="M13.5 17.2a2 2 0 0 1-1.9 1.3H6a2.5 2.5 0 0 1-2.5-2.5V8.4A2 2 0 0 1 4.8 6.5" />
+      </svg>
+      <span className="font-mono text-[11px] font-medium tracking-wide">
+        {active ? "Release to move here" : "Drop task here"}
+      </span>
+    </div>
   );
 }
 
 function Column({
   status,
   label,
+  tint,
+  dot,
   tasks,
   onOpen,
+  dropHint,
+  dragHeight,
 }: {
   status: BoardTask["status"];
   label: string;
+  tint: string;
+  dot: string;
   tasks: BoardTask[];
   onOpen: (task: BoardTask) => void;
+  /** True while a task from another column is being dragged. */
+  dropHint: boolean;
+  /** Height of the card being dragged, to size the placeholder 1:1. */
+  dragHeight: number | null;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
 
   return (
     <section
       ref={setNodeRef}
-      className={`rounded-2xl border p-3 transition-colors ${
-        isOver
-          ? "border-indigo-500/60 bg-indigo-500/5"
-          : "border-zinc-800 bg-zinc-900/40"
+      className={`rounded-lg border p-3 transition ${tint} ${
+        isOver ? "border-accent/50" : "border-line"
       }`}
     >
-      <header className="mb-3 flex items-center justify-between px-1">
-        <h3 className="text-sm font-medium text-zinc-300">{label}</h3>
-        <span className="text-xs text-zinc-500">{tasks.length}</span>
+      <header className="mb-3 flex items-center gap-2 px-1">
+        <span className={`h-2 w-2 rounded-full ${dot}`} />
+        <h3 className="font-mono text-xs font-semibold uppercase tracking-[0.1em] text-ink">
+          {label}
+        </h3>
+        <span className="rounded bg-white/[0.06] px-1.5 py-0.5 font-mono text-[11px] font-semibold text-ink-soft">
+          {tasks.length}
+        </span>
       </header>
-      <div className="flex min-h-16 flex-col gap-2">
+      <div className="flex min-h-16 flex-col gap-2.5">
         {tasks.map((task) => (
           <TaskCard key={task.id} task={task} onOpen={onOpen} />
         ))}
-        {tasks.length === 0 && (
-          <p className="rounded-xl border border-dashed border-zinc-800 px-3 py-6 text-center text-xs text-zinc-600">
+        {dropHint && <DropPlaceholder active={isOver} height={dragHeight} />}
+        {!dropHint && tasks.length === 0 && (
+          <p className="rounded-md border border-dashed border-line-strong px-3 py-7 text-center text-xs text-ink-faint">
             Drop tasks here
           </p>
         )}
@@ -205,6 +359,11 @@ export function TaskBoard({
   const [, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [openTask, setOpenTask] = useState<BoardTask | null>(null);
+  /** Status of the task currently being dragged, if any. */
+  const [dragSource, setDragSource] = useState<BoardTask["status"] | null>(
+    null
+  );
+  const [dragHeight, setDragHeight] = useState<number | null>(null);
 
   // Local copy so drags update instantly; server state flows back via props.
   const [localTasks, setLocalTasks] = useState(tasks);
@@ -283,7 +442,23 @@ export function TaskBoard({
     [localTasks, scopeFilter, assigneeFilter, mineOnly, currentUserId]
   );
 
+  function handleDragStart(event: DragStartEvent) {
+    const taskId = String(event.active.id);
+    const task = localTasks.find((t) => t.id === taskId);
+    setDragSource(task?.status ?? null);
+
+    // dnd-kit's measured rect (active.rect.current.initial) is not reliably
+    // populated yet inside onDragStart -- for tall cards (image previews) it
+    // lagged behind. Measure the DOM node directly instead.
+    const node = document.querySelector(`[data-task-id="${taskId}"]`);
+    setDragHeight(
+      node ? node.getBoundingClientRect().height : null
+    );
+  }
+
   function handleDragEnd(event: DragEndEvent) {
+    setDragSource(null);
+    setDragHeight(null);
     const taskId = String(event.active.id);
     const target = event.over?.id as BoardTask["status"] | undefined;
     if (!target) return;
@@ -307,7 +482,7 @@ export function TaskBoard({
   }
 
   const filterSelectCls =
-    "rounded-lg border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 text-xs text-zinc-300 outline-none focus:border-indigo-500";
+    "rounded-md border border-line bg-card px-3 py-1.5 text-xs text-ink-soft outline-none transition focus:border-accent/60";
 
   return (
     <div>
@@ -332,16 +507,16 @@ export function TaskBoard({
           <option value="unassigned">Unassigned</option>
           {members.map((m) => (
             <option key={m.id} value={m.id}>
-              {m.email ?? m.id.slice(0, 8)}
+              {m.label ?? m.id.slice(0, 8)}
             </option>
           ))}
         </select>
         <button
           onClick={() => setMineOnly((v) => !v)}
-          className={`rounded-lg border px-2.5 py-1.5 text-xs transition ${
+          className={`rounded-md border px-3 py-1.5 text-xs transition ${
             mineOnly
-              ? "border-indigo-500 bg-indigo-500/10 text-indigo-300"
-              : "border-zinc-700 text-zinc-400 hover:border-zinc-500"
+              ? "border-accent/60 bg-accent-soft text-accent"
+              : "border-line bg-card text-ink-soft hover:border-line-strong"
           }`}
         >
           My tasks
@@ -353,33 +528,50 @@ export function TaskBoard({
               setAssigneeFilter("");
               setMineOnly(false);
             }}
-            className="text-xs text-zinc-500 hover:text-zinc-300"
+            className="text-xs text-ink-faint hover:text-ink"
           >
             Clear filters
           </button>
         )}
-        <span className="ml-auto text-xs text-zinc-600">
+        <span className="ml-auto font-mono text-[11px] text-ink-faint">
           {visibleTasks.length} of {localTasks.length} tasks
         </span>
       </div>
 
       {error && (
-        <p className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+        <p className="mb-3 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
           {error}
         </p>
       )}
 
       {/* Stable id: dnd-kit otherwise autogenerates one that differs between
           server and client render, causing a hydration mismatch. */}
-      <DndContext id={`board-dnd-${workspaceId}`} sensors={sensors} onDragEnd={handleDragEnd}>
+      <DndContext
+        id={`board-dnd-${workspaceId}`}
+        sensors={sensors}
+        // Vertical-only autoscroll: long columns stay reachable mid-drag,
+        // but no horizontal drift (threshold.x = 0 disables that axis).
+        autoScroll={{ threshold: { x: 0, y: 0.2 } }}
+        modifiers={[restrictToWindowEdges]}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={() => {
+          setDragSource(null);
+          setDragHeight(null);
+        }}
+      >
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           {COLUMNS.map((col) => (
             <Column
               key={col.status}
               status={col.status}
               label={col.label}
+              tint={col.tint}
+              dot={col.dot}
               tasks={visibleTasks.filter((t) => t.status === col.status)}
               onOpen={setOpenTask}
+              dropHint={dragSource !== null && dragSource !== col.status}
+              dragHeight={dragHeight}
             />
           ))}
         </div>

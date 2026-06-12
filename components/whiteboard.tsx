@@ -125,11 +125,11 @@ export function Whiteboard({
           ...((initialState.appState as object) ?? {}),
           // Maps/live-session fields don't survive JSON; never restore them.
           collaborators: new Map(),
-          theme: "dark" as const,
+          theme: "light" as const,
         },
         files: (initialState.files as never) ?? undefined,
       }
-    : { appState: { theme: "dark" as const } };
+    : { appState: { theme: "light" as const } };
 
   // --- Durability: debounced save to the DB (local edits only) ------------
 
@@ -331,11 +331,11 @@ export function Whiteboard({
     <div className="relative h-full w-full">
       <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
         {peers > 1 && (
-          <div className="rounded-full border border-emerald-800 bg-emerald-950/90 px-3 py-1 text-[11px] text-emerald-400">
+          <div className="rounded-md border border-accent/30 bg-accent-soft px-3 py-1 font-mono text-[11px] font-medium text-accent">
             {peers} online
           </div>
         )}
-        <div className="rounded-full border border-zinc-700 bg-zinc-900/90 px-3 py-1 text-[11px] text-zinc-400">
+        <div className="rounded-md border border-line bg-card/95 px-3 py-1 font-mono text-[11px] text-ink-soft">
           {status === "saving" && "Saving..."}
           {status === "saved" && "Saved"}
           {status === "error" && (

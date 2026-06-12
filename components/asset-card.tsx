@@ -36,7 +36,7 @@ export function AssetCard({
   }
 
   return (
-    <div className="group overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
+    <div className="group overflow-hidden rounded-lg border border-line bg-card transition hover:border-line-strong">
       <a href={asset.url} target="_blank" rel="noreferrer" className="block">
         {isImage ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -46,26 +46,26 @@ export function AssetCard({
             className="h-36 w-full object-cover transition group-hover:opacity-90"
           />
         ) : (
-          <div className="flex h-36 w-full items-center justify-center bg-zinc-900 text-3xl">
+          <div className="flex h-36 w-full items-center justify-center bg-paper-deep text-3xl">
             📄
           </div>
         )}
       </a>
       <div className="p-3">
         <div className="flex items-start justify-between gap-2">
-          <p className="truncate text-xs text-zinc-300" title={fileName}>
+          <p className="truncate text-xs font-medium text-ink" title={fileName}>
             {fileName}
           </p>
           <button
             onClick={remove}
             disabled={pending}
             title="Delete asset"
-            className="shrink-0 text-sm leading-none text-zinc-600 transition hover:text-red-400 disabled:opacity-60"
+            className="shrink-0 text-sm leading-none text-ink-faint transition hover:text-red-400 disabled:opacity-60"
           >
             ×
           </button>
         </div>
-        <p className="mt-1 text-[10px] text-zinc-500">
+        <p className="mt-1 text-[10px] text-ink-faint">
           {asset.uploaderEmail?.split("@")[0] ?? "unknown"} ·{" "}
           {new Date(asset.createdAt).toLocaleDateString("en-GB")}
         </p>
@@ -74,14 +74,14 @@ export function AssetCard({
             {asset.tags.map((tag) => (
               <span
                 key={tag}
-                className="rounded-full border border-zinc-700 px-1.5 py-0.5 text-[10px] text-zinc-400"
+                className="rounded-md bg-paper-deep px-1.5 py-0.5 text-[10px] text-ink-soft"
               >
                 {tag}
               </span>
             ))}
           </div>
         )}
-        {error && <p className="mt-1 text-xs text-red-400">{error}</p>}
+        {error && <p className="mt-1 text-xs text-red-300">{error}</p>}
       </div>
     </div>
   );

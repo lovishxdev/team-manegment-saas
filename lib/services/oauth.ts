@@ -9,7 +9,7 @@ import { prisma } from "@/lib/prisma";
 
 const CODE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const ACCESS_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
-export const ACCESS_TOKEN_TTL_SECONDS = ACCESS_TOKEN_TTL_MS / 1000;
+const ACCESS_TOKEN_TTL_SECONDS = ACCESS_TOKEN_TTL_MS / 1000;
 
 export const OAUTH_SCOPES = ["tasks:read", "tasks:write"];
 

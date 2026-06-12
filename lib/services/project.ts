@@ -143,27 +143,34 @@ export async function resolveUserWorkspaceContext(
  * Resolves an assignee within a workspace by user id or (partial) email.
  * Returns the user id, or throws if no unambiguous member matches.
  */
-export async function resolveAssignee(
+async function resolveAssignee(
   workspaceId: string,
   idOrEmail: string
 ): Promise<string> {
   const memberships = await prisma.workspaceMembership.findMany({
     where: { workspaceId },
-    include: { user: { select: { id: true, email: true } } },
+    include: { user: { select: { id: true, email: true, username: true } } },
   });
 
   const byId = memberships.find((m) => m.user.id === idOrEmail);
   if (byId) return byId.user.id;
 
   const needle = idOrEmail.trim().toLowerCase();
-  const byEmail = memberships.filter((m) =>
-    m.user.email?.toLowerCase().includes(needle)
+
+  // Exact username match wins outright.
+  const byUsername = memberships.find((m) => m.user.username === needle);
+  if (byUsername) return byUsername.user.id;
+
+  const matches = memberships.filter(
+    (m) =>
+      m.user.email?.toLowerCase().includes(needle) ||
+      m.user.username?.includes(needle)
   );
-  if (byEmail.length === 1) return byEmail[0].user.id;
-  if (byEmail.length > 1) {
+  if (matches.length === 1) return matches[0].user.id;
+  if (matches.length > 1) {
     throw new ServiceError(
-      `Multiple members match "${idOrEmail}": ${byEmail
-        .map((m) => m.user.email)
+      `Multiple members match "${idOrEmail}": ${matches
+        .map((m) => m.user.username ?? m.user.email)
         .join(", ")}. Be more specific.`,
       "AMBIGUOUS_WORKSPACE"
     );
@@ -174,6 +181,28 @@ export async function resolveAssignee(
   );
 }
 
+const MAX_TAGS = 12;
+const MAX_TAG_LENGTH = 24;
+
+/**
+ * Normalizes free-form tags: trims, drops empties, dedupes
+ * case-insensitively (first spelling wins), caps count and length.
+ */
+function normalizeTags(tags: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const raw of tags) {
+    const tag = raw.trim().slice(0, MAX_TAG_LENGTH);
+    if (!tag) continue;
+    const key = tag.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(tag);
+    if (result.length >= MAX_TAGS) break;
+  }
+  return result;
+}
+
 export interface CreateTaskInput {
   workspaceId: string;
   title: string;
@@ -182,6 +211,7 @@ export interface CreateTaskInput {
   priority?: TaskPriority;
   dueDate?: Date | null;
   assignedToId?: string;
+  tags?: string[];
   /** The acting user (becomes createdBy and gets membership-checked). */
   userId: string;
 }
@@ -195,6 +225,7 @@ export async function createTask(input: CreateTaskInput) {
     priority,
     dueDate,
     assignedToId,
+    tags,
     userId,
   } = input;
   await assertMembership(userId, workspaceId);
@@ -220,10 +251,11 @@ export async function createTask(input: CreateTaskInput) {
             scope: scope ?? TaskScope.GENERAL,
             priority: priority ?? TaskPriority.MEDIUM,
             dueDate: dueDate ?? null,
+            tags: tags ? normalizeTags(tags) : [],
             assignedToId: assignedToId ?? null,
             createdById: userId,
           },
-          include: { assignedTo: { select: { id: true, email: true } } },
+          include: { assignedTo: { select: { id: true, email: true, username: true } } },
         });
       });
       await touchLastActiveWorkspace(userId, workspaceId);
@@ -250,14 +282,21 @@ export interface UpdateTaskInput {
   scope?: TaskScope;
   priority?: TaskPriority;
   dueDate?: Date | null;
+  /** Full replacement list of free-form tags. */
+  tags?: string[];
   /** Member user id or email; null clears the assignment. */
   assignee?: string | null;
 }
 
-export async function updateTask(input: UpdateTaskInput) {
-  const { workspaceId, userId, taskId, shortId } = input;
-  await assertMembership(userId, workspaceId);
-
+/**
+ * Looks up a task by UUID or per-workspace shortId, throwing a ServiceError
+ * when neither identifier is provided or no task matches.
+ */
+async function findTaskInWorkspace(
+  workspaceId: string,
+  taskId?: string,
+  shortId?: number
+) {
   if (!taskId && shortId === undefined) {
     throw new ServiceError("Provide either taskId or shortId", "INVALID_INPUT");
   }
@@ -273,6 +312,14 @@ export async function updateTask(input: UpdateTaskInput) {
       "NOT_FOUND"
     );
   }
+  return existing;
+}
+
+export async function updateTask(input: UpdateTaskInput) {
+  const { workspaceId, userId, taskId, shortId } = input;
+  await assertMembership(userId, workspaceId);
+
+  const existing = await findTaskInWorkspace(workspaceId, taskId, shortId);
 
   const data: Prisma.TaskUncheckedUpdateInput = {};
   if (input.title !== undefined) data.title = input.title;
@@ -281,6 +328,7 @@ export async function updateTask(input: UpdateTaskInput) {
   if (input.scope !== undefined) data.scope = input.scope;
   if (input.priority !== undefined) data.priority = input.priority;
   if (input.dueDate !== undefined) data.dueDate = input.dueDate;
+  if (input.tags !== undefined) data.tags = normalizeTags(input.tags);
   if (input.assignee !== undefined) {
     data.assignedToId =
       input.assignee === null
@@ -291,21 +339,10 @@ export async function updateTask(input: UpdateTaskInput) {
   const task = await prisma.task.update({
     where: { id: existing.id },
     data,
-    include: { assignedTo: { select: { id: true, email: true } } },
+    include: { assignedTo: { select: { id: true, email: true, username: true } } },
   });
   await touchLastActiveWorkspace(userId, workspaceId);
   return task;
-}
-
-/** Convenience wrapper kept for existing callers. */
-export async function updateTaskStatus(input: {
-  workspaceId: string;
-  status: TaskStatus;
-  userId: string;
-  taskId?: string;
-  shortId?: number;
-}) {
-  return updateTask(input);
 }
 
 export interface UploadAssetInput {
@@ -391,21 +428,7 @@ export async function deleteTask(input: DeleteTaskInput) {
   const { workspaceId, userId, taskId, shortId } = input;
   const membership = await assertMembership(userId, workspaceId);
 
-  if (!taskId && shortId === undefined) {
-    throw new ServiceError("Provide either taskId or shortId", "INVALID_INPUT");
-  }
-
-  const existing = await prisma.task.findFirst({
-    where: taskId
-      ? { id: taskId, workspaceId }
-      : { workspaceId, shortId: shortId! },
-  });
-  if (!existing) {
-    throw new ServiceError(
-      `Task ${taskId ?? `#${shortId}`} not found in this workspace`,
-      "NOT_FOUND"
-    );
-  }
+  const existing = await findTaskInWorkspace(workspaceId, taskId, shortId);
 
   // Deletion is destructive: restricted to leaders/sub-leaders and the
   // task's creator (members can still create and update freely).
@@ -423,51 +446,11 @@ export async function deleteTask(input: DeleteTaskInput) {
   return existing;
 }
 
-export interface AssignTaskInput {
-  workspaceId: string;
-  taskId: string;
-  /** null clears the assignment */
-  assigneeId: string | null;
-  userId: string;
-}
-
-export async function assignTask(input: AssignTaskInput) {
-  const { workspaceId, taskId, assigneeId, userId } = input;
-  await assertMembership(userId, workspaceId);
-
-  if (assigneeId) {
-    const assigneeMembership = await prisma.workspaceMembership.findUnique({
-      where: { userId_workspaceId: { userId: assigneeId, workspaceId } },
-    });
-    if (!assigneeMembership) {
-      throw new ServiceError(
-        "Assignee is not a member of this workspace",
-        "INVALID_INPUT"
-      );
-    }
-  }
-
-  const existing = await prisma.task.findFirst({
-    where: { id: taskId, workspaceId },
-  });
-  if (!existing) {
-    throw new ServiceError("Task not found in this workspace", "NOT_FOUND");
-  }
-
-  const task = await prisma.task.update({
-    where: { id: existing.id },
-    data: { assignedToId: assigneeId },
-    include: { assignedTo: { select: { id: true, email: true } } },
-  });
-  await touchLastActiveWorkspace(userId, workspaceId);
-  return task;
-}
-
 export async function listAssets(workspaceId: string, userId: string) {
   await assertMembership(userId, workspaceId);
   return prisma.asset.findMany({
     where: { workspaceId },
-    include: { uploadedBy: { select: { id: true, email: true } } },
+    include: { uploadedBy: { select: { id: true, email: true, username: true } } },
     orderBy: { createdAt: "desc" },
   });
 }
@@ -528,7 +511,7 @@ export async function getBoardState(workspaceId: string, userId: string) {
       where: { workspaceId },
       orderBy: { shortId: "asc" },
       include: {
-        assignedTo: { select: { id: true, email: true } },
+        assignedTo: { select: { id: true, email: true, username: true } },
         attachments: {
           select: { id: true, url: true, fileType: true },
           orderBy: { createdAt: "asc" },

@@ -19,6 +19,7 @@ import {
   getRecentConversation,
   recordExchange,
 } from "@/lib/services/conversation";
+import { createWorkspace } from "@/lib/services/workspace";
 import {
   downloadWhatsAppMedia,
   extractInboundMessage,
@@ -45,13 +46,17 @@ function buildSystemPrompt(): string {
   const today = new Date().toISOString().slice(0, 10);
   const weekday = new Date().toLocaleDateString("en-US", { weekday: "long" });
   return `You are the WhatsApp assistant for a project management tool. Today is ${weekday}, ${today}.
-Convert the user's message into exactly one tool call when they want to act on their board:
+Convert the user's message into tool calls when they want to act on their board:
 - create_task: when they want to add/create a task
 - update_task: when they want to change a task - move/complete/start it, retitle it, set priority, due date, or assign it (they usually reference it as #N)
 - delete_task: when they explicitly want to remove/delete a task (only when clearly intended)
 - get_board_state: when they ask what's on the board, task lists, or progress
+- create_workspace: when they want to create/start a new workspace, project, or board (e.g. "create a workspace called Marketing")
 
 Rules:
+- Conversation history is context only, never proof of completion. Every actionable request - even one identical to an earlier message - must be executed with fresh tool calls in THIS turn. Never claim something was created, updated, or deleted unless a tool result in this turn confirms it.
+- Compound requests need multiple tool calls: execute them one step at a time, using each result before the next call. E.g. "create a workspace and add 3 tasks" = create_workspace, then create_task three times. The tool results tell you the #N of created tasks - use those for follow-up updates ("assign task 2" = the 2nd task you just created).
+- After all actions are done, reply with one short summary of everything that happened (no markdown, plain WhatsApp text).
 - Infer scope from context (FRONTEND, BACKEND, DESIGN) only when clear; otherwise omit it.
 - Infer priority only when stated or strongly implied (e.g. "urgent" = HIGH); otherwise omit it.
 - Resolve relative due dates ("Friday", "tomorrow", "next week") to a concrete YYYY-MM-DD date using today's date above.
@@ -174,6 +179,18 @@ const TOOLS: Anthropic.Tool[] = [
       },
     },
   },
+  {
+    name: "create_workspace",
+    description:
+      "Create a brand-new workspace (project board). Only when the user clearly wants a new workspace, not a task.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Name for the new workspace" },
+      },
+      required: ["name"],
+    },
+  },
 ];
 
 /** Meta webhook verification handshake. */
@@ -274,6 +291,9 @@ async function handleMediaMessage(
   ).catch(() => {});
 }
 
+/** Compound requests ("create 5 tasks and assign two") need several rounds. */
+const MAX_TOOL_TURNS = 8;
+
 async function handleMessage(from: string, text: string) {
   const userId = await getUserIdByPhone(from);
   if (!userId) {
@@ -286,28 +306,96 @@ async function handleMessage(from: string, text: string) {
   const history = await getRecentConversation(userId);
 
   const anthropic = new Anthropic();
-  const response = await anthropic.messages.create({
-    model: HAIKU_MODEL,
-    max_tokens: 1024,
-    system: buildSystemPrompt(),
-    tools: TOOLS,
-    messages: [...history, { role: "user" as const, content: text }],
-  });
+  const messages: Anthropic.MessageParam[] = [
+    ...history,
+    { role: "user" as const, content: text },
+  ];
 
-  const toolUse = response.content.find(
-    (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
-  );
+  // Agentic loop: execute every tool call, feed results back, and let the
+  // model keep chaining until the whole request is done (or we hit the cap).
+  const actionResults: string[] = [];
+  let reply: string | null = null;
+  let budgetExhausted = true;
 
-  let reply: string;
-  if (toolUse) {
-    reply = await executeAction(userId, toolUse.name, toolUse.input as any);
-  } else {
-    const textBlock = response.content.find(
-      (block): block is Anthropic.TextBlock => block.type === "text"
+  for (let turn = 0; turn < MAX_TOOL_TURNS; turn++) {
+    const response = await anthropic.messages.create({
+      model: HAIKU_MODEL,
+      max_tokens: 1024,
+      system: buildSystemPrompt(),
+      tools: TOOLS,
+      messages,
+    });
+
+    const toolUses = response.content.filter(
+      (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
     );
-    reply =
-      textBlock?.text.trim() ||
-      "I can create tasks, update their status, or show your board. Try: \"add a task to fix the login bug\"";
+
+    if (toolUses.length === 0) {
+      const textBlock = response.content.find(
+        (block): block is Anthropic.TextBlock => block.type === "text"
+      );
+      reply = textBlock?.text.trim() || null;
+      budgetExhausted = false;
+      break;
+    }
+
+    messages.push({ role: "assistant", content: response.content });
+
+    const results: Anthropic.ToolResultBlockParam[] = [];
+    for (const toolUse of toolUses) {
+      const result = await executeAction(
+        userId,
+        toolUse.name,
+        toolUse.input as any
+      );
+      actionResults.push(result);
+      results.push({
+        type: "tool_result",
+        tool_use_id: toolUse.id,
+        content: result,
+      });
+    }
+    messages.push({ role: "user", content: results });
+  }
+
+  // Cap hit mid-request: do one final round WITHOUT tools so the model
+  // reports honestly what was completed and what's still pending.
+  if (budgetExhausted) {
+    messages.push({
+      role: "user",
+      content:
+        "[system] The per-message action limit was reached before you finished. " +
+        "Based on the tool results above, tell the user in plain text exactly " +
+        "which parts of their request were completed and which remain undone, " +
+        "and that they can send the remaining steps as a new message. Do not " +
+        "claim anything succeeded that has no tool result.",
+    });
+    try {
+      const wrapUp = await anthropic.messages.create({
+        model: HAIKU_MODEL,
+        max_tokens: 1024,
+        system: buildSystemPrompt(),
+        messages,
+      });
+      const textBlock = wrapUp.content.find(
+        (block): block is Anthropic.TextBlock => block.type === "text"
+      );
+      reply = textBlock?.text.trim() || null;
+    } catch (err) {
+      console.error("Wrap-up summary failed:", err);
+    }
+    if (!reply && actionResults.length) {
+      reply =
+        "I ran out of action budget for one message. Here's what I completed:\n" +
+        actionResults.join("\n") +
+        "\n\nSend the remaining steps as a new message and I'll continue.";
+    }
+  }
+
+  if (!reply) {
+    reply = actionResults.length
+      ? actionResults.join("\n")
+      : 'I can create tasks, update their status, or show your board. Try: "add a task to fix the login bug"';
   }
 
   await sendWhatsAppText(from, reply);
@@ -356,6 +444,15 @@ async function executeAction(
   input: { workspace?: string; [key: string]: unknown }
 ): Promise<string> {
   try {
+    // Workspace creation can't resolve a workspace context first: it's the
+    // one action a user with zero workspaces must be able to run.
+    if (action === "create_workspace") {
+      const name = String(input.name ?? "").trim();
+      if (!name) return "What should the new workspace be called?";
+      const workspace = await createWorkspace(userId, name);
+      return `Created workspace *${workspace.name}* - you're its leader and it's now your active workspace. New tasks will land here unless you name another workspace.`;
+    }
+
     const ctx = await resolveUserWorkspaceContext(userId, input.workspace);
 
     switch (action) {

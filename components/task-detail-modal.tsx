@@ -8,14 +8,14 @@ import {
   type TaskEdit,
 } from "@/lib/actions/workspace";
 import type { BoardMember, BoardTask } from "@/components/task-board";
+import { ui, tagColor } from "@/components/ui";
 
 const STATUSES = ["TODO", "IN_PROGRESS", "DONE"] as const;
 const SCOPES = ["GENERAL", "FRONTEND", "BACKEND", "DESIGN"] as const;
 const PRIORITIES = ["LOW", "MEDIUM", "HIGH"] as const;
 
-const inputCls =
-  "w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-indigo-500";
-const labelCls = "mb-1 block text-xs font-medium text-zinc-400";
+const inputCls = ui.input;
+const labelCls = ui.label;
 
 export function TaskDetailModal({
   workspaceId,
@@ -40,8 +40,22 @@ export function TaskDetailModal({
     task.dueDate ? task.dueDate.slice(0, 10) : ""
   );
   const [assigneeId, setAssigneeId] = useState(task.assigneeId ?? "");
+  const [tags, setTags] = useState<string[]>(task.tags);
+  const [tagInput, setTagInput] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+
+  function addTag() {
+    const tag = tagInput.trim().replace(/,+$/, "");
+    setTagInput("");
+    if (!tag) return;
+    if (tags.some((t) => t.toLowerCase() === tag.toLowerCase())) return;
+    setTags([...tags, tag]);
+  }
+
+  function removeTag(tag: string) {
+    setTags(tags.filter((t) => t !== tag));
+  }
 
   async function attachFile(file: File) {
     setError(null);
@@ -62,6 +76,12 @@ export function TaskDetailModal({
       return;
     }
     setError(null);
+    // Fold in a tag the user typed but never committed with Enter.
+    const pending = tagInput.trim().replace(/,+$/, "");
+    const finalTags =
+      pending && !tags.some((t) => t.toLowerCase() === pending.toLowerCase())
+        ? [...tags, pending]
+        : tags;
     const edit: TaskEdit = {
       title,
       description: description || null,
@@ -69,6 +89,7 @@ export function TaskDetailModal({
       scope,
       priority,
       dueDate: dueDate || null,
+      tags: finalTags,
       assignee: assigneeId || null,
     };
     startTransition(async () => {
@@ -89,20 +110,23 @@ export function TaskDetailModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xl"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl"
+        className="w-full max-w-lg rounded-lg border border-line bg-card p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-5 flex items-start justify-between">
-          <h2 className="text-sm font-medium text-zinc-400">
-            Task <span className="text-zinc-200">#{task.shortId}</span>
+          <h2 className="text-base font-semibold text-ink">
+            Task{" "}
+            <span className="font-mono text-sm text-ink-faint">
+              #{task.shortId}
+            </span>
           </h2>
           <button
             onClick={onClose}
-            className="rounded-md px-2 text-lg leading-none text-zinc-500 hover:text-zinc-200"
+            className="rounded-md px-2 text-lg leading-none text-ink-faint hover:text-ink"
           >
             ×
           </button>
@@ -196,10 +220,52 @@ export function TaskDetailModal({
                 <option value="">Unassigned</option>
                 {members.map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.email ?? m.id.slice(0, 8)}
+                    {m.label ?? m.id.slice(0, 8)}
                   </option>
                 ))}
               </select>
+            </div>
+          </div>
+
+          <div>
+            <label className={labelCls}>Tags</label>
+            <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-line bg-paper px-2.5 py-2 transition focus-within:border-accent/60 focus-within:ring-2 focus-within:ring-accent/15">
+              {tags.map((tag) => (
+                <span
+                  key={tag}
+                  className={`inline-flex items-center gap-1 rounded py-1 pl-2 pr-1 font-mono text-[10px] font-medium tracking-wide ${tagColor(tag)}`}
+                >
+                  {tag}
+                  <button
+                    type="button"
+                    onClick={() => removeTag(tag)}
+                    className="rounded px-0.5 leading-none opacity-60 transition hover:opacity-100"
+                    aria-label={`Remove tag ${tag}`}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+              <input
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === ",") {
+                    e.preventDefault();
+                    addTag();
+                  } else if (
+                    e.key === "Backspace" &&
+                    !tagInput &&
+                    tags.length > 0
+                  ) {
+                    removeTag(tags[tags.length - 1]);
+                  }
+                }}
+                onBlur={addTag}
+                placeholder={tags.length === 0 ? "Add a tag and press Enter" : "Add..."}
+                maxLength={24}
+                className="min-w-20 flex-1 bg-transparent py-0.5 text-sm text-ink outline-none placeholder:text-ink-faint"
+              />
             </div>
           </div>
 
@@ -215,7 +281,7 @@ export function TaskDetailModal({
                     href={att.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="block overflow-hidden rounded-lg border border-zinc-800"
+                    className="block overflow-hidden rounded-md border border-line"
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
@@ -230,7 +296,7 @@ export function TaskDetailModal({
                     href={att.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex h-16 w-16 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950 text-xl transition hover:border-zinc-600"
+                    className="flex h-16 w-16 items-center justify-center rounded-md border border-line bg-paper-deep text-xl transition hover:border-line-strong"
                   >
                     📄
                   </a>
@@ -240,7 +306,7 @@ export function TaskDetailModal({
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
-                className="flex h-16 w-16 items-center justify-center rounded-lg border border-dashed border-zinc-700 text-lg text-zinc-500 transition hover:border-indigo-500 hover:text-indigo-300 disabled:opacity-60"
+                className="flex h-16 w-16 items-center justify-center rounded-md border border-dashed border-line-strong text-lg text-ink-faint transition hover:border-accent/50 hover:text-ink disabled:opacity-60"
                 title="Attach image or file"
               >
                 {uploading ? "…" : "+"}
@@ -258,27 +324,24 @@ export function TaskDetailModal({
             </div>
           </div>
 
-          {error && <p className="text-sm text-red-400">{error}</p>}
+          {error && <p className={ui.errorText}>{error}</p>}
 
           <div className="mt-1 flex items-center justify-between">
             <button
               onClick={remove}
               disabled={pending}
-              className="rounded-lg border border-zinc-700 px-3.5 py-2 text-sm text-zinc-400 transition hover:border-red-500/60 hover:text-red-300 disabled:opacity-60"
+              className={ui.btnGhostDanger}
             >
               Delete
             </button>
             <div className="flex gap-2">
-              <button
-                onClick={onClose}
-                className="rounded-lg border border-zinc-700 px-3.5 py-2 text-sm text-zinc-300 transition hover:border-zinc-500"
-              >
+              <button onClick={onClose} className={ui.btnSecondary}>
                 Cancel
               </button>
               <button
                 onClick={save}
                 disabled={pending}
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:opacity-60"
+                className={ui.btnPrimary}
               >
                 {pending ? "Saving..." : "Save"}
               </button>

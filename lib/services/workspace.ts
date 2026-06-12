@@ -1,4 +1,5 @@
-import { Role } from "@/lib/generated/prisma/client";
+import { cache } from "react";
+import { Prisma, Role } from "@/lib/generated/prisma/client";
 import { invalidateMcpToken, invalidatePhone } from "@/lib/identity-cache";
 import { prisma } from "@/lib/prisma";
 import { getActorMembership, ServiceError } from "@/lib/services/project";
@@ -19,7 +20,10 @@ export async function createWorkspace(userId: string, name: string) {
   return workspace;
 }
 
-export async function listUserWorkspaces(userId: string) {
+/** Request-memoized: the sidebar shell and pages both call this. */
+export const listUserWorkspaces = cache(async function listUserWorkspaces(
+  userId: string
+) {
   const memberships = await prisma.workspaceMembership.findMany({
     where: { userId },
     include: {
@@ -34,7 +38,7 @@ export async function listUserWorkspaces(userId: string) {
     joinedAt: m.joinedAt,
     workspace: m.workspace,
   }));
-}
+});
 
 export async function getWorkspaceMembers(workspaceId: string, userId: string) {
   const self = await getActorMembership(userId, workspaceId);
@@ -44,7 +48,9 @@ export async function getWorkspaceMembers(workspaceId: string, userId: string) {
 
   const members = await prisma.workspaceMembership.findMany({
     where: { workspaceId },
-    include: { user: { select: { id: true, email: true } } },
+    include: {
+      user: { select: { id: true, email: true, username: true } },
+    },
     orderBy: { joinedAt: "asc" },
   });
   return { selfRole: self.role, members };
@@ -141,12 +147,11 @@ async function countLeaders(workspaceId: string): Promise<number> {
   });
 }
 
-/** LEADER only. Guards against demoting the last leader. */
-export async function updateMemberRole(
+/** Asserts the actor is a LEADER and returns the target's membership row. */
+async function requireLeaderAndTarget(
   workspaceId: string,
   actorId: string,
-  targetUserId: string,
-  role: Role
+  targetUserId: string
 ) {
   await requireLeader(workspaceId, actorId);
 
@@ -156,6 +161,17 @@ export async function updateMemberRole(
   if (!target) {
     throw new ServiceError("That user is not a member", "NOT_FOUND");
   }
+  return target;
+}
+
+/** LEADER only. Guards against demoting the last leader. */
+export async function updateMemberRole(
+  workspaceId: string,
+  actorId: string,
+  targetUserId: string,
+  role: Role
+) {
+  const target = await requireLeaderAndTarget(workspaceId, actorId, targetUserId);
 
   if (target.role === Role.LEADER && role !== Role.LEADER) {
     if ((await countLeaders(workspaceId)) <= 1) {
@@ -178,14 +194,8 @@ export async function removeMember(
   actorId: string,
   targetUserId: string
 ) {
-  await requireLeader(workspaceId, actorId);
+  const target = await requireLeaderAndTarget(workspaceId, actorId, targetUserId);
 
-  const target = await prisma.workspaceMembership.findUnique({
-    where: { userId_workspaceId: { userId: targetUserId, workspaceId } },
-  });
-  if (!target) {
-    throw new ServiceError("That user is not a member", "NOT_FOUND");
-  }
   if (target.role === Role.LEADER && (await countLeaders(workspaceId)) <= 1) {
     throw new ServiceError(
       "The last leader can't be removed",
@@ -315,10 +325,40 @@ export async function regenerateMcpToken(userId: string) {
 /** Meta sends phone numbers as E.164 without the plus sign. */
 const PHONE_REGEX = /^[1-9]\d{7,14}$/;
 
+const USERNAME_REGEX = /^[a-z0-9_]{3,24}$/;
+
+/** Sets (or clears) the user's unique handle. Input is lowercased. */
+export async function updateUsername(userId: string, username: string | null) {
+  const normalized = username?.trim().toLowerCase() ?? null;
+  if (normalized !== null && !USERNAME_REGEX.test(normalized)) {
+    throw new ServiceError(
+      "Username must be 3-24 characters: lowercase letters, digits, underscores",
+      "INVALID_INPUT"
+    );
+  }
+  try {
+    return await prisma.user.update({
+      where: { id: userId },
+      data: { username: normalized },
+    });
+  } catch (err) {
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === "P2002"
+    ) {
+      throw new ServiceError(
+        `Username "${normalized}" is already taken`,
+        "INVALID_INPUT"
+      );
+    }
+    throw err;
+  }
+}
+
 export async function updateUserPhone(userId: string, phone: string | null) {
   if (phone !== null && !PHONE_REGEX.test(phone)) {
     throw new ServiceError(
-      "Phone must be country code + number with no + or spaces (e.g. 919876543210)",
+      "Phone must be country code + number with no + or spaces (e.g. 91xxxxxxxxxx)",
       "INVALID_INPUT"
     );
   }
@@ -326,10 +366,28 @@ export async function updateUserPhone(userId: string, phone: string | null) {
     where: { id: userId },
     select: { phone: true },
   });
-  const updated = await prisma.user.update({
-    where: { id: userId },
-    data: { phone },
-  });
+
+  let updated;
+  try {
+    updated = await prisma.user.update({
+      where: { id: userId },
+      data: { phone },
+    });
+  } catch (err) {
+    // One phone = one account: the WhatsApp bot routes messages by number,
+    // so a number linked elsewhere must be explicitly rejected.
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === "P2002"
+    ) {
+      throw new ServiceError(
+        "This phone number is already linked to another account. Remove it there first.",
+        "INVALID_INPUT"
+      );
+    }
+    throw err;
+  }
+
   // Evict both numbers so the WhatsApp bot sees the change immediately.
   invalidatePhone(current?.phone);
   invalidatePhone(phone);

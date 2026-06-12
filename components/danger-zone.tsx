@@ -5,6 +5,7 @@ import {
   deleteWorkspaceAction,
   leaveWorkspaceAction,
 } from "@/lib/actions/workspace";
+import { ui } from "@/components/ui";
 
 export function DangerZone({
   workspaceId,
@@ -40,27 +41,21 @@ export function DangerZone({
   }
 
   return (
-    <section className="rounded-2xl border border-red-500/20 bg-red-500/[0.03] p-5">
-      <h2 className="text-sm font-medium text-red-300">Danger zone</h2>
+    <section className="rounded-lg border border-red-500/30 bg-red-500/5 p-5">
+      <h2 className="text-sm font-semibold text-red-300">
+        Danger zone
+      </h2>
       <div className="mt-3 flex flex-wrap gap-2">
-        <button
-          onClick={leave}
-          disabled={pending}
-          className="rounded-lg border border-zinc-700 px-3.5 py-2 text-sm text-zinc-300 transition hover:border-red-500/60 hover:text-red-300 disabled:opacity-60"
-        >
+        <button onClick={leave} disabled={pending} className={ui.btnGhostDanger}>
           Leave workspace
         </button>
         {isLeader && (
-          <button
-            onClick={destroy}
-            disabled={pending}
-            className="rounded-lg border border-red-500/40 bg-red-500/10 px-3.5 py-2 text-sm text-red-300 transition hover:bg-red-500/20 disabled:opacity-60"
-          >
+          <button onClick={destroy} disabled={pending} className={ui.btnDanger}>
             Delete workspace
           </button>
         )}
       </div>
-      {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
+      {error && <p className="mt-2 text-sm text-red-300">{error}</p>}
     </section>
   );
 }

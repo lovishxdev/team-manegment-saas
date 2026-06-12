@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef } from "react";
 import { uploadAssetAction, type ActionState } from "@/lib/actions/workspace";
+import { ui } from "@/components/ui";
 
 const initialState: ActionState = {};
 
@@ -24,22 +25,18 @@ export function AssetUploadForm({ workspaceId }: { workspaceId: string }) {
         name="file"
         type="file"
         required
-        className="flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-400 file:mr-3 file:rounded-md file:border-0 file:bg-zinc-800 file:px-3 file:py-1 file:text-xs file:text-zinc-200"
+        className="flex-1 rounded-md border border-line bg-card px-3 py-2 text-sm text-ink-soft file:mr-3 file:rounded file:border-0 file:bg-white file:px-3 file:py-1 file:font-mono file:text-xs file:text-black"
       />
       <input
         name="tags"
         placeholder="tags, comma, separated"
-        className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm placeholder-zinc-600 outline-none focus:border-indigo-500"
+        className={`sm:w-56 ${ui.input}`}
       />
-      <button
-        type="submit"
-        disabled={pending}
-        className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:opacity-60"
-      >
+      <button type="submit" disabled={pending} className={ui.btnPrimary}>
         {pending ? "Uploading..." : "Upload"}
       </button>
       {state.error && (
-        <p className="text-sm text-red-400 sm:self-center">{state.error}</p>
+        <p className="text-sm text-red-300 sm:self-center">{state.error}</p>
       )}
     </form>
   );

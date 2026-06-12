@@ -1,9 +1,8 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { getBoardState, ServiceError } from "@/lib/services/project";
 import { getWorkspaceMembers } from "@/lib/services/workspace";
-import { AppNav } from "@/components/app-nav";
+import { AppShell } from "@/components/app-shell";
 import { InviteButton } from "@/components/invite-button";
 import { NewTaskForm } from "@/components/new-task-form";
 import {
@@ -46,48 +45,31 @@ export default async function WorkspacePage({
       scope: t.scope,
       priority: t.priority,
       dueDate: t.dueDate?.toISOString() ?? null,
+      tags: t.tags,
       assigneeId: t.assignedTo?.id ?? null,
-      assigneeEmail: t.assignedTo?.email ?? null,
+      assigneeLabel: t.assignedTo?.username ?? t.assignedTo?.email ?? null,
       attachments: t.attachments,
     }));
 
   const boardMembers: BoardMember[] = members.map((m) => ({
     id: m.user.id,
-    email: m.user.email,
+    label: m.user.username ?? m.user.email,
   }));
 
   const canInvite = selfRole === "LEADER" || selfRole === "SUB_LEADER";
 
   return (
-    <div>
-      <AppNav email={user.email} />
-      <main className="mx-auto max-w-6xl px-4 py-10">
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight">
-              {workspace.name}
-            </h1>
-            <div className="mt-1 flex gap-3 text-xs text-zinc-500">
-              <Link
-                href={`/w/${workspace.id}/members`}
-                className="transition hover:text-indigo-300"
-              >
-                {members.length} member{members.length === 1 ? "" : "s"} →
-              </Link>
-              <Link
-                href={`/w/${workspace.id}/assets`}
-                className="transition hover:text-indigo-300"
-              >
-                assets →
-              </Link>
-              <Link
-                href={`/w/${workspace.id}/whiteboard`}
-                className="transition hover:text-indigo-300"
-              >
-                whiteboard →
-              </Link>
-            </div>
-          </div>
+    <AppShell
+      userId={user.id}
+      userLabel={user.username ?? user.email}
+      activeWorkspaceId={workspace.id}
+      activeTab="board"
+    >
+      <main className="mx-auto max-w-6xl px-6 py-6">
+        <div className="mb-5 flex items-center justify-between gap-4">
+          <h1 className="font-display text-xl font-semibold tracking-tight">
+            Board
+          </h1>
           {canInvite && <InviteButton workspaceId={workspace.id} />}
         </div>
 
@@ -102,6 +84,6 @@ export default async function WorkspacePage({
           currentUserId={user.id}
         />
       </main>
-    </div>
+    </AppShell>
   );
 }

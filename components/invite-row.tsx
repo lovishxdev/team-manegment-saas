@@ -38,14 +38,17 @@ export function InviteRow({
     });
   }
 
+  const smallBtn =
+    "rounded-md border border-line-strong px-2.5 py-1 text-xs text-ink-soft transition disabled:opacity-60";
+
   return (
-    <div className="flex flex-col gap-1 rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3">
+    <div className="flex flex-col gap-1 rounded-lg border border-line bg-card px-4 py-3">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate font-mono text-xs text-zinc-300">
+          <p className="truncate font-mono text-xs text-ink">
             /invite/{invite.id.slice(0, 8)}…
           </p>
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-ink-faint">
             {invite.usesCount}/{invite.maxUses} uses ·{" "}
             {invite.active
               ? `expires ${new Date(invite.expiresAt).toLocaleString("en-GB")}`
@@ -58,7 +61,7 @@ export function InviteRow({
           {invite.active && (
             <button
               onClick={copy}
-              className="rounded-md border border-zinc-700 px-2 py-1 text-xs text-zinc-400 transition hover:border-indigo-500 hover:text-indigo-300"
+              className={`${smallBtn} hover:border-ink/40 hover:text-ink`}
             >
               {copied ? "Copied!" : "Copy link"}
             </button>
@@ -66,13 +69,13 @@ export function InviteRow({
           <button
             onClick={revoke}
             disabled={pending}
-            className="rounded-md border border-zinc-700 px-2 py-1 text-xs text-zinc-400 transition hover:border-red-500/60 hover:text-red-300 disabled:opacity-60"
+            className={`${smallBtn} hover:border-red-500/50 hover:text-red-300`}
           >
             Revoke
           </button>
         </div>
       </div>
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-red-300">{error}</p>}
     </div>
   );
 }

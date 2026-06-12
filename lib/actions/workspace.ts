@@ -9,13 +9,11 @@ import {
 } from "@/lib/generated/prisma/client";
 import { requireUser } from "@/lib/auth";
 import {
-  assignTask,
   createTask,
   deleteAsset,
   deleteTask,
   ServiceError,
   updateTask,
-  updateTaskStatus,
   uploadAsset,
 } from "@/lib/services/project";
 import { Role } from "@/lib/generated/prisma/client";
@@ -76,6 +74,8 @@ export type TaskEdit = {
   priority?: TaskPriority;
   /** ISO date string (yyyy-mm-dd) or null to clear */
   dueDate?: string | null;
+  /** Full replacement list of free-form tags. */
+  tags?: string[];
   assignee?: string | null;
 };
 
@@ -111,23 +111,9 @@ export async function updateTaskAction(
       scope: edit.scope,
       priority: edit.priority,
       dueDate,
+      tags: edit.tags,
       assignee: edit.assignee,
     });
-  } catch (err) {
-    return { error: errorMessage(err) };
-  }
-  revalidatePath(`/w/${workspaceId}`);
-  return {};
-}
-
-export async function updateTaskStatusAction(
-  workspaceId: string,
-  taskId: string,
-  status: TaskStatus
-): Promise<ActionState> {
-  const user = await requireUser();
-  try {
-    await updateTaskStatus({ workspaceId, taskId, status, userId: user.id });
   } catch (err) {
     return { error: errorMessage(err) };
   }
@@ -142,21 +128,6 @@ export async function deleteTaskAction(
   const user = await requireUser();
   try {
     await deleteTask({ workspaceId, taskId, userId: user.id });
-  } catch (err) {
-    return { error: errorMessage(err) };
-  }
-  revalidatePath(`/w/${workspaceId}`);
-  return {};
-}
-
-export async function assignTaskAction(
-  workspaceId: string,
-  taskId: string,
-  assigneeId: string | null
-): Promise<ActionState> {
-  const user = await requireUser();
-  try {
-    await assignTask({ workspaceId, taskId, assigneeId, userId: user.id });
   } catch (err) {
     return { error: errorMessage(err) };
   }

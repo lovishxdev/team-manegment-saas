@@ -1,10 +1,9 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { ServiceError } from "@/lib/services/project";
 import { getWorkspaceMembers, listInvites } from "@/lib/services/workspace";
 import { prisma } from "@/lib/prisma";
-import { AppNav } from "@/components/app-nav";
+import { AppShell } from "@/components/app-shell";
 import { DangerZone } from "@/components/danger-zone";
 import { InviteButton } from "@/components/invite-button";
 import { InviteRow } from "@/components/invite-row";
@@ -40,26 +39,22 @@ export default async function MembersPage({
   const invites = canInvite ? await listInvites(workspaceId, user.id) : [];
 
   return (
-    <div>
-      <AppNav email={user.email} />
-      <main className="mx-auto max-w-2xl px-4 py-10">
-        <div className="mb-8">
-          <Link
-            href={`/w/${workspaceId}`}
-            className="text-xs text-zinc-500 hover:text-zinc-300"
-          >
-            ← Back to board
-          </Link>
-          <div className="mt-2 flex items-center justify-between">
-            <h1 className="text-xl font-semibold tracking-tight">
-              {workspace.name} · Members
-            </h1>
-            {canInvite && <InviteButton workspaceId={workspaceId} />}
-          </div>
+    <AppShell
+      userId={user.id}
+      userLabel={user.username ?? user.email}
+      activeWorkspaceId={workspaceId}
+      activeTab="members"
+    >
+      <main className="mx-auto max-w-2xl px-6 py-8">
+        <div className="mb-8 flex items-center justify-between">
+          <h1 className="font-display text-2xl font-semibold tracking-tight">
+            Members
+          </h1>
+          {canInvite && <InviteButton workspaceId={workspaceId} />}
         </div>
 
         <section className="mb-8">
-          <h2 className="mb-3 text-sm font-medium text-zinc-400">
+          <h2 className="mb-3 font-mono text-xs font-semibold uppercase tracking-[0.12em] text-ink-faint">
             Members ({members.length})
           </h2>
           <div className="flex flex-col gap-2">
@@ -70,6 +65,7 @@ export default async function MembersPage({
                 member={{
                   userId: m.user.id,
                   email: m.user.email,
+                  username: m.user.username,
                   role: m.role,
                   joinedAt: m.joinedAt.toISOString(),
                 }}
@@ -82,11 +78,11 @@ export default async function MembersPage({
 
         {canInvite && (
           <section className="mb-8">
-            <h2 className="mb-3 text-sm font-medium text-zinc-400">
+            <h2 className="mb-3 font-mono text-xs font-semibold uppercase tracking-[0.12em] text-ink-faint">
               Invite links ({invites.length})
             </h2>
             {invites.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-zinc-800 px-4 py-6 text-center text-xs text-zinc-600">
+              <p className="rounded-md border border-dashed border-line-strong px-4 py-6 text-center text-xs text-ink-faint">
                 No invites yet. Generate one with the button above.
               </p>
             ) : (
@@ -115,6 +111,6 @@ export default async function MembersPage({
           isLeader={isLeader}
         />
       </main>
-    </div>
+    </AppShell>
   );
 }

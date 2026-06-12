@@ -12,21 +12,18 @@ export function CopyField({ value }: { value: string }) {
     setTimeout(() => setCopied(false), 2000);
   }
 
+  const btn =
+    "rounded-md border border-line-strong px-2.5 py-1.5 text-xs text-ink-soft transition hover:border-ink/50 hover:text-ink";
+
   return (
     <div className="flex items-center gap-2">
-      <code className="flex-1 truncate rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-zinc-300">
+      <code className="flex-1 truncate rounded-md border border-line bg-paper-deep px-3 py-2 font-mono text-xs text-ink-soft">
         {revealed ? value : "••••••••-••••-••••-••••-••••••••••••"}
       </code>
-      <button
-        onClick={() => setRevealed((r) => !r)}
-        className="rounded-md border border-zinc-700 px-2.5 py-1.5 text-xs text-zinc-400 transition hover:border-zinc-500 hover:text-zinc-200"
-      >
+      <button onClick={() => setRevealed((r) => !r)} className={btn}>
         {revealed ? "Hide" : "Show"}
       </button>
-      <button
-        onClick={copy}
-        className="rounded-md border border-zinc-700 px-2.5 py-1.5 text-xs text-zinc-400 transition hover:border-indigo-500 hover:text-indigo-300"
-      >
+      <button onClick={copy} className={btn}>
         {copied ? "Copied!" : "Copy"}
       </button>
     </div>

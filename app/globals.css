@@ -1,9 +1,49 @@
 @import "tailwindcss";
 
+/*
+ * Euclis design tokens — "Kinetic Intelligence" dark theme.
+ * Near-black tonal surfaces, white type, Electric Mint accents.
+ * Depth comes from tonal layering + 1px borders, not shadows.
+ */
+@theme {
+  /* Surfaces (tonal layering: backdrop -> base -> panels -> raised) */
+  --color-paper: #131313;
+  --color-paper-deep: #0e0e0e;
+  --color-card: #1c1b1b;
+  --color-card-high: #2a2a2a;
+
+  /* Ink */
+  --color-ink: #e5e2e1;
+  --color-ink-soft: #c4c7c8;
+  --color-ink-faint: #a3a3a3;
+
+  /* Lines */
+  --color-line: #262626;
+  --color-line-strong: #444748;
+
+  /* Accent — Electric Mint, used sparingly: active states, focus, highlights */
+  --color-accent: #00e1ab;
+  --color-accent-bright: #36ffc4;
+  --color-accent-soft: rgba(0, 255, 194, 0.12);
+  /* Text color used on top of mint fills */
+  --color-on-accent: #002116;
+
+  /* Typography */
+  --font-display: var(--font-hanken), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-hanken), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, "SF Mono", monospace;
+  --font-serif: var(--font-instruments-serif), ui-serif, Georgia, serif;
+  --font-script: var(--font-caveat), "Segoe Script", cursive;
+}
+
 :root {
   color-scheme: dark;
 }
 
 body {
-  @apply bg-zinc-950 text-zinc-100 antialiased;
+  @apply bg-paper font-sans text-ink antialiased;
+}
+
+::selection {
+  background: rgba(0, 225, 171, 0.3);
 }

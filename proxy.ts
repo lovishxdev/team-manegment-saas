@@ -1,5 +1,10 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  readOAuthReturnFromRequest,
+  setOAuthReturnCookie,
+  clearOAuthReturnCookie,
+} from "@/lib/oauth-return";
 
 const PUBLIC_PATHS = ["/login", "/signup", "/auth", "/invite", "/.well-known"];
 
@@ -41,7 +46,20 @@ export async function proxy(request: NextRequest) {
   const user = data?.claims ? { id: data.claims.sub } : null;
 
   const { pathname } = request.nextUrl;
-  const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+
+  // Safety net: if Supabase's redirect allowlist rejects our callback URL it
+  // falls back to the Site URL, landing the one-time auth code on "/". Route
+  // it to the callback handler so the code is exchanged and the pending
+  // OAuth consent (cookie) is honored instead of silently dropped.
+  if (pathname === "/" && request.nextUrl.searchParams.has("code")) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/auth/callback";
+    return NextResponse.redirect(url);
+  }
+
+  // "/" is the public landing page (it redirects signed-in users itself).
+  const isPublic =
+    pathname === "/" || PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();
@@ -50,14 +68,24 @@ export async function proxy(request: NextRequest) {
     // requests carry client_id/state/PKCE params in the query string).
     url.search = "";
     url.searchParams.set("next", pathname + request.nextUrl.search);
-    return NextResponse.redirect(url);
+    const redirect = NextResponse.redirect(url);
+    // Cookie survives Google/GitHub OAuth where nested query params in
+    // `next` can be dropped by the Supabase callback round trip.
+    if (pathname === "/oauth/authorize" && request.nextUrl.search) {
+      setOAuthReturnCookie(redirect, request.nextUrl.search);
+    }
+    return redirect;
   }
 
   if (user && (pathname === "/login" || pathname === "/signup")) {
+    const oauthReturn = readOAuthReturnFromRequest(request);
     const next = request.nextUrl.searchParams.get("next");
     const destination =
-      next?.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
-    return NextResponse.redirect(new URL(destination, request.url));
+      oauthReturn ??
+      (next?.startsWith("/") && !next.startsWith("//") ? next : "/dashboard");
+    const redirect = NextResponse.redirect(new URL(destination, request.url));
+    if (oauthReturn) clearOAuthReturnCookie(redirect);
+    return redirect;
   }
 
   return response;

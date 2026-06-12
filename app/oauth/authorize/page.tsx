@@ -1,16 +1,23 @@
-import { requireUser } from "@/lib/auth";
+import Image from "next/image";
+import { redirect } from "next/navigation";
+import { createSupabaseServer } from "@/lib/supabase-server";
+import { prisma } from "@/lib/prisma";
+import { oauthAuthorizePath } from "@/lib/oauth-return";
 import { getClient } from "@/lib/services/oauth";
 import {
   approveAuthorizationAction,
   denyAuthorizationAction,
 } from "@/lib/actions/oauth";
+import { ui } from "@/components/ui";
 
 function ErrorCard({ message }: { message: string }) {
   return (
     <main className="flex min-h-screen items-center justify-center px-4">
-      <div className="w-full max-w-sm rounded-2xl border border-red-500/30 bg-zinc-900/60 p-8 text-center">
-        <h1 className="text-lg font-semibold">Authorization error</h1>
-        <p className="mt-2 text-sm text-zinc-400">{message}</p>
+      <div className="w-full max-w-sm rounded-lg border border-red-500/30 bg-card p-8 text-center">
+        <h1 className="font-display text-lg font-semibold">
+          Authorization error
+        </h1>
+        <p className="mt-2 text-sm text-ink-soft">{message}</p>
       </div>
     </main>
   );
@@ -21,9 +28,35 @@ export default async function AuthorizePage({
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  // Middleware guarantees a session; this resolves the profile.
-  const user = await requireUser();
   const params = await searchParams;
+
+  const supabase = await createSupabaseServer();
+  const { data: claimsData } = await supabase.auth.getClaims();
+  const authId = claimsData?.claims?.sub;
+
+  if (!authId) {
+    // The proxy normally intercepts unauthenticated requests (and stores the
+    // OAuth params in a cookie); this is just a render-time fallback. Server
+    // Components cannot set cookies, so only the `next` param carries state.
+    const qs = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined) qs.set(key, value);
+    }
+    const search = qs.toString() ? `?${qs}` : "";
+    redirect(`/login?next=${encodeURIComponent(oauthAuthorizePath(search))}`);
+  }
+
+  const user =
+    (await prisma.user.findUnique({ where: { id: authId } })) ??
+    (await prisma.user.create({
+      data: {
+        id: authId,
+        email:
+          typeof claimsData?.claims?.email === "string"
+            ? claimsData.claims.email
+            : null,
+      },
+    }));
 
   const {
     response_type: responseType,
@@ -58,17 +91,24 @@ export default async function AuthorizePage({
 
   return (
     <main className="flex min-h-screen items-center justify-center px-4">
-      <div className="w-full max-w-sm rounded-2xl border border-zinc-800 bg-zinc-900/60 p-8 shadow-xl">
-        <h1 className="text-center text-lg font-semibold tracking-tight">
+      <div className="w-full max-w-sm rounded-lg border border-line bg-card p-8">
+        <Image
+          src="/euclis-logo.png"
+          alt="Euclis"
+          width={44}
+          height={44}
+          className="mx-auto mb-5 rounded-lg ring-1 ring-line"
+        />
+        <h1 className="text-center font-display text-xl font-semibold tracking-tight">
           Connect {client.name}
         </h1>
-        <p className="mt-3 text-center text-sm text-zinc-400">
-          <span className="font-medium text-zinc-200">{client.name}</span> wants
-          to access your workspaces as{" "}
-          <span className="font-medium text-zinc-200">{user.email}</span>.
+        <p className="mt-3 text-center text-sm text-ink-soft">
+          <span className="font-medium text-ink">{client.name}</span> wants to
+          access your workspaces as{" "}
+          <span className="font-medium text-ink">{user.email}</span>.
         </p>
 
-        <ul className="mt-5 space-y-2 rounded-xl border border-zinc-800 bg-zinc-950 p-4 text-sm text-zinc-300">
+        <ul className="mt-5 space-y-2 rounded-md border border-line bg-paper-deep p-4 text-sm text-ink-soft">
           <li>· View your task boards</li>
           <li>· Create and update tasks</li>
           <li>· Delete tasks</li>
@@ -80,17 +120,13 @@ export default async function AuthorizePage({
             <input type="hidden" name="redirect_uri" value={redirectUri} />
             <input type="hidden" name="code_challenge" value={codeChallenge} />
             {state && <input type="hidden" name="state" value={state} />}
-            <button className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-500">
-              Allow access
-            </button>
+            <button className={`w-full ${ui.btnPrimary}`}>Allow access</button>
           </form>
           <form action={denyAuthorizationAction}>
             <input type="hidden" name="client_id" value={clientId} />
             <input type="hidden" name="redirect_uri" value={redirectUri} />
             {state && <input type="hidden" name="state" value={state} />}
-            <button className="w-full rounded-lg border border-zinc-700 px-4 py-2.5 text-sm text-zinc-300 transition hover:border-zinc-500">
-              Deny
-            </button>
+            <button className={`w-full ${ui.btnSecondary}`}>Deny</button>
           </form>
         </div>
       </div>

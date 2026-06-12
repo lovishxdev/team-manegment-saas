@@ -11,6 +11,7 @@ import {
   ServiceError,
   updateTask,
 } from "@/lib/services/project";
+import { createWorkspace } from "@/lib/services/workspace";
 
 /**
  * Claude App Remote MCP connector (Streamable HTTP transport).
@@ -42,7 +43,7 @@ const dueDateParam = z
 const assigneeParam = z
   .string()
   .optional()
-  .describe("Assignee: a workspace member's email (or part of it)");
+  .describe("Assignee: a workspace member's username or email (or part of it)");
 
 function parseDueDate(value: string | undefined): Date | null | undefined {
   if (value === undefined) return undefined;
@@ -69,6 +70,25 @@ function toolError(err: unknown) {
 const handler = createMcpHandler(
   (server) => {
     server.tool(
+      "create_workspace",
+      "Create a new workspace (project board). The user becomes its leader and it becomes their active workspace.",
+      {
+        name: z.string().min(1).max(80).describe("Workspace name"),
+      },
+      async ({ name }, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const workspace = await createWorkspace(userId, name.trim());
+          return text(
+            `Created workspace "${workspace.name}" - you're its leader and it's now your active workspace. New tasks will land here unless you name another workspace.`
+          );
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.tool(
       "create_task",
       "Create a new task on the project board",
       {
@@ -83,11 +103,15 @@ const handler = createMcpHandler(
           .optional()
           .describe("Priority (defaults to MEDIUM)"),
         dueDate: dueDateParam,
+        tags: z
+          .array(z.string())
+          .optional()
+          .describe("Free-form labels, e.g. ['marketing', 'v2']"),
         assignee: assigneeParam,
         workspace: workspaceParam,
       },
       async (
-        { title, description, scope, priority, dueDate, assignee, workspace },
+        { title, description, scope, priority, dueDate, tags, assignee, workspace },
         extra
       ) => {
         const userId = extra.authInfo!.extra!.userId as string;
@@ -100,6 +124,7 @@ const handler = createMcpHandler(
             scope,
             priority,
             dueDate: parseDueDate(dueDate),
+            tags,
             userId,
           });
           // Assignment goes through updateTask so emails resolve to members.
@@ -116,7 +141,9 @@ const handler = createMcpHandler(
               (final.dueDate
                 ? `, due ${final.dueDate.toISOString().slice(0, 10)}`
                 : "") +
-              (final.assignedTo?.email ? `, assigned to ${final.assignedTo.email}` : "") +
+              (final.assignedTo
+                ? `, assigned to ${final.assignedTo.username ?? final.assignedTo.email}`
+                : "") +
               `) in workspace "${ctx.workspaceName}".`
           );
         } catch (err) {
@@ -138,8 +165,12 @@ const handler = createMcpHandler(
         dueDate: dueDateParam.describe(
           "Due date as YYYY-MM-DD, or empty string to clear it"
         ),
+        tags: z
+          .array(z.string())
+          .optional()
+          .describe("Full replacement list of free-form labels"),
         assignee: assigneeParam.describe(
-          "Assignee email, or empty string to unassign"
+          "Assignee username or email, or empty string to unassign"
         ),
         workspace: workspaceParam,
       },
@@ -152,6 +183,7 @@ const handler = createMcpHandler(
           scope,
           priority,
           dueDate,
+          tags,
           assignee,
           workspace,
         },
@@ -170,6 +202,7 @@ const handler = createMcpHandler(
             scope,
             priority,
             dueDate: parseDueDate(dueDate),
+            tags,
             assignee: assignee === "" ? null : assignee,
           });
           return text(
@@ -177,8 +210,8 @@ const handler = createMcpHandler(
               (task.dueDate
                 ? `, due ${task.dueDate.toISOString().slice(0, 10)}`
                 : "") +
-              (task.assignedTo?.email
-                ? `, assigned to ${task.assignedTo.email}`
+              (task.assignedTo
+                ? `, assigned to ${task.assignedTo.username ?? task.assignedTo.email}`
                 : ", unassigned") +
               ` (workspace "${ctx.workspaceName}").`
           );
@@ -266,10 +299,13 @@ const handler = createMcpHandler(
                   .map(
                     (t) =>
                       `  #${t.shortId} ${t.title} [${t.scope}, ${t.priority}]` +
+                      (t.tags.length ? ` {${t.tags.join(", ")}}` : "") +
                       (t.dueDate
                         ? ` due ${t.dueDate.toISOString().slice(0, 10)}`
                         : "") +
-                      (t.assignedTo?.email ? ` -> ${t.assignedTo.email}` : "")
+                      (t.assignedTo
+                        ? ` -> ${t.assignedTo.username ?? t.assignedTo.email}`
+                        : "")
                   )
                   .join("\n")
               : "  (empty)");

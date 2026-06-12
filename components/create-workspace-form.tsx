@@ -5,6 +5,7 @@ import {
   createWorkspaceAction,
   type ActionState,
 } from "@/lib/actions/workspace";
+import { ui } from "@/components/ui";
 
 const initialState: ActionState = {};
 
@@ -21,17 +22,13 @@ export function CreateWorkspaceForm() {
           name="name"
           required
           placeholder="New workspace name"
-          className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3.5 py-2.5 text-sm placeholder-zinc-500 outline-none focus:border-indigo-500"
+          className={ui.input}
         />
         {state.error && (
-          <p className="mt-1 text-xs text-red-400">{state.error}</p>
+          <p className="mt-1 text-xs text-red-300">{state.error}</p>
         )}
       </div>
-      <button
-        type="submit"
-        disabled={pending}
-        className="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:opacity-60"
-      >
+      <button type="submit" disabled={pending} className={ui.btnPrimary}>
         {pending ? "Creating..." : "Create"}
       </button>
     </form>

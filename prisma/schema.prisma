@@ -38,7 +38,9 @@ enum TaskPriority {
 model User {
   id            String  @id @default(uuid()) @db.Uuid
   email         String? @unique
-  /// E.164 format (e.g. 919876543210) - used to route incoming WhatsApp messages
+  /// Unique handle shown across the UI instead of the email (lowercase a-z0-9_)
+  username      String? @unique
+  /// E.164 format (e.g. 91xxxxxxxxxx) - used to route incoming WhatsApp messages
   phone         String? @unique
   /// User-level secret for the Claude App Remote MCP connector
   mcpToken      String  @unique @default(uuid()) @db.Uuid
@@ -98,6 +100,8 @@ model Task {
   scope       TaskScope    @default(GENERAL)
   priority    TaskPriority @default(MEDIUM)
   dueDate     DateTime?
+  /// Free-form labels, editable from the task modal ("marketing", "v2", ...)
+  tags        String[]     @default([])
 
   assignedToId String? @db.Uuid
   createdById  String? @db.Uuid

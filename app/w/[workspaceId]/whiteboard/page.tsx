@@ -28,20 +28,22 @@ export default async function WhiteboardPage({
 
   return (
     <div className="flex h-screen flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-4 border-b border-zinc-800 px-4">
+      <header className="flex h-12 shrink-0 items-center gap-4 border-b border-line bg-paper px-4">
         <Link
           href={`/w/${workspaceId}`}
-          className="text-xs text-zinc-500 transition hover:text-zinc-200"
+          className="text-xs text-ink-soft transition hover:text-ink"
         >
           ← Board
         </Link>
-        <h1 className="text-sm font-medium">{workspace.name} · Whiteboard</h1>
+        <h1 className="font-display text-sm font-semibold">
+          {workspace.name} · Whiteboard
+        </h1>
       </header>
       <div className="min-h-0 flex-1">
         <Whiteboard
           workspaceId={workspaceId}
           initialState={initialState}
-          userLabel={user.email ?? "Anonymous"}
+          userLabel={user.username ?? user.email ?? "Anonymous"}
         />
       </div>
     </div>

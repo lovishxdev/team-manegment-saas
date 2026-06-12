@@ -6,9 +6,29 @@ import { ServiceError } from "@/lib/services/project";
 import {
   regenerateMcpToken,
   updateUserPhone,
+  updateUsername,
 } from "@/lib/services/workspace";
 
 export type SettingsState = { error?: string; message?: string };
+
+export async function updateUsernameAction(
+  _prev: SettingsState,
+  formData: FormData
+): Promise<SettingsState> {
+  const user = await requireUser();
+  const raw = String(formData.get("username") ?? "").trim();
+
+  try {
+    await updateUsername(user.id, raw === "" ? null : raw);
+  } catch (err) {
+    return {
+      error:
+        err instanceof ServiceError ? err.message : "Failed to update username",
+    };
+  }
+  revalidatePath("/settings");
+  return { message: raw === "" ? "Username removed" : "Username saved" };
+}
 
 export async function updatePhoneAction(
   _prev: SettingsState,
