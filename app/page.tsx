@@ -48,7 +48,7 @@ export default async function Home() {
       {/* Soft editorial glow behind the hero */}
       <div
         aria-hidden
-        className="pointer-events-none absolute -top-32 left-1/2 h-[640px] w-[900px] -translate-x-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(0,255,194,0.08),transparent_70%)] blur-3xl"
+        className="pointer-events-none absolute -top-32 left-1/2 h-[640px] w-[900px] -translate-x-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(0,200,150,0.08),transparent_70%)] blur-3xl"
       />
 
       {/* ---------- Nav ---------- */}

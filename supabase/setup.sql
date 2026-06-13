@@ -122,17 +122,25 @@ create policy "whiteboard_broadcast_write" on realtime.messages
   );
 
 -- ============================================================
--- 4. Realtime: broadcast Task changes to subscribed dashboards
---    (events are filtered per-user through the RLS policy above)
+-- 4. Realtime: Postgres changes -> subscribed dashboards
+--    (events are filtered per-user through RLS policies above)
 -- ============================================================
 do $$
+declare
+  t text;
 begin
-  if not exists (
-    select 1 from pg_publication_tables
-    where pubname = 'supabase_realtime'
-      and schemaname = 'public'
-      and tablename = 'Task'
-  ) then
-    alter publication supabase_realtime add table public."Task";
-  end if;
+  foreach t in array array['Task', 'Workspace', 'WorkspaceMembership', 'Asset']
+  loop
+    if not exists (
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime'
+        and schemaname = 'public'
+        and tablename = t
+    ) then
+      execute format(
+        'alter publication supabase_realtime add table public.%I',
+        t
+      );
+    end if;
+  end loop;
 end $$;

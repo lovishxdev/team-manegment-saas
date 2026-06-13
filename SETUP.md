@@ -38,8 +38,10 @@ values ('assets', 'assets', true);
 
 6. (Optional, for the future web dashboard) Realtime: writes go through
    Prisma, but Supabase Realtime picks them up at the Postgres level via
-   `postgres_changes`. Enable it per table under
-   **Database > Replication > supabase_realtime** when you build the frontend.
+   `postgres_changes`. Run `npx prisma db execute --file supabase/setup.sql`
+   to add **Workspace**, **WorkspaceMembership**, **Task**, and **Asset** to
+   the `supabase_realtime` publication — the dashboard auto-refreshes when
+   data changes (web, WhatsApp, or MCP).
 
 ---
 
@@ -58,6 +60,8 @@ values ('assets', 'assets', true);
    (type: **Business**), then add the **WhatsApp** product.
 2. From **WhatsApp > API Setup** copy:
    - **Phone number ID** (the long numeric ID, not the phone number) -> `WHATSAPP_PHONE_NUMBER_ID`
+   - **Test phone number** (the number users message) -> `NEXT_PUBLIC_WHATSAPP_BOT_NUMBER`
+     in E.164 format without `+` or spaces (e.g. `15551234567`)
    - **Temporary access token** -> `WHATSAPP_ACCESS_TOKEN`
      (lasts 24h; for production, create a System User token under Business
      Settings to get a permanent one)
@@ -77,9 +81,35 @@ ngrok http 3000      # terminal 2 (or cloudflared tunnel)
    - Click **Verify and save** (this triggers the GET handshake), then
      subscribe to the **messages** webhook field.
 7. Add your personal WhatsApp number as a recipient in **API Setup**
-   (test numbers can only message allow-listed recipients), and make sure a
-   `User` row exists with `phone` matching your number in E.164 format
-   without `+` (e.g. `919876543210`) — that's the format Meta sends.
+   (test numbers can only message allow-listed recipients). Each tester
+   who wants WhatsApp must also link that same number in **Settings →
+   WhatsApp** in the web app (optional — the dashboard works without it).
+
+---
+
+## 3b. Onboarding testers for WhatsApp
+
+Use this when handing the app to friends/teammates for a test run.
+
+### You (workspace owner / Meta app admin)
+
+1. Create a workspace on the dashboard and open **Members**.
+2. Generate an invite link and share it. Testers sign up with email only —
+   no phone required at signup.
+3. In [Meta Developers](https://developers.facebook.com) → your app →
+   **WhatsApp → API Setup**, add each tester&apos;s personal WhatsApp number
+   under **To** (required in Meta test mode).
+4. Share the bot number shown in **Settings** (or set
+   `NEXT_PUBLIC_WHATSAPP_BOT_NUMBER`) and tell testers the WhatsApp step is
+   optional.
+
+### Each tester (member)
+
+1. Open the invite link → **Create account** or **Sign in** → **Join workspace**.
+2. Use the web board (tasks, assets, whiteboard). No phone number is asked for
+   at signup or after joining.
+3. **Only if they want WhatsApp later:** Settings → WhatsApp → save their
+   number, then message the bot. Skip entirely if they only use the web app.
 
 ---
 

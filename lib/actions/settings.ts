@@ -1,13 +1,16 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { ServiceError } from "@/lib/services/project";
 import {
   regenerateMcpToken,
   updateUserPhone,
   updateUsername,
+  deleteUserAccount,
 } from "@/lib/services/workspace";
+import { createSupabaseServer } from "@/lib/supabase-server";
 
 export type SettingsState = { error?: string; message?: string };
 
@@ -46,6 +49,8 @@ export async function updatePhoneAction(
     };
   }
   revalidatePath("/settings");
+  revalidatePath("/dashboard");
+  revalidatePath("/", "layout");
   return { message: raw === "" ? "Phone number removed" : "Phone number saved" };
 }
 
@@ -57,4 +62,34 @@ export async function regenerateMcpTokenAction(): Promise<SettingsState> {
     message:
       "New token generated. Update it anywhere the old one was configured (Claude, etc.).",
   };
+}
+
+export async function deleteAccountAction(
+  _prev: SettingsState,
+  formData: FormData
+): Promise<SettingsState> {
+  const user = await requireUser();
+  const confirm = String(formData.get("confirm") ?? "").trim();
+  const expected = user.email ?? "DELETE";
+
+  if (confirm !== expected) {
+    return {
+      error: user.email
+        ? `Type your email (${expected}) to confirm.`
+        : 'Type DELETE to confirm.',
+    };
+  }
+
+  try {
+    await deleteUserAccount(user.id);
+  } catch (err) {
+    return {
+      error:
+        err instanceof ServiceError ? err.message : "Failed to delete account",
+    };
+  }
+
+  const supabase = await createSupabaseServer();
+  await supabase.auth.signOut();
+  redirect("/login?deleted=1");
 }

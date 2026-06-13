@@ -2,12 +2,13 @@ import { cache } from "react";
 import { Prisma, Role } from "@/lib/generated/prisma/client";
 import { invalidateMcpToken, invalidatePhone } from "@/lib/identity-cache";
 import { prisma } from "@/lib/prisma";
+import { getSupabaseAdmin } from "@/lib/supabase";
 import { getActorMembership, ServiceError } from "@/lib/services/project";
 
 export async function createWorkspace(userId: string, name: string) {
   const workspace = await prisma.workspace.create({
     data: {
-      name,
+      name: name.trim(),
       memberships: {
         create: { userId, role: Role.LEADER },
       },
@@ -20,11 +21,42 @@ export async function createWorkspace(userId: string, name: string) {
   return workspace;
 }
 
-/** Request-memoized: the sidebar shell and pages both call this. */
+/**
+ * Reuses an existing workspace when the user already has the same name
+ * (case-insensitive). Prevents duplicate boards from webhook retries.
+ */
+export async function findOrCreateWorkspaceByName(userId: string, name: string) {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    throw new ServiceError("Workspace name cannot be empty", "INVALID_INPUT");
+  }
+
+  const memberships = await prisma.workspaceMembership.findMany({
+    where: { userId },
+    include: { workspace: { select: { id: true, name: true } } },
+    orderBy: { joinedAt: "desc" },
+  });
+
+  const existing = memberships.find(
+    (m) => m.workspace.name.toLowerCase() === trimmed.toLowerCase()
+  );
+  if (existing) {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { lastActiveWorkspaceId: existing.workspace.id },
+    });
+    return { workspace: existing.workspace, created: false as const };
+  }
+
+  const workspace = await createWorkspace(userId, trimmed);
+  return { workspace, created: true as const };
+}
+
+/** Per-request memo only — always hits the DB (no cross-request cache). */
 export const listUserWorkspaces = cache(async function listUserWorkspaces(
   userId: string
 ) {
-  const memberships = await prisma.workspaceMembership.findMany({
+  return prisma.workspaceMembership.findMany({
     where: { userId },
     include: {
       workspace: {
@@ -33,11 +65,6 @@ export const listUserWorkspaces = cache(async function listUserWorkspaces(
     },
     orderBy: { joinedAt: "desc" },
   });
-  return memberships.map((m) => ({
-    role: m.role,
-    joinedAt: m.joinedAt,
-    workspace: m.workspace,
-  }));
 });
 
 export async function getWorkspaceMembers(workspaceId: string, userId: string) {
@@ -392,4 +419,56 @@ export async function updateUserPhone(userId: string, phone: string | null) {
   invalidatePhone(current?.phone);
   invalidatePhone(phone);
   return updated;
+}
+
+/**
+ * Permanently deletes the user's account: leaves or removes workspaces,
+ * deletes the app profile, then removes the Supabase Auth user.
+ */
+export async function deleteUserAccount(userId: string) {
+  const memberships = await prisma.workspaceMembership.findMany({
+    where: { userId },
+    include: { workspace: { select: { id: true, name: true } } },
+  });
+
+  for (const membership of memberships) {
+    const { workspaceId, role, workspace } = membership;
+    const otherMembers = await prisma.workspaceMembership.count({
+      where: { workspaceId, userId: { not: userId } },
+    });
+
+    if (role === Role.LEADER && (await countLeaders(workspaceId)) <= 1) {
+      if (otherMembers > 0) {
+        throw new ServiceError(
+          `You're the only leader of "${workspace.name}". Promote someone else or delete that workspace before deleting your account.`,
+          "INVALID_INPUT"
+        );
+      }
+      await prisma.workspace.delete({ where: { id: workspaceId } });
+      continue;
+    }
+
+    await prisma.workspaceMembership.delete({
+      where: { userId_workspaceId: { userId, workspaceId } },
+    });
+  }
+
+  const profile = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { phone: true, mcpToken: true },
+  });
+
+  await prisma.user.delete({ where: { id: userId } });
+
+  invalidatePhone(profile?.phone);
+  invalidateMcpToken(profile?.mcpToken);
+
+  const { error } = await getSupabaseAdmin().auth.admin.deleteUser(userId);
+  if (error) {
+    console.error("Supabase auth delete failed:", error.message);
+    throw new ServiceError(
+      "Your app data was removed, but sign-in cleanup failed. Contact support if you still see this email in use.",
+      "INVALID_INPUT"
+    );
+  }
 }

@@ -5,9 +5,10 @@ import { getWorkspaceMembers, listInvites } from "@/lib/services/workspace";
 import { prisma } from "@/lib/prisma";
 import { AppShell } from "@/components/app-shell";
 import { DangerZone } from "@/components/danger-zone";
-import { InviteButton } from "@/components/invite-button";
+import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { InviteRow } from "@/components/invite-row";
 import { MemberRow } from "@/components/member-row";
+import { WhatsAppMemberGuide } from "@/components/whatsapp-member-guide";
 
 export default async function MembersPage({
   params,
@@ -45,13 +46,24 @@ export default async function MembersPage({
       activeWorkspaceId={workspaceId}
       activeTab="members"
     >
-      <main className="mx-auto max-w-2xl px-6 py-8">
-        <div className="mb-8 flex items-center justify-between">
-          <h1 className="font-display text-2xl font-semibold tracking-tight">
-            Members
-          </h1>
-          {canInvite && <InviteButton workspaceId={workspaceId} />}
-        </div>
+      <main className="mx-auto w-full max-w-6xl">
+        <WorkspacePageHeader
+          workspaceId={workspaceId}
+          workspaceName={workspace.name}
+          activeTab="members"
+          breadcrumbLeaf="Members"
+          members={members.map((m) => ({
+            id: m.user.id,
+            label: m.user.username ?? m.user.email,
+          }))}
+          canInvite={canInvite}
+        />
+
+        {canInvite && (
+          <section className="mb-8">
+            <WhatsAppMemberGuide />
+          </section>
+        )}
 
         <section className="mb-8">
           <h2 className="mb-3 font-mono text-xs font-semibold uppercase tracking-[0.12em] text-ink-faint">

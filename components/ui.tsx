@@ -1,52 +1,57 @@
 /**
- * Shared class recipes for the Euclis "Kinetic Intelligence" design language.
- * Dark tonal surfaces, 1px borders, mint focus states, sharp-technical radii.
- * Keep visual decisions here so every form/button stays consistent.
+ * Shared class recipes for the Euclis light dashboard design language.
  */
 export const ui = {
+  focusRing:
+    "outline-none transition focus:border-ink/30 focus:ring-1 focus:ring-ink/10",
+  focusWithin:
+    "focus-within:border-ink/30 focus-within:ring-1 focus-within:ring-ink/10",
   input:
-    "w-full rounded-md border border-line bg-paper px-3.5 py-2.5 text-sm text-ink placeholder:text-ink-faint outline-none transition focus:border-accent/60 focus:ring-2 focus:ring-accent/15",
+    "w-full rounded-lg border border-line bg-paper px-3.5 py-2.5 text-sm text-ink placeholder:text-ink-faint outline-none transition focus:border-ink/30 focus:ring-1 focus:ring-ink/10",
+  /** @deprecated Use `<Select />` from `@/components/select` instead. */
   select:
-    "rounded-md border border-line bg-paper px-3 py-2.5 text-sm text-ink-soft outline-none transition focus:border-accent/60",
+    "rounded-lg border border-line bg-paper px-3 py-2.5 text-sm text-ink-soft outline-none transition focus:border-ink/30 focus:ring-1 focus:ring-ink/10",
   label:
-    "mb-1.5 block font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-ink-faint",
+    "mb-1.5 block text-xs font-medium text-ink-soft",
   btnPrimary:
-    "rounded-md bg-white px-4 py-2.5 font-mono text-xs font-medium tracking-wide text-black transition hover:bg-white/85 disabled:opacity-50",
+    "rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white transition hover:bg-ink/90 disabled:opacity-50",
   btnSecondary:
-    "rounded-md border border-line-strong bg-transparent px-3.5 py-2 text-sm text-ink-soft transition hover:border-ink/50 hover:text-ink disabled:opacity-50",
+    "rounded-lg border border-line-strong bg-paper px-3.5 py-2 text-sm text-ink-soft transition hover:border-ink/20 hover:text-ink disabled:opacity-50",
   btnDanger:
-    "rounded-md border border-red-500/30 bg-red-500/10 px-3.5 py-2 text-sm text-red-300 transition hover:bg-red-500/20 disabled:opacity-50",
+    "rounded-lg border border-red-200 bg-red-50 px-3.5 py-2 text-sm text-red-600 transition hover:bg-red-100 disabled:opacity-50",
   btnGhostDanger:
-    "rounded-md border border-line-strong px-3.5 py-2 text-sm text-ink-soft transition hover:border-red-500/50 hover:text-red-300 disabled:opacity-50",
-  card: "rounded-lg border border-line bg-card",
-  errorText: "text-sm text-red-300",
+    "rounded-lg border border-line-strong px-3.5 py-2 text-sm text-ink-soft transition hover:border-red-300 hover:text-red-600 disabled:opacity-50",
+  card: "rounded-2xl bg-paper shadow-sm",
+  errorText: "text-sm text-red-600",
   mutedText: "text-sm text-ink-soft",
+  /** Page title aligned with sidebar brand row */
+  pageTitle:
+    "m-0 text-[1.75rem] font-semibold leading-none tracking-tight text-ink sm:text-[2.125rem]",
+  pageTitleRow: "flex shrink-0 items-start",
 };
 
-/** Deterministic avatar tints (low-opacity fills on dark surfaces). */
+/** Deterministic avatar tints. */
 const AVATAR_COLORS = [
-  "bg-orange-400/20 text-orange-300",
-  "bg-amber-400/20 text-amber-300",
-  "bg-lime-400/20 text-lime-300",
-  "bg-teal-400/20 text-teal-300",
-  "bg-sky-400/20 text-sky-300",
-  "bg-violet-400/20 text-violet-300",
-  "bg-rose-400/20 text-rose-300",
+  "bg-orange-100 text-orange-700",
+  "bg-amber-100 text-amber-700",
+  "bg-lime-100 text-lime-700",
+  "bg-teal-100 text-teal-700",
+  "bg-sky-100 text-sky-700",
+  "bg-violet-100 text-violet-700",
+  "bg-rose-100 text-rose-700",
 ];
 
-/* Low-opacity status tints for free-form task tags (board cards + modal). */
 const TAG_COLORS = [
-  "bg-blue-400/15 text-blue-300",
-  "bg-orange-400/15 text-orange-300",
-  "bg-emerald-400/15 text-emerald-300",
-  "bg-violet-400/15 text-violet-300",
-  "bg-pink-400/15 text-pink-300",
-  "bg-teal-400/15 text-teal-300",
-  "bg-amber-400/15 text-amber-300",
-  "bg-indigo-400/15 text-indigo-300",
+  "bg-blue-50 text-blue-700",
+  "bg-orange-50 text-orange-700",
+  "bg-emerald-50 text-emerald-700",
+  "bg-violet-50 text-violet-700",
+  "bg-pink-50 text-pink-700",
+  "bg-teal-50 text-teal-700",
+  "bg-amber-50 text-amber-700",
+  "bg-indigo-50 text-indigo-700",
 ];
 
-/** Deterministic tint recipe for a tag, stable across renders and users. */
 export function tagColor(tag: string): string {
   let hash = 0;
   const key = tag.toLowerCase();
@@ -69,9 +74,7 @@ export function Avatar({
   label,
   size = "h-6 w-6 text-[10px]",
 }: {
-  /** Stable id used to pick the color. */
   seed: string;
-  /** Email or name; first letter becomes the initial. */
   label: string | null;
   size?: string;
 }) {

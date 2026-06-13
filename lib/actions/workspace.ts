@@ -8,6 +8,7 @@ import {
   TaskStatus,
 } from "@/lib/generated/prisma/client";
 import { requireUser } from "@/lib/auth";
+import { refreshUserWorkspaces } from "@/lib/revalidate-nav";
 import {
   createTask,
   deleteAsset,
@@ -29,7 +30,7 @@ import {
   updateMemberRole,
 } from "@/lib/services/workspace";
 
-export type ActionState = { error?: string };
+export type ActionState = { error?: string; workspaceId?: string };
 
 function errorMessage(err: unknown): string {
   return err instanceof ServiceError ? err.message : "Something went wrong";
@@ -44,7 +45,8 @@ export async function createWorkspaceAction(
   if (!name) return { error: "Workspace name is required" };
 
   const workspace = await createWorkspace(user.id, name);
-  redirect(`/w/${workspace.id}`);
+  refreshUserWorkspaces(user.id, workspace.id);
+  return { workspaceId: workspace.id };
 }
 
 export async function createTaskAction(
@@ -263,6 +265,7 @@ export async function leaveWorkspaceAction(
   } catch (err) {
     return { error: errorMessage(err) };
   }
+  refreshUserWorkspaces(user.id);
   redirect("/dashboard");
 }
 
@@ -275,6 +278,7 @@ export async function deleteWorkspaceAction(
   } catch (err) {
     return { error: errorMessage(err) };
   }
+  refreshUserWorkspaces(user.id);
   redirect("/dashboard");
 }
 
@@ -301,5 +305,6 @@ export async function acceptInviteAction(inviteId: string): Promise<ActionState>
   } catch (err) {
     return { error: errorMessage(err) };
   }
+  refreshUserWorkspaces(user.id, workspaceId);
   redirect(`/w/${workspaceId}`);
 }

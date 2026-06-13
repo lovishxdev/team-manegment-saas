@@ -5,6 +5,7 @@ import {
   TaskScope,
   TaskStatus,
 } from "@/lib/generated/prisma/client";
+import { formatTaskTitle } from "@/lib/format-task-title";
 import { prisma } from "@/lib/prisma";
 import { ASSETS_BUCKET, getSupabaseAdmin } from "@/lib/supabase";
 
@@ -109,12 +110,20 @@ export async function resolveUserWorkspaceContext(
       return pick(byName[0].workspace.id, byName[0].workspace.name);
     }
     if (byName.length > 1) {
-      throw new ServiceError(
-        `Multiple workspaces match "${hint}": ${byName
-          .map((m) => m.workspace.name)
-          .join(", ")}. Please be more specific.`,
-        "AMBIGUOUS_WORKSPACE"
-      );
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { lastActiveWorkspaceId: true },
+      });
+      if (user?.lastActiveWorkspaceId) {
+        const active = byName.find(
+          (m) => m.workspaceId === user.lastActiveWorkspaceId
+        );
+        if (active) {
+          return pick(active.workspace.id, active.workspace.name);
+        }
+      }
+      // Prefer the most recently joined match when duplicates exist.
+      return pick(byName[0].workspace.id, byName[0].workspace.name);
     }
     throw new ServiceError(
       `No workspace matching "${hint}" found among your memberships`,
@@ -246,7 +255,7 @@ export async function createTask(input: CreateTaskInput) {
           data: {
             workspaceId,
             shortId: (last?.shortId ?? 0) + 1,
-            title,
+            title: formatTaskTitle(title),
             description: description ?? null,
             scope: scope ?? TaskScope.GENERAL,
             priority: priority ?? TaskPriority.MEDIUM,
@@ -322,7 +331,7 @@ export async function updateTask(input: UpdateTaskInput) {
   const existing = await findTaskInWorkspace(workspaceId, taskId, shortId);
 
   const data: Prisma.TaskUncheckedUpdateInput = {};
-  if (input.title !== undefined) data.title = input.title;
+  if (input.title !== undefined) data.title = formatTaskTitle(input.title);
   if (input.description !== undefined) data.description = input.description;
   if (input.status !== undefined) data.status = input.status;
   if (input.scope !== undefined) data.scope = input.scope;

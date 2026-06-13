@@ -15,7 +15,9 @@ import {
 import { restrictToWindowEdges } from "@dnd-kit/modifiers";
 import { createSupabaseBrowser } from "@/lib/supabase-browser";
 import { updateTaskAction } from "@/lib/actions/workspace";
+import { formatTaskTitle } from "@/lib/format-task-title";
 import { TaskDetailModal } from "@/components/task-detail-modal";
+import { Select } from "@/components/select";
 import { Avatar, tagColor } from "@/components/ui";
 
 export type TaskAttachment = {
@@ -47,43 +49,57 @@ export type BoardMember = {
   label: string | null;
 };
 
+export type BoardSort = "default" | "title" | "due";
+
 const COLUMNS: {
   status: BoardTask["status"];
   label: string;
   tint: string;
   dot: string;
+  countBg: string;
+  dropRing: string;
+  dropActive: string;
 }[] = [
   {
     status: "TODO",
     label: "To Do",
-    tint: "bg-paper-deep",
-    dot: "bg-ink-faint",
+    tint: "bg-rose-100",
+    dot: "bg-rose-500",
+    countBg: "bg-white/70",
+    dropRing: "ring-rose-400/55",
+    dropActive: "border-rose-400 bg-rose-200/60 text-rose-800",
   },
   {
     status: "IN_PROGRESS",
     label: "In Progress",
-    tint: "bg-paper-deep",
-    dot: "bg-amber-300",
+    tint: "bg-orange-100",
+    dot: "bg-orange-500",
+    countBg: "bg-white/70",
+    dropRing: "ring-orange-400/55",
+    dropActive: "border-orange-400 bg-orange-200/60 text-orange-900",
   },
   {
     status: "DONE",
     label: "Done",
-    tint: "bg-paper-deep",
-    dot: "bg-accent",
+    tint: "bg-violet-100",
+    dot: "bg-violet-500",
+    countBg: "bg-white/70",
+    dropRing: "ring-violet-400/55",
+    dropActive: "border-violet-400 bg-violet-200/60 text-violet-900",
   },
 ];
 
 const SCOPE_STYLES: Record<BoardTask["scope"], string> = {
-  FRONTEND: "bg-sky-400/15 text-sky-300",
-  BACKEND: "bg-violet-400/15 text-violet-300",
-  DESIGN: "bg-orange-400/15 text-orange-300",
-  GENERAL: "bg-white/[0.06] text-ink-soft",
+  FRONTEND: "bg-sky-50 text-sky-700",
+  BACKEND: "bg-violet-50 text-violet-700",
+  DESIGN: "bg-orange-50 text-orange-700",
+  GENERAL: "bg-paper-deep text-ink-soft",
 };
 
 const PRIORITY_STYLES: Record<BoardTask["priority"], string> = {
-  HIGH: "bg-rose-400/15 text-rose-300",
-  MEDIUM: "bg-amber-400/15 text-amber-300",
-  LOW: "bg-emerald-400/15 text-emerald-300",
+  HIGH: "bg-rose-50 text-rose-700",
+  MEDIUM: "bg-amber-50 text-amber-700",
+  LOW: "bg-emerald-50 text-emerald-700",
 };
 
 /* Status chips: monospaced labels in low-opacity tints (Kinetic spec). */
@@ -136,9 +152,7 @@ function TaskCard({
       }
       className={`cursor-grab rounded-lg border bg-card p-4 ${
         isDragging
-          ? // No transition while dragging: transform must track the pointer
-            // 1:1, otherwise the card lags behind on every move.
-            "z-10 border-accent/60 shadow-[0_0_24px_rgba(0,255,194,0.08)]"
+          ? "z-10 border-ink/35 shadow-md ring-1 ring-ink/10"
           : "border-line transition-colors hover:border-line-strong"
       }`}
     >
@@ -160,13 +174,13 @@ function TaskCard({
           </span>
         ))}
         {task.tags.length > 3 && (
-          <span className={`${chipCls} bg-white/[0.06] text-ink-faint`}>
+          <span className={`${chipCls} bg-paper-deep text-ink-faint`}>
             +{task.tags.length - 3}
           </span>
         )}
         <span
           title="Add tag"
-          className="inline-flex h-[22px] w-[22px] items-center justify-center rounded bg-white/[0.06] text-[13px] leading-none text-ink-faint transition hover:bg-white/[0.1] hover:text-ink"
+          className="inline-flex h-[22px] w-[22px] items-center justify-center rounded bg-paper-deep text-[13px] leading-none text-ink-faint transition hover:bg-line hover:text-ink"
         >
           +
         </span>
@@ -198,8 +212,8 @@ function TaskCard({
         </div>
       )}
 
-      <p className="mt-3 text-[15px] font-medium leading-snug text-ink">
-        {task.title}
+      <p className="mt-3 text-lg font-medium leading-snug text-ink">
+        {formatTaskTitle(task.title)}
       </p>
       {task.description && (
         <p className="mt-1.5 line-clamp-2 text-[13px] leading-relaxed text-ink-faint">
@@ -260,16 +274,18 @@ function TaskCard({
 function DropPlaceholder({
   active,
   height,
+  dropActive,
 }: {
   active: boolean;
   height: number | null;
+  dropActive: string;
 }) {
   return (
     <div
       style={height ? { height } : undefined}
       className={`flex min-h-28 flex-col items-center justify-center gap-2 rounded-lg border border-dashed p-4 transition-all ${
         active
-          ? "border-accent/60 bg-accent-soft text-accent"
+          ? dropActive
           : "border-line-strong bg-card/40 text-ink-faint/80"
       }`}
     >
@@ -295,6 +311,9 @@ function Column({
   label,
   tint,
   dot,
+  countBg,
+  dropRing,
+  dropActive,
   tasks,
   onOpen,
   dropHint,
@@ -304,6 +323,9 @@ function Column({
   label: string;
   tint: string;
   dot: string;
+  countBg: string;
+  dropRing: string;
+  dropActive: string;
   tasks: BoardTask[];
   onOpen: (task: BoardTask) => void;
   /** True while a task from another column is being dragged. */
@@ -316,16 +338,18 @@ function Column({
   return (
     <section
       ref={setNodeRef}
-      className={`rounded-lg border p-3 transition ${tint} ${
-        isOver ? "border-accent/50" : "border-line"
+      className={`rounded-xl p-3 transition ${tint} ${
+        isOver ? `ring-2 ${dropRing} ring-offset-2 ring-offset-shell` : ""
       }`}
     >
       <header className="mb-3 flex items-center gap-2 px-1">
-        <span className={`h-2 w-2 rounded-full ${dot}`} />
+        <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
         <h3 className="font-mono text-xs font-semibold uppercase tracking-[0.1em] text-ink">
           {label}
         </h3>
-        <span className="rounded bg-white/[0.06] px-1.5 py-0.5 font-mono text-[11px] font-semibold text-ink-soft">
+        <span
+          className={`rounded px-1.5 py-0.5 font-mono text-[11px] font-semibold text-ink-soft ${countBg}`}
+        >
           {tasks.length}
         </span>
       </header>
@@ -333,7 +357,13 @@ function Column({
         {tasks.map((task) => (
           <TaskCard key={task.id} task={task} onOpen={onOpen} />
         ))}
-        {dropHint && <DropPlaceholder active={isOver} height={dragHeight} />}
+        {dropHint && (
+          <DropPlaceholder
+            active={isOver}
+            height={dragHeight}
+            dropActive={dropActive}
+          />
+        )}
         {!dropHint && tasks.length === 0 && (
           <p className="rounded-md border border-dashed border-line-strong px-3 py-7 text-center text-xs text-ink-faint">
             Drop tasks here
@@ -349,11 +379,28 @@ export function TaskBoard({
   tasks,
   members,
   currentUserId,
+  filtersOpen = true,
+  scopeFilter,
+  onScopeFilterChange,
+  assigneeFilter,
+  onAssigneeFilterChange,
+  mineOnly,
+  onMineOnlyChange,
+  sortBy = "default",
 }: {
   workspaceId: string;
   tasks: BoardTask[];
   members: BoardMember[];
   currentUserId: string;
+  /** When false, filter controls are hidden (toggled from the header). */
+  filtersOpen?: boolean;
+  scopeFilter: string;
+  onScopeFilterChange: (value: string) => void;
+  assigneeFilter: string;
+  onAssigneeFilterChange: (value: string) => void;
+  mineOnly: boolean;
+  onMineOnlyChange: (value: boolean) => void;
+  sortBy?: BoardSort;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -368,11 +415,6 @@ export function TaskBoard({
   // Local copy so drags update instantly; server state flows back via props.
   const [localTasks, setLocalTasks] = useState(tasks);
   useEffect(() => setLocalTasks(tasks), [tasks]);
-
-  // Filters
-  const [scopeFilter, setScopeFilter] = useState<string>("");
-  const [assigneeFilter, setAssigneeFilter] = useState<string>("");
-  const [mineOnly, setMineOnly] = useState(false);
 
   // Distance threshold keeps plain clicks working (opens the modal).
   const sensors = useSensors(
@@ -425,22 +467,40 @@ export function TaskBoard({
     };
   }, [workspaceId, router]);
 
-  const visibleTasks = useMemo(
-    () =>
-      localTasks.filter((t) => {
-        if (scopeFilter && t.scope !== scopeFilter) return false;
-        if (assigneeFilter === "unassigned" && t.assigneeId) return false;
-        if (
-          assigneeFilter &&
-          assigneeFilter !== "unassigned" &&
-          t.assigneeId !== assigneeFilter
-        )
-          return false;
-        if (mineOnly && t.assigneeId !== currentUserId) return false;
-        return true;
-      }),
-    [localTasks, scopeFilter, assigneeFilter, mineOnly, currentUserId]
-  );
+  const visibleTasks = useMemo(() => {
+    const filtered = localTasks.filter((t) => {
+      if (scopeFilter && t.scope !== scopeFilter) return false;
+      if (assigneeFilter === "unassigned" && t.assigneeId) return false;
+      if (
+        assigneeFilter &&
+        assigneeFilter !== "unassigned" &&
+        t.assigneeId !== assigneeFilter
+      )
+        return false;
+      if (mineOnly && t.assigneeId !== currentUserId) return false;
+      return true;
+    });
+
+    if (sortBy === "title") {
+      return [...filtered].sort((a, b) => a.title.localeCompare(b.title));
+    }
+    if (sortBy === "due") {
+      return [...filtered].sort((a, b) => {
+        if (!a.dueDate && !b.dueDate) return 0;
+        if (!a.dueDate) return 1;
+        if (!b.dueDate) return -1;
+        return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+      });
+    }
+    return filtered;
+  }, [
+    localTasks,
+    scopeFilter,
+    assigneeFilter,
+    mineOnly,
+    currentUserId,
+    sortBy,
+  ]);
 
   function handleDragStart(event: DragStartEvent) {
     const taskId = String(event.active.id);
@@ -481,41 +541,48 @@ export function TaskBoard({
     });
   }
 
-  const filterSelectCls =
-    "rounded-md border border-line bg-card px-3 py-1.5 text-xs text-ink-soft outline-none transition focus:border-accent/60";
+  const scopeOptions = [
+    { value: "", label: "All scopes" },
+    { value: "GENERAL", label: "General" },
+    { value: "FRONTEND", label: "Frontend" },
+    { value: "BACKEND", label: "Backend" },
+    { value: "DESIGN", label: "Design" },
+  ];
+
+  const assigneeOptions = [
+    { value: "", label: "All assignees" },
+    { value: "unassigned", label: "Unassigned" },
+    ...members.map((m) => ({
+      value: m.id,
+      label: m.label ?? m.id.slice(0, 8),
+    })),
+  ];
 
   return (
     <div>
+      {filtersOpen && (
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <select
+        <Select
+          size="sm"
           value={scopeFilter}
-          onChange={(e) => setScopeFilter(e.target.value)}
-          className={filterSelectCls}
-        >
-          <option value="">All scopes</option>
-          <option value="GENERAL">General</option>
-          <option value="FRONTEND">Frontend</option>
-          <option value="BACKEND">Backend</option>
-          <option value="DESIGN">Design</option>
-        </select>
-        <select
+          onChange={onScopeFilterChange}
+          options={scopeOptions}
+          className="w-[140px]"
+          aria-label="Filter by scope"
+        />
+        <Select
+          size="sm"
           value={assigneeFilter}
-          onChange={(e) => setAssigneeFilter(e.target.value)}
-          className={filterSelectCls}
-        >
-          <option value="">All assignees</option>
-          <option value="unassigned">Unassigned</option>
-          {members.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.label ?? m.id.slice(0, 8)}
-            </option>
-          ))}
-        </select>
+          onChange={onAssigneeFilterChange}
+          options={assigneeOptions}
+          className="min-w-[160px] max-w-[220px]"
+          aria-label="Filter by assignee"
+        />
         <button
-          onClick={() => setMineOnly((v) => !v)}
+          onClick={() => onMineOnlyChange(!mineOnly)}
           className={`rounded-md border px-3 py-1.5 text-xs transition ${
             mineOnly
-              ? "border-accent/60 bg-accent-soft text-accent"
+              ? "border-ink/30 bg-ink/[0.06] font-medium text-ink"
               : "border-line bg-card text-ink-soft hover:border-line-strong"
           }`}
         >
@@ -524,9 +591,9 @@ export function TaskBoard({
         {(scopeFilter || assigneeFilter || mineOnly) && (
           <button
             onClick={() => {
-              setScopeFilter("");
-              setAssigneeFilter("");
-              setMineOnly(false);
+              onScopeFilterChange("");
+              onAssigneeFilterChange("");
+              onMineOnlyChange(false);
             }}
             className="text-xs text-ink-faint hover:text-ink"
           >
@@ -537,9 +604,10 @@ export function TaskBoard({
           {visibleTasks.length} of {localTasks.length} tasks
         </span>
       </div>
+      )}
 
       {error && (
-        <p className="mb-3 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+        <p className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
           {error}
         </p>
       )}
@@ -568,6 +636,9 @@ export function TaskBoard({
               label={col.label}
               tint={col.tint}
               dot={col.dot}
+              countBg={col.countBg}
+              dropRing={col.dropRing}
+              dropActive={col.dropActive}
               tasks={visibleTasks.filter((t) => t.status === col.status)}
               onOpen={setOpenTask}
               dropHint={dragSource !== null && dragSource !== col.status}

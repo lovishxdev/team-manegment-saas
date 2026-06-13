@@ -5,6 +5,7 @@ import {
   removeMemberAction,
   updateMemberRoleAction,
 } from "@/lib/actions/workspace";
+import { Select } from "@/components/select";
 import { Avatar } from "@/components/ui";
 
 type Role = "LEADER" | "SUB_LEADER" | "MEMBER";
@@ -88,18 +89,18 @@ export function MemberRow({
         <div className="flex shrink-0 items-center gap-2">
           {canManage && !isSelf ? (
             <>
-              <select
+              <Select
+                size="sm"
                 value={member.role}
                 disabled={pending}
-                onChange={(e) => changeRole(e.target.value as Role)}
-                className="rounded-md border border-line bg-card px-2.5 py-1 text-xs text-ink-soft outline-none focus:border-accent/60"
-              >
-                {ROLES.map((r) => (
-                  <option key={r} value={r}>
-                    {r.replace("_", " ")}
-                  </option>
-                ))}
-              </select>
+                onChange={(value) => changeRole(value as Role)}
+                options={ROLES.map((r) => ({
+                  value: r,
+                  label: r.replace("_", " "),
+                }))}
+                className="w-[128px]"
+                aria-label="Member role"
+              />
               <button
                 onClick={remove}
                 disabled={pending}

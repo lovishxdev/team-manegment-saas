@@ -3,10 +3,8 @@ import { requireUser } from "@/lib/auth";
 import { getBoardState, ServiceError } from "@/lib/services/project";
 import { getWorkspaceMembers } from "@/lib/services/workspace";
 import { AppShell } from "@/components/app-shell";
-import { InviteButton } from "@/components/invite-button";
-import { NewTaskForm } from "@/components/new-task-form";
+import { BoardPageShell } from "@/components/board-page-shell";
 import {
-  TaskBoard,
   type BoardMember,
   type BoardTask,
 } from "@/components/task-board";
@@ -65,25 +63,15 @@ export default async function WorkspacePage({
       activeWorkspaceId={workspace.id}
       activeTab="board"
     >
-      <main className="mx-auto max-w-6xl px-6 py-6">
-        <div className="mb-5 flex items-center justify-between gap-4">
-          <h1 className="font-display text-xl font-semibold tracking-tight">
-            Board
-          </h1>
-          {canInvite && <InviteButton workspaceId={workspace.id} />}
-        </div>
-
-        <div className="mb-6 max-w-2xl">
-          <NewTaskForm workspaceId={workspace.id} />
-        </div>
-
-        <TaskBoard
-          workspaceId={workspace.id}
-          tasks={tasks}
-          members={boardMembers}
-          currentUserId={user.id}
-        />
-      </main>
+      <BoardPageShell
+        workspaceId={workspace.id}
+        workspaceName={workspace.name}
+        tasks={tasks}
+        members={boardMembers}
+        headerMembers={boardMembers}
+        currentUserId={user.id}
+        canInvite={canInvite}
+      />
     </AppShell>
   );
 }

@@ -138,6 +138,33 @@ model Asset {
   @@index([taskId])
 }
 
+/// Meta wamid dedup — prevents webhook retries from re-running the same inbound message.
+model WhatsAppInboundDedup {
+  messageId String   @id
+  createdAt DateTime @default(now())
+}
+
+/// One in-flight WhatsApp handler per phone — blocks duplicate user messages while processing.
+model WhatsAppProcessingLock {
+  phone     String   @id
+  messageId String
+  startedAt DateTime @default(now())
+}
+
+/// Per-phone FIFO queue — inbound messages wait here instead of running in parallel.
+model WhatsAppInboundQueue {
+  id        String   @id @default(uuid()) @db.Uuid
+  phone     String
+  messageId String   @unique
+  kind      String
+  payload   Json
+  status    String   @default("pending")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([phone, status, createdAt])
+}
+
 /// Short-lived WhatsApp conversation history, so the bot can resolve
 /// follow-up references ("make that one high priority"). Pruned per user;
 /// only the recent window is ever sent to the model.

@@ -12,15 +12,18 @@ const initialState: AuthFormState = {};
 export default function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string; deleted?: string }>;
 }) {
-  const { next } = use(searchParams);
+  const { next, deleted } = use(searchParams);
   const [state, formAction, pending] = useActionState(signInAction, initialState);
 
   return (
     <AuthCard title="Welcome back" subtitle="Sign in to your workspace">
       <OAuthButtons next={next} />
       <Divider />
+      {deleted && (
+        <p className="mb-3 text-sm text-accent">Your account has been deleted.</p>
+      )}
       <form action={formAction} className="flex flex-col gap-3">
         {next && <input type="hidden" name="next" value={next} />}
         <input

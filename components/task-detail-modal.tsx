@@ -8,6 +8,7 @@ import {
   type TaskEdit,
 } from "@/lib/actions/workspace";
 import type { BoardMember, BoardTask } from "@/components/task-board";
+import { Select } from "@/components/select";
 import { ui, tagColor } from "@/components/ui";
 
 const STATUSES = ["TODO", "IN_PROGRESS", "DONE"] as const;
@@ -156,47 +157,30 @@ export function TaskDetailModal({
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <div>
               <label className={labelCls}>Status</label>
-              <select
+              <Select
                 value={status}
-                onChange={(e) => setStatus(e.target.value as BoardTask["status"])}
-                className={inputCls}
-              >
-                {STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {s.replace("_", " ")}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setStatus(v as BoardTask["status"])}
+                options={STATUSES.map((s) => ({
+                  value: s,
+                  label: s.replace("_", " "),
+                }))}
+              />
             </div>
             <div>
               <label className={labelCls}>Scope</label>
-              <select
+              <Select
                 value={scope}
-                onChange={(e) => setScope(e.target.value as BoardTask["scope"])}
-                className={inputCls}
-              >
-                {SCOPES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setScope(v as BoardTask["scope"])}
+                options={SCOPES.map((s) => ({ value: s, label: s }))}
+              />
             </div>
             <div>
               <label className={labelCls}>Priority</label>
-              <select
+              <Select
                 value={priority}
-                onChange={(e) =>
-                  setPriority(e.target.value as BoardTask["priority"])
-                }
-                className={inputCls}
-              >
-                {PRIORITIES.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setPriority(v as BoardTask["priority"])}
+                options={PRIORITIES.map((p) => ({ value: p, label: p }))}
+              />
             </div>
           </div>
 
@@ -212,24 +196,23 @@ export function TaskDetailModal({
             </div>
             <div>
               <label className={labelCls}>Assignee</label>
-              <select
+              <Select
                 value={assigneeId}
-                onChange={(e) => setAssigneeId(e.target.value)}
-                className={inputCls}
-              >
-                <option value="">Unassigned</option>
-                {members.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label ?? m.id.slice(0, 8)}
-                  </option>
-                ))}
-              </select>
+                onChange={setAssigneeId}
+                options={[
+                  { value: "", label: "Unassigned" },
+                  ...members.map((m) => ({
+                    value: m.id,
+                    label: m.label ?? m.id.slice(0, 8),
+                  })),
+                ]}
+              />
             </div>
           </div>
 
           <div>
             <label className={labelCls}>Tags</label>
-            <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-line bg-paper px-2.5 py-2 transition focus-within:border-accent/60 focus-within:ring-2 focus-within:ring-accent/15">
+            <div className={`flex flex-wrap items-center gap-1.5 rounded-md border border-line bg-paper px-2.5 py-2 transition ${ui.focusWithin}`}>
               {tags.map((tag) => (
                 <span
                   key={tag}
@@ -306,7 +289,7 @@ export function TaskDetailModal({
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
-                className="flex h-16 w-16 items-center justify-center rounded-md border border-dashed border-line-strong text-lg text-ink-faint transition hover:border-accent/50 hover:text-ink disabled:opacity-60"
+                className="flex h-16 w-16 items-center justify-center rounded-md border border-dashed border-line-strong text-lg text-ink-faint transition hover:border-ink/30 hover:text-ink disabled:opacity-60"
                 title="Attach image or file"
               >
                 {uploading ? "…" : "+"}

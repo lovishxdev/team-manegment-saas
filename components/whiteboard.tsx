@@ -144,7 +144,7 @@ export function Whiteboard({
         appState;
       latest.current = JSON.stringify({
         elements,
-        appState: persistableAppState,
+        appState: { ...persistableAppState, theme: "light" },
         files,
       });
 
@@ -346,7 +346,7 @@ export function Whiteboard({
       <Excalidraw
         excalidrawAPI={(value) => setApi(value)}
         initialData={initialData}
-        theme="dark"
+        theme="light"
         isCollaborating={peers > 1}
         onPointerUpdate={({ pointer, button }) => sendPointer(pointer, button)}
         onChange={(elements, appState, files) => {

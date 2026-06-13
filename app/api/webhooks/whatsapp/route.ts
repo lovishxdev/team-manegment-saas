@@ -19,10 +19,23 @@ import {
   getRecentConversation,
   recordExchange,
 } from "@/lib/services/conversation";
-import { createWorkspace } from "@/lib/services/workspace";
+import { findOrCreateWorkspaceByName } from "@/lib/services/workspace";
+import { revalidateUserWorkspaces } from "@/lib/revalidate-nav";
+import {
+  claimInboundMessage,
+  pruneInboundDedup,
+} from "@/lib/whatsapp-inbound";
+import { WhatsAppProgress } from "@/lib/whatsapp-progress";
+import {
+  enqueueInboundMessage,
+  ensureQueueProcessed,
+  recoverStuckQueue,
+  touchProcessorLock,
+} from "@/lib/whatsapp-queue";
 import {
   downloadWhatsAppMedia,
   extractInboundMessage,
+  markWhatsAppRead,
   sendWhatsAppText,
   verifyMetaSignature,
   type InboundMessage,
@@ -40,7 +53,7 @@ import {
 const HAIKU_MODEL = "claude-haiku-4-5";
 
 const DENIED_MESSAGE =
-  "Sorry, this number isn't linked to any account. Ask your team leader for an invite, then add your phone number in the dashboard settings.";
+  "This WhatsApp number isn't linked to an account. If you want to use the bot, sign in to the web app and add this number under Settings → WhatsApp. The web dashboard works without it.";
 
 function buildSystemPrompt(): string {
   const today = new Date().toISOString().slice(0, 10);
@@ -55,8 +68,9 @@ Convert the user's message into tool calls when they want to act on their board:
 
 Rules:
 - Conversation history is context only, never proof of completion. Every actionable request - even one identical to an earlier message - must be executed with fresh tool calls in THIS turn. Never claim something was created, updated, or deleted unless a tool result in this turn confirms it.
-- Compound requests need multiple tool calls: execute them one step at a time, using each result before the next call. E.g. "create a workspace and add 3 tasks" = create_workspace, then create_task three times. The tool results tell you the #N of created tasks - use those for follow-up updates ("assign task 2" = the 2nd task you just created).
-- After all actions are done, reply with one short summary of everything that happened (no markdown, plain WhatsApp text).
+- Compound requests need multiple tool calls: execute them one step at a time, using each result before the next call. E.g. "create a workspace and add 3 tasks" = create_workspace first, then create_task three times. Always pass the workspace name on every tool after create_workspace in the same request.
+- When the user says "task 1", "task 2", etc. in a batch they just asked you to create, they mean the 1st/2nd/... task you created in THIS request — use the #N shortId from each create_task tool result, NOT the literal number N.
+- After all actions are done, reply with ONE short summary of everything that happened (no markdown, plain WhatsApp text). Do not send multiple summaries. If a tool returned an error, say so — never claim success for failed steps.
 - Infer scope from context (FRONTEND, BACKEND, DESIGN) only when clear; otherwise omit it.
 - Infer priority only when stated or strongly implied (e.g. "urgent" = HIGH); otherwise omit it.
 - Resolve relative due dates ("Friday", "tomorrow", "next week") to a concrete YYYY-MM-DD date using today's date above.
@@ -226,10 +240,83 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ status: "ignored" });
   }
 
+  // Meta retries slow webhooks; skip duplicate wamids so we don't create
+  // duplicate workspaces or send multiple replies for one user message.
+  let claimed = true;
+  try {
+    claimed = await claimInboundMessage(message.messageId);
+  } catch (err) {
+    console.error("WhatsApp dedup claim failed:", err);
+  }
+  if (!claimed) {
+    return NextResponse.json({ status: "duplicate" });
+  }
+
+  let queueDepth = 1;
+  let queueMode: "queued" | "direct" = "queued";
+  try {
+    const enqueued = await enqueueInboundMessage(message);
+    queueDepth = enqueued.depth;
+    queueMode = enqueued.mode;
+  } catch (err) {
+    console.error("WhatsApp enqueue failed:", err);
+    return NextResponse.json({ status: "error" }, { status: 500 });
+  }
+
+  if (queueMode === "queued" && queueDepth > 1) {
+    await sendWhatsAppText(
+      message.from,
+      `Queued — ${queueDepth - 1} message${queueDepth - 1 === 1 ? "" : "s"} ahead of yours. I'll work through them in order.`
+    ).catch(() => {});
+  }
+
+  void markWhatsAppRead(message.messageId).catch(() => {});
+  void pruneInboundDedup().catch(() => {});
+
+  try {
+    if (queueMode === "direct") {
+      await processQueuedMessage(message, false);
+    } else {
+      if (queueDepth > 1) {
+        // Another request may be draining; recover ghost locks from aborted runs.
+        await recoverStuckQueue(message.from);
+      }
+      const result = await ensureQueueProcessed(
+        message.from,
+        processQueuedMessage
+      );
+      if (result === "delegated") {
+        console.log(
+          `[whatsapp] message ${message.messageId} queued (depth ${queueDepth}), active drain`
+        );
+      }
+    }
+  } catch (err) {
+    console.error("WhatsApp pipeline error:", err);
+    await sendWhatsAppText(
+      message.from,
+      "Something went wrong on our side. Please try again in a moment."
+    ).catch(() => {});
+  }
+
+  return NextResponse.json({ status: "ok", queueDepth, queueMode });
+}
+
+async function processQueuedMessage(message: InboundMessage, queued: boolean) {
   try {
     if (message.kind === "text") {
-      await handleMessage(message.from, message.text);
+      const progress = new WhatsAppProgress(message.from, () =>
+        touchProcessorLock(message.from)
+      );
+      await progress.started(queued);
+      await handleMessage(message.from, message.text, progress);
     } else {
+      if (queued) {
+        await sendWhatsAppText(
+          message.from,
+          "Processing your queued file upload..."
+        ).catch(() => {});
+      }
       await handleMediaMessage(message);
     }
   } catch (err) {
@@ -239,8 +326,6 @@ export async function POST(req: NextRequest) {
       "Something went wrong on our side. Please try again in a moment."
     ).catch(() => {});
   }
-
-  return NextResponse.json({ status: "ok" });
 }
 
 /** Images/documents become workspace assets in the user's active workspace. */
@@ -292,9 +377,37 @@ async function handleMediaMessage(
 }
 
 /** Compound requests ("create 5 tasks and assign two") need several rounds. */
-const MAX_TOOL_TURNS = 8;
+const MAX_TOOL_TURNS = 16;
 
-async function handleMessage(from: string, text: string) {
+type WhatsAppSession = {
+  workspaceName: string | null;
+  createdTaskShortIds: number[];
+};
+
+function buildDeterministicSummary(
+  actionResults: string[],
+  budgetExhausted: boolean
+): string {
+  if (actionResults.length === 0) {
+    return 'I can create tasks, update their status, or show your board. Try: "add a task to fix the login bug"';
+  }
+
+  const lines = actionResults.map((r, i) => `${i + 1}. ${r}`);
+  const header = budgetExhausted
+    ? "I ran out of action budget before finishing everything. Here's what actually happened:"
+    : "Done. Here's what happened:";
+  const footer = budgetExhausted
+    ? "\n\nSend any remaining steps as a new message and I'll continue."
+    : "";
+
+  return `${header}\n\n${lines.join("\n")}${footer}`;
+}
+
+async function handleMessage(
+  from: string,
+  text: string,
+  progress?: WhatsAppProgress
+) {
   const userId = await getUserIdByPhone(from);
   if (!userId) {
     await sendWhatsAppText(from, DENIED_MESSAGE);
@@ -316,6 +429,10 @@ async function handleMessage(from: string, text: string) {
   const actionResults: string[] = [];
   let reply: string | null = null;
   let budgetExhausted = true;
+  const session: WhatsAppSession = {
+    workspaceName: null,
+    createdTaskShortIds: [],
+  };
 
   for (let turn = 0; turn < MAX_TOOL_TURNS; turn++) {
     const response = await anthropic.messages.create({
@@ -331,11 +448,13 @@ async function handleMessage(from: string, text: string) {
     );
 
     if (toolUses.length === 0) {
-      const textBlock = response.content.find(
-        (block): block is Anthropic.TextBlock => block.type === "text"
-      );
-      reply = textBlock?.text.trim() || null;
       budgetExhausted = false;
+      if (actionResults.length === 0) {
+        const textBlock = response.content.find(
+          (block): block is Anthropic.TextBlock => block.type === "text"
+        );
+        reply = textBlock?.text.trim() || null;
+      }
       break;
     }
 
@@ -346,9 +465,11 @@ async function handleMessage(from: string, text: string) {
       const result = await executeAction(
         userId,
         toolUse.name,
-        toolUse.input as any
+        toolUse.input as Record<string, unknown>,
+        session
       );
       actionResults.push(result);
+      await progress?.step(result);
       results.push({
         type: "tool_result",
         tool_use_id: toolUse.id,
@@ -358,44 +479,11 @@ async function handleMessage(from: string, text: string) {
     messages.push({ role: "user", content: results });
   }
 
-  // Cap hit mid-request: do one final round WITHOUT tools so the model
-  // reports honestly what was completed and what's still pending.
-  if (budgetExhausted) {
-    messages.push({
-      role: "user",
-      content:
-        "[system] The per-message action limit was reached before you finished. " +
-        "Based on the tool results above, tell the user in plain text exactly " +
-        "which parts of their request were completed and which remain undone, " +
-        "and that they can send the remaining steps as a new message. Do not " +
-        "claim anything succeeded that has no tool result.",
-    });
-    try {
-      const wrapUp = await anthropic.messages.create({
-        model: HAIKU_MODEL,
-        max_tokens: 1024,
-        system: buildSystemPrompt(),
-        messages,
-      });
-      const textBlock = wrapUp.content.find(
-        (block): block is Anthropic.TextBlock => block.type === "text"
-      );
-      reply = textBlock?.text.trim() || null;
-    } catch (err) {
-      console.error("Wrap-up summary failed:", err);
-    }
-    if (!reply && actionResults.length) {
-      reply =
-        "I ran out of action budget for one message. Here's what I completed:\n" +
-        actionResults.join("\n") +
-        "\n\nSend the remaining steps as a new message and I'll continue.";
-    }
-  }
-
-  if (!reply) {
-    reply = actionResults.length
-      ? actionResults.join("\n")
-      : 'I can create tasks, update their status, or show your board. Try: "add a task to fix the login bug"';
+  if (actionResults.length > 0) {
+    reply = buildDeterministicSummary(actionResults, budgetExhausted);
+  } else if (!reply) {
+    reply =
+      'I can create tasks, update their status, or show your board. Try: "add a task to fix the login bug"';
   }
 
   await sendWhatsAppText(from, reply);
@@ -441,19 +529,33 @@ function taskSummary(task: {
 async function executeAction(
   userId: string,
   action: string,
-  input: { workspace?: string; [key: string]: unknown }
+  input: { workspace?: string; [key: string]: unknown },
+  session: WhatsAppSession
 ): Promise<string> {
   try {
+    const workspaceHint =
+      (typeof input.workspace === "string" && input.workspace.trim()) ||
+      session.workspaceName ||
+      undefined;
+
     // Workspace creation can't resolve a workspace context first: it's the
     // one action a user with zero workspaces must be able to run.
     if (action === "create_workspace") {
       const name = String(input.name ?? "").trim();
       if (!name) return "What should the new workspace be called?";
-      const workspace = await createWorkspace(userId, name);
-      return `Created workspace *${workspace.name}* - you're its leader and it's now your active workspace. New tasks will land here unless you name another workspace.`;
+      const { workspace, created } = await findOrCreateWorkspaceByName(
+        userId,
+        name
+      );
+      session.workspaceName = workspace.name;
+      revalidateUserWorkspaces(userId, workspace.id);
+      return created
+        ? `Created workspace "${workspace.name}" — you're its leader and it's now your active workspace. New tasks will land here unless you name another workspace.`
+        : `Workspace "${workspace.name}" already exists — using it as your active workspace for the rest of this request.`;
     }
 
-    const ctx = await resolveUserWorkspaceContext(userId, input.workspace);
+    const ctx = await resolveUserWorkspaceContext(userId, workspaceHint);
+    session.workspaceName = ctx.workspaceName;
 
     switch (action) {
       case "create_task": {
@@ -477,13 +579,26 @@ async function executeAction(
               assignee,
             })
           : task;
-        return `Done. Created task ${taskSummary(final)} in ${ctx.workspaceName}.`;
+        session.createdTaskShortIds.push(final.shortId);
+        const batchIndex = session.createdTaskShortIds.length;
+        return `Done. Created task ${taskSummary(final)} in ${ctx.workspaceName} (batch task ${batchIndex}, shortId #${final.shortId}).`;
       }
 
       case "update_task": {
+        let shortId = Number(input.shortId);
+        const ordinal = Number(input.shortId);
+        if (
+          Number.isInteger(ordinal) &&
+          ordinal >= 1 &&
+          ordinal <= session.createdTaskShortIds.length &&
+          !session.createdTaskShortIds.includes(ordinal)
+        ) {
+          shortId = session.createdTaskShortIds[ordinal - 1];
+        }
+
         const task = await updateTask({
           workspaceId: ctx.workspaceId,
-          shortId: Number(input.shortId),
+          shortId,
           userId,
           title: input.title ? String(input.title) : undefined,
           description: input.description

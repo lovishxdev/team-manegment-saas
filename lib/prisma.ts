@@ -16,7 +16,24 @@ function createClient(): PrismaClient {
   return new PrismaClient({ adapter });
 }
 
-export const prisma = globalForPrisma.prisma ?? createClient();
+function getClient(): PrismaClient {
+  // Next.js dev hot-reload re-evaluates modules but keeps globalThis.prisma
+  // from before schema changes — recreate when expected delegates are missing.
+  const cached = globalForPrisma.prisma;
+  if (
+    cached &&
+    process.env.NODE_ENV !== "production" &&
+    (!("whatsAppInboundDedup" in cached) ||
+      !("whatsAppInboundQueue" in cached))
+  ) {
+    globalForPrisma.prisma = createClient();
+  } else if (!cached) {
+    globalForPrisma.prisma = createClient();
+  }
+  return globalForPrisma.prisma!;
+}
+
+export const prisma = getClient();
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
