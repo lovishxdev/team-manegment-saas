@@ -50,8 +50,10 @@ export default function RootLayout({
       className={`${hanken.variable} ${jetbrains.variable} ${instrumentSerif.variable} ${caveat.variable}`}
     >
       <body className="min-h-screen app-shell-bg">
-        <ShellBackgroundInteraction />
-        <div className="app-root relative z-[2] min-h-screen">{children}</div>
+        <div className="app-root relative z-[2] min-h-screen">
+          {children}
+          <ShellBackgroundInteraction />
+        </div>
       </body>
     </html>
   );

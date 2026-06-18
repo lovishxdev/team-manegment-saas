@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 const LERP = 0.16;
 const OFF_SCREEN = -9999;
-const TRAIL_GAP = 9;
-const MAX_PUFFS = 40;
+const TRAIL_GAP = 8;
+const MAX_PUFFS = 48;
 
 export function ShellBackgroundInteraction() {
   const trailRef = useRef<HTMLDivElement>(null);
@@ -16,8 +17,15 @@ export function ShellBackgroundInteraction() {
   const frame = useRef<number | null>(null);
   const active = useRef(false);
   const puffVariant = useRef(0);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+
     const trail = trailRef.current;
     const splashes = splashesRef.current;
     if (!trail || !splashes) return;
@@ -95,22 +103,25 @@ export function ShellBackgroundInteraction() {
       );
     };
 
-    window.addEventListener("pointermove", onMove, { passive: true });
-    document.body.addEventListener("mouseleave", onLeave);
-    window.addEventListener("pointerdown", onDown, { passive: true });
+    document.addEventListener("pointermove", onMove, { passive: true });
+    document.documentElement.addEventListener("mouseleave", onLeave);
+    document.addEventListener("pointerdown", onDown, { passive: true });
 
     return () => {
       if (frame.current !== null) cancelAnimationFrame(frame.current);
-      window.removeEventListener("pointermove", onMove);
-      document.body.removeEventListener("mouseleave", onLeave);
-      window.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("pointermove", onMove);
+      document.documentElement.removeEventListener("mouseleave", onLeave);
+      document.removeEventListener("pointerdown", onDown);
     };
-  }, []);
+  }, [mounted]);
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <div className="shell-bg-effects" aria-hidden>
       <div ref={trailRef} className="shell-cursor-trail" />
       <div ref={splashesRef} className="shell-splashes" />
-    </div>
+    </div>,
+    document.body
   );
 }

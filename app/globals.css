@@ -145,31 +145,31 @@ body::before {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  z-index: 1;
-  overflow: hidden;
+  z-index: 45;
 }
 
 .shell-cursor-trail {
-  position: absolute;
+  position: fixed;
   inset: 0;
 }
 
 .shell-trail-puff {
   position: fixed;
-  width: 36px;
-  height: 36px;
-  margin: -18px 0 0 -18px;
+  width: 44px;
+  height: 44px;
+  margin: -22px 0 0 -22px;
   pointer-events: none;
   border-radius: 50%;
-  filter: blur(5px);
-  animation: shell-trail-fade 720ms ease-out forwards;
+  filter: blur(4px);
+  animation: shell-trail-fade 780ms ease-out forwards;
+  z-index: 45;
 }
 
 .shell-trail-puff[data-variant="0"] {
   background: radial-gradient(
     circle,
-    rgba(255, 218, 130, 0.62) 0%,
-    rgba(255, 185, 205, 0.28) 52%,
+    rgba(255, 218, 130, 0.82) 0%,
+    rgba(255, 185, 205, 0.42) 52%,
     transparent 78%
   );
 }
@@ -177,8 +177,8 @@ body::before {
 .shell-trail-puff[data-variant="1"] {
   background: radial-gradient(
     circle,
-    rgba(255, 178, 200, 0.58) 0%,
-    rgba(195, 188, 255, 0.26) 50%,
+    rgba(255, 178, 200, 0.78) 0%,
+    rgba(195, 188, 255, 0.38) 50%,
     transparent 76%
   );
 }
@@ -186,44 +186,46 @@ body::before {
 .shell-trail-puff[data-variant="2"] {
   background: radial-gradient(
     circle,
-    rgba(210, 200, 255, 0.55) 0%,
-    rgba(255, 210, 170, 0.24) 48%,
+    rgba(210, 200, 255, 0.75) 0%,
+    rgba(255, 210, 170, 0.36) 48%,
     transparent 74%
   );
 }
 
 @keyframes shell-trail-fade {
   0% {
-    opacity: 0.7;
-    transform: scale(0.55);
+    opacity: 0.92;
+    transform: scale(0.5);
   }
   100% {
     opacity: 0;
-    transform: scale(1.45);
+    transform: scale(1.55);
   }
 }
 
 .shell-splashes {
-  position: absolute;
+  position: fixed;
   inset: 0;
+  pointer-events: none;
 }
 
 .shell-splash {
   position: fixed;
-  width: 120px;
-  height: 120px;
-  margin: -60px 0 0 -60px;
+  width: 132px;
+  height: 132px;
+  margin: -66px 0 0 -66px;
   pointer-events: none;
   border-radius: 50%;
   filter: blur(2px);
+  z-index: 45;
   background: radial-gradient(
     circle,
-    rgba(255, 218, 130, 0.75) 0%,
-    rgba(255, 185, 205, 0.5) 32%,
-    rgba(195, 188, 255, 0.28) 52%,
+    rgba(255, 218, 130, 0.88) 0%,
+    rgba(255, 185, 205, 0.58) 32%,
+    rgba(195, 188, 255, 0.34) 52%,
     transparent 72%
   );
-  animation: shell-splash 0.85s ease-out forwards;
+  animation: shell-splash 0.9s ease-out forwards;
 }
 
 @keyframes shell-splash {
