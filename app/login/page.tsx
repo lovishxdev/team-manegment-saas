@@ -12,9 +12,14 @@ const initialState: AuthFormState = {};
 export default function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string; deleted?: string }>;
+  searchParams: Promise<{
+    next?: string;
+    deleted?: string;
+    error?: string;
+    error_description?: string;
+  }>;
 }) {
-  const { next, deleted } = use(searchParams);
+  const { next, deleted, error, error_description } = use(searchParams);
   const [state, formAction, pending] = useActionState(signInAction, initialState);
 
   return (
@@ -23,6 +28,20 @@ export default function LoginPage({
       <Divider />
       {deleted && (
         <p className="mb-3 text-sm text-accent">Your account has been deleted.</p>
+      )}
+      {error === "auth_callback_failed" && (
+        <p className={`mb-3 ${ui.errorText}`}>
+          Sign-in could not be completed. Please try again.
+        </p>
+      )}
+      {error && error !== "auth_callback_failed" && (
+        <p className={`mb-3 ${ui.errorText}`}>
+          {error === "server_error" &&
+          error_description?.includes("Database error saving new user")
+            ? "That email may already be linked to an existing account. Try signing in with email and password, or use a different GitHub account."
+            : (error_description?.replace(/\+/g, " ") ??
+              "Sign-in failed. Please try again.")}
+        </p>
       )}
       <form action={formAction} className="flex flex-col gap-3">
         {next && <input type="hidden" name="next" value={next} />}
@@ -53,7 +72,7 @@ export default function LoginPage({
         No account?{" "}
         <Link
           href={next ? `/signup?next=${encodeURIComponent(next)}` : "/signup"}
-          className="font-medium text-accent hover:underline"
+          className="font-medium text-ink hover:underline"
         >
           Sign up
         </Link>

@@ -110,10 +110,8 @@ export async function signUpAction(
 export async function signInWithOAuthAction(
   provider: "github" | "google",
   next?: string
-) {
+): Promise<{ url?: string; error?: string }> {
   const destination = safeNext(next);
-  // Long OAuth-consent destinations get stripped from Supabase's redirect_to
-  // round trip, so persist them in a cookie the callback can read instead.
   await storeOAuthReturn(destination);
   const supabase = await createSupabaseServer();
   const { data, error } = await supabase.auth.signInWithOAuth({
@@ -122,8 +120,10 @@ export async function signInWithOAuthAction(
       redirectTo: `${await getOrigin()}/auth/callback?next=${encodeURIComponent(destination)}`,
     },
   });
-  if (error || !data.url) redirect("/login?error=oauth_failed");
-  redirect(data.url);
+  if (error || !data.url) {
+    return { error: "Could not start OAuth sign-in. Please try again." };
+  }
+  return { url: data.url };
 }
 
 export async function signOutAction() {

@@ -16,10 +16,46 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  base text;
+  candidate text;
+  suffix int := 0;
 begin
-  insert into public."User" (id, email, "mcpToken", "createdAt")
-  values (new.id, new.email, gen_random_uuid(), now())
-  on conflict (id) do nothing;
+  base := lower(
+    regexp_replace(split_part(coalesce(new.email, ''), '@', 1), '[^a-z0-9]', '', 'g')
+  );
+  if length(base) < 3 then
+    base := 'user_' || left(replace(new.id::text, '-', ''), 8);
+  end if;
+  base := left(base, 24);
+
+  loop
+    candidate := case
+      when suffix = 0 then base
+      else left(base, greatest(3, 24 - length(suffix::text) - 1)) || '_' || suffix::text
+    end;
+    exit when not exists (
+      select 1 from public."User" where username = candidate
+    );
+    suffix := suffix + 1;
+    if suffix > 9999 then
+      candidate := 'user_' || left(replace(new.id::text, '-', ''), 12);
+      exit;
+    end if;
+  end loop;
+
+  begin
+    insert into public."User" (id, email, username, "mcpToken", "createdAt")
+    values (new.id, new.email, candidate, gen_random_uuid(), now());
+  exception
+    when unique_violation then
+      -- Email already exists on a legacy profile row. Keep the derived
+      -- username but omit the conflicting email so OAuth signup can finish.
+      insert into public."User" (id, username, "mcpToken", "createdAt")
+      values (new.id, candidate, gen_random_uuid(), now())
+      on conflict (id) do nothing;
+  end;
+
   return new;
 end;
 $$;

@@ -1,10 +1,11 @@
 "use client";
 
+import { useRef, useState } from "react";
 import { signInWithOAuthAction } from "@/lib/actions/auth";
 
 function GitHubIcon() {
   return (
-    <svg viewBox="0 0 24 24" className="h-4.5 w-4.5" fill="currentColor" aria-hidden>
+    <svg viewBox="0 0 24 24" className="h-4.5 w-4.5 shrink-0" fill="currentColor" aria-hidden>
       <path d="M12 1.27a11 11 0 0 0-3.48 21.46c.55.09.73-.24.73-.53v-1.85c-3.03.66-3.67-1.45-3.67-1.45-.5-1.29-1.21-1.63-1.21-1.63-.99-.68.07-.66.07-.66 1.1.08 1.67 1.13 1.67 1.13.97 1.66 2.54 1.18 3.16.9.1-.7.38-1.18.69-1.45-2.42-.28-4.96-1.21-4.96-5.4 0-1.19.42-2.17 1.12-2.93-.11-.28-.49-1.39.11-2.89 0 0 .92-.29 3 1.12a10.38 10.38 0 0 1 5.46 0c2.08-1.41 3-1.12 3-1.12.6 1.5.22 2.61.11 2.89.7.76 1.12 1.74 1.12 2.93 0 4.2-2.55 5.12-4.98 5.39.39.34.74 1 .74 2.02v2.99c0 .29.18.63.74.53A11 11 0 0 0 12 1.27Z" />
     </svg>
   );
@@ -12,7 +13,7 @@ function GitHubIcon() {
 
 function GoogleIcon() {
   return (
-    <svg viewBox="0 0 24 24" className="h-4.5 w-4.5" aria-hidden>
+    <svg viewBox="0 0 24 24" className="h-4.5 w-4.5 shrink-0" aria-hidden>
       <path
         fill="#4285F4"
         d="M23.49 12.27c0-.79-.07-1.54-.19-2.27H12v4.51h6.47a5.57 5.57 0 0 1-2.4 3.58v3h3.86c2.26-2.09 3.56-5.17 3.56-8.82Z"
@@ -39,18 +40,48 @@ const providers = [
 ];
 
 export function OAuthButtons({ next }: { next?: string }) {
+  const [loading, setLoading] = useState<"github" | "google" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const navigating = useRef(false);
+
+  async function start(provider: "github" | "google") {
+    if (navigating.current || loading) return;
+
+    setLoading(provider);
+    setError(null);
+
+    const result = await signInWithOAuthAction(provider, next);
+    if (result.url) {
+      navigating.current = true;
+      window.location.assign(result.url);
+      return;
+    }
+
+    setLoading(null);
+    setError(result.error ?? "Could not start OAuth sign-in.");
+  }
+
   return (
     <div className="flex flex-col gap-2">
-      {providers.map((p) => (
-        <button
-          key={p.id}
-          onClick={() => signInWithOAuthAction(p.id, next)}
-          className="flex w-full items-center justify-center gap-2.5 rounded-md border border-line-strong bg-card px-4 py-2.5 text-sm font-medium text-ink transition hover:border-ink/50 hover:bg-card-high"
-        >
-          {p.icon}
-          {p.label}
-        </button>
-      ))}
+      {providers.map((p) => {
+        const isLoading = loading === p.id;
+
+        return (
+          <button
+            key={p.id}
+            type="button"
+            aria-busy={isLoading}
+            onClick={() => start(p.id)}
+            className={`flex h-[42px] w-full items-center justify-center gap-2.5 rounded-md border border-line-strong bg-card px-4 text-sm font-medium text-ink transition hover:border-ink/50 hover:bg-card-high ${
+              isLoading ? "pointer-events-none" : ""
+            }`}
+          >
+            {p.icon}
+            <span className="whitespace-nowrap">{p.label}</span>
+          </button>
+        );
+      })}
+      {error && <p className="text-sm text-red-600">{error}</p>}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { type NextRequest, NextResponse } from "next/server";
 
 /**
  * Request-scoped Supabase client for Server Components, Server Actions and
@@ -31,4 +32,43 @@ export async function createSupabaseServer() {
       },
     }
   );
+}
+
+/**
+ * Supabase client for Route Handlers that must attach session cookies to the
+ * outgoing response (OAuth callback, etc.).
+ */
+export function createSupabaseRouteHandler(request: NextRequest) {
+  let response = NextResponse.next({ request });
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) =>
+            request.cookies.set(name, value)
+          );
+          response = NextResponse.next({ request });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
+          );
+        },
+      },
+    }
+  );
+
+  return {
+    supabase,
+    applyCookies(target: NextResponse) {
+      response.cookies.getAll().forEach((cookie) => {
+        target.cookies.set(cookie);
+      });
+      return target;
+    },
+  };
 }

@@ -4,7 +4,7 @@ import { createSupabaseServer } from "@/lib/supabase-server";
 import { prisma } from "@/lib/prisma";
 import { oauthAuthorizePath } from "@/lib/oauth-return";
 import { displayUser } from "@/lib/username";
-import { ensureUserUsername, resolveNewUsername } from "@/lib/username-server";
+import { resolveNewUsername, syncUserProfile } from "@/lib/username-server";
 import { getClient } from "@/lib/services/oauth";
 import {
   approveAuthorizationAction,
@@ -70,7 +70,11 @@ export default async function AuthorizePage({
       data: { id: authId, email, username },
     });
   } else {
-    user = await ensureUserUsername(user, metadata);
+    const email =
+      typeof claimsData?.claims?.email === "string"
+        ? claimsData.claims.email
+        : null;
+    user = await syncUserProfile(user, { email, metadata });
   }
 
   const {

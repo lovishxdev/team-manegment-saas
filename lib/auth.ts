@@ -3,8 +3,8 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { createSupabaseServer } from "@/lib/supabase-server";
 import {
-  ensureUserUsername,
   resolveNewUsername,
+  syncUserProfile,
 } from "@/lib/username-server";
 
 /**
@@ -31,12 +31,15 @@ export const requireUser = cache(async function requireUser() {
       ? (claims.user_metadata as Record<string, unknown>)
       : null;
 
+  const email = typeof claims.email === "string" ? claims.email : null;
+
   const existing = await prisma.user.findUnique({
     where: { id: claims.sub },
   });
-  if (existing) return ensureUserUsername(existing, metadata);
+  if (existing) {
+    return syncUserProfile(existing, { email, metadata });
+  }
 
-  const email = typeof claims.email === "string" ? claims.email : null;
   const username = await resolveNewUsername({
     userId: claims.sub,
     email,

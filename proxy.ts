@@ -47,7 +47,15 @@ export async function proxy(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  // Safety net: if Supabase's redirect allowlist rejects our callback URL it
+  // Browser metadata fetches must not bounce through /login — that causes
+  // visible flicker on auth pages (manifest request → login redirect loop).
+  if (
+    pathname === "/manifest.webmanifest" ||
+    pathname === "/apple-icon.png" ||
+    pathname === "/icon.svg"
+  ) {
+    return response;
+  }
   // falls back to the Site URL, landing the one-time auth code on "/". Route
   // it to the callback handler so the code is exchanged and the pending
   // OAuth consent (cookie) is honored instead of silently dropped.
@@ -94,6 +102,6 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     // Everything except api routes, static files and assets
-    "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|manifest.webmanifest|apple-icon.png|icon.svg|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

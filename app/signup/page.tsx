@@ -68,7 +68,7 @@ export default function SignupPage({
         Already have an account?{" "}
         <Link
           href={next ? `/login?next=${encodeURIComponent(next)}` : "/login"}
-          className="font-medium text-accent hover:underline"
+          className="font-medium text-ink hover:underline"
         >
           Sign in
         </Link>
