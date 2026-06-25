@@ -144,3 +144,8 @@ begin
     end if;
   end loop;
 end $$;
+
+-- Filters on non-PK columns (e.g. workspaceId) need full row images for Realtime.
+alter table public."Task" replica identity full;
+alter table public."Asset" replica identity full;
+alter table public."Workspace" replica identity full;

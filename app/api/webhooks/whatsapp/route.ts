@@ -40,6 +40,11 @@ import {
   verifyMetaSignature,
   type InboundMessage,
 } from "@/lib/whatsapp";
+import {
+  describeSignatureFailure,
+  summarizeMetaPayload,
+  waWebhookLog,
+} from "@/lib/whatsapp-webhook-log";
 
 /**
  * WhatsApp bot interface (Meta Cloud API webhook).
@@ -210,19 +215,38 @@ const TOOLS: Anthropic.Tool[] = [
 /** Meta webhook verification handshake. */
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
-  if (
-    params.get("hub.mode") === "subscribe" &&
-    params.get("hub.verify_token") === process.env.WHATSAPP_VERIFY_TOKEN
-  ) {
+  const mode = params.get("hub.mode");
+  const tokenMatch =
+    params.get("hub.verify_token") === process.env.WHATSAPP_VERIFY_TOKEN;
+
+  if (mode === "subscribe" && tokenMatch) {
+    waWebhookLog("GET verify OK — Meta handshake succeeded");
     return new Response(params.get("hub.challenge") ?? "", { status: 200 });
   }
+
+  waWebhookLog("GET verify FAILED", {
+    mode,
+    tokenMatch,
+    verifyTokenConfigured: Boolean(process.env.WHATSAPP_VERIFY_TOKEN),
+  });
   return new Response("Forbidden", { status: 403 });
 }
 
 export async function POST(req: NextRequest) {
-  const rawBody = await req.text();
+  waWebhookLog("POST received", {
+    bodyBytes: req.headers.get("content-length") ?? "unknown",
+    phoneNumberIdEnv: process.env.WHATSAPP_PHONE_NUMBER_ID ?? "(not set)",
+  });
 
-  if (!verifyMetaSignature(rawBody, req.headers.get("x-hub-signature-256"))) {
+  const rawBody = await req.text();
+  const signatureHeader = req.headers.get("x-hub-signature-256");
+  const signatureOk = verifyMetaSignature(rawBody, signatureHeader);
+
+  if (!signatureOk) {
+    waWebhookLog("POST rejected — invalid signature", {
+      reason: describeSignatureFailure(signatureHeader),
+      hasBody: rawBody.length > 0,
+    });
     return new Response("Invalid signature", { status: 401 });
   }
 
@@ -230,15 +254,43 @@ export async function POST(req: NextRequest) {
   try {
     payload = JSON.parse(rawBody);
   } catch {
+    waWebhookLog("POST rejected — JSON parse error");
     return new Response("Bad request", { status: 400 });
+  }
+
+  const payloadSummary = summarizeMetaPayload(payload);
+  waWebhookLog("POST payload", payloadSummary);
+
+  const envPhoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  if (
+    payloadSummary.phoneNumberId &&
+    envPhoneNumberId &&
+    String(payloadSummary.phoneNumberId) !== envPhoneNumberId
+  ) {
+    waWebhookLog("PHONE NUMBER ID MISMATCH — replies will fail", {
+      incomingFromMeta: payloadSummary.phoneNumberId,
+      WHATSAPP_PHONE_NUMBER_ID: envPhoneNumberId,
+      fix: `Set WHATSAPP_PHONE_NUMBER_ID=${payloadSummary.phoneNumberId} in .env and redeploy`,
+    });
   }
 
   // Meta retries non-200 responses aggressively; from here on we always ack
   // and handle errors by messaging the user instead.
   const message = extractInboundMessage(payload);
   if (!message) {
+    waWebhookLog("POST ignored — no inbound user message (status update or unsupported type)");
     return NextResponse.json({ status: "ignored" });
   }
+
+  waWebhookLog("inbound message", {
+    kind: message.kind,
+    from: message.from,
+    messageId: message.messageId,
+    preview:
+      message.kind === "text"
+        ? message.text.slice(0, 80)
+        : message.fileName,
+  });
 
   // Meta retries slow webhooks; skip duplicate wamids so we don't create
   // duplicate workspaces or send multiple replies for one user message.
@@ -249,6 +301,7 @@ export async function POST(req: NextRequest) {
     console.error("WhatsApp dedup claim failed:", err);
   }
   if (!claimed) {
+    waWebhookLog("duplicate message skipped", { messageId: message.messageId });
     return NextResponse.json({ status: "duplicate" });
   }
 
@@ -260,8 +313,13 @@ export async function POST(req: NextRequest) {
     queueMode = enqueued.mode;
   } catch (err) {
     console.error("WhatsApp enqueue failed:", err);
+    waWebhookLog("enqueue failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
     return NextResponse.json({ status: "error" }, { status: 500 });
   }
+
+  waWebhookLog("queued", { queueDepth, queueMode });
 
   if (queueMode === "queued" && queueDepth > 1) {
     await sendWhatsAppText(
@@ -299,6 +357,7 @@ export async function POST(req: NextRequest) {
     ).catch(() => {});
   }
 
+  waWebhookLog("POST ack", { queueDepth, queueMode });
   return NextResponse.json({ status: "ok", queueDepth, queueMode });
 }
 
@@ -363,6 +422,8 @@ async function handleMediaMessage(
     taskShortId,
   });
 
+  revalidateUserWorkspaces(userId, ctx.workspaceId);
+
   const reply =
     `Saved "${message.fileName}" to ${ctx.workspaceName}` +
     (taskShortId ? `, attached to task #${taskShortId}` : "'s assets") +
@@ -410,9 +471,16 @@ async function handleMessage(
 ) {
   const userId = await getUserIdByPhone(from);
   if (!userId) {
-    await sendWhatsAppText(from, DENIED_MESSAGE);
+    waWebhookLog("user not linked", {
+      from,
+      hint: "Save this exact number in Settings → WhatsApp (E.164, no +)",
+    });
+    const sent = await sendWhatsAppText(from, DENIED_MESSAGE);
+    waWebhookLog("denied reply sent", { ok: sent });
     return;
   }
+
+  waWebhookLog("user matched", { from, userId });
 
   // Recent exchanges give Haiku the context to resolve follow-ups like
   // "make that one high priority" (the prior reply names the task #N).
@@ -581,6 +649,12 @@ async function executeAction(
           : task;
         session.createdTaskShortIds.push(final.shortId);
         const batchIndex = session.createdTaskShortIds.length;
+        revalidateUserWorkspaces(userId, ctx.workspaceId);
+        waWebhookLog("task created", {
+          workspaceId: ctx.workspaceId,
+          workspaceName: ctx.workspaceName,
+          shortId: final.shortId,
+        });
         return `Done. Created task ${taskSummary(final)} in ${ctx.workspaceName} (batch task ${batchIndex}, shortId #${final.shortId}).`;
       }
 
@@ -610,6 +684,7 @@ async function executeAction(
           dueDate: parseInputDueDate(input.dueDate),
           assignee: resolveAssigneeInput(input.assignee, userId),
         });
+        revalidateUserWorkspaces(userId, ctx.workspaceId);
         return `Done. Task ${taskSummary(task)} is now ${task.status.replace("_", " ")} in ${ctx.workspaceName}.`;
       }
 
@@ -619,6 +694,7 @@ async function executeAction(
           shortId: Number(input.shortId),
           userId,
         });
+        revalidateUserWorkspaces(userId, ctx.workspaceId);
         return `Deleted task #${task.shortId} "${task.title}" from ${ctx.workspaceName}.`;
       }
 

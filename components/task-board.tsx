@@ -446,7 +446,7 @@ export function TaskBoard({
             event: "*",
             schema: "public",
             table: "Task",
-            filter: `workspaceId=eq.${workspaceId}`,
+            filter: `workspaceId=eq."${workspaceId}"`,
           },
           () => router.refresh()
         )

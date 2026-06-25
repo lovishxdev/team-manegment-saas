@@ -260,16 +260,26 @@ function TabMenuItem({
   );
 }
 
-export function SidebarNav({
-  workspaces,
-  activeWorkspaceId,
-  activeTab,
-}: {
-  workspaces: WorkspaceEntry[];
+/** Derives the active workspace id + tab from the URL so the sidebar can live
+ * in a persistent layout (no per-page props needed). */
+function useWorkspaceRoute(): {
   activeWorkspaceId?: string;
   activeTab?: WorkspaceTab;
-}) {
+} {
   const pathname = usePathname();
+  const match = pathname.match(
+    /^\/w\/([^/]+)(?:\/(members|assets|whiteboard))?/
+  );
+  if (!match) return {};
+  return {
+    activeWorkspaceId: match[1],
+    activeTab: (match[2] as WorkspaceTab) ?? "board",
+  };
+}
+
+export function SidebarNav({ workspaces }: { workspaces: WorkspaceEntry[] }) {
+  const pathname = usePathname();
+  const { activeWorkspaceId, activeTab } = useWorkspaceRoute();
   const onDashboard = pathname === "/dashboard";
   const onSettings = pathname === "/settings";
   const [workspacesOpen, setWorkspacesOpen] = useState(

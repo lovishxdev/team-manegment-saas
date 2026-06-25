@@ -10,7 +10,14 @@
     "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "vercel": "vercel",
+    "vercel:login": "vercel login",
+    "vercel:deploy": "vercel --prod",
+    "vercel:logs": "vercel logs https://team-manegment-saas.vercel.app --follow --expand",
+    "vercel:logs:whatsapp": "vercel logs --project team-manegment-saas --environment production --limit 100 --expand --query whatsapp",
+    "vercel:logs:whatsapp:live": "sh -c 'vercel logs https://team-manegment-saas.vercel.app --follow --expand 2>&1 | grep -iE \"whatsapp|webhook\"'",
+    "vercel:logs:recent": "vercel logs --project team-manegment-saas --environment production --limit 50 --expand"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.1",
@@ -37,6 +44,7 @@
     "postcss": "^8.5.15",
     "prisma": "^7.8.0",
     "tailwindcss": "^4.3.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vercel": "^54.17.0"
   }
 }

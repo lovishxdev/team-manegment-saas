@@ -2,7 +2,6 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { getBoardState, ServiceError } from "@/lib/services/project";
 import { getWorkspaceMembers } from "@/lib/services/workspace";
-import { AppShell } from "@/components/app-shell";
 import { BoardPageShell } from "@/components/board-page-shell";
 import {
   type BoardMember,
@@ -57,21 +56,14 @@ export default async function WorkspacePage({
   const canInvite = selfRole === "LEADER" || selfRole === "SUB_LEADER";
 
   return (
-    <AppShell
-      userId={user.id}
-      userLabel={user.username ?? user.email}
-      activeWorkspaceId={workspace.id}
-      activeTab="board"
-    >
-      <BoardPageShell
-        workspaceId={workspace.id}
-        workspaceName={workspace.name}
-        tasks={tasks}
-        members={boardMembers}
-        headerMembers={boardMembers}
-        currentUserId={user.id}
-        canInvite={canInvite}
-      />
-    </AppShell>
+    <BoardPageShell
+      workspaceId={workspace.id}
+      workspaceName={workspace.name}
+      tasks={tasks}
+      members={boardMembers}
+      headerMembers={boardMembers}
+      currentUserId={user.id}
+      canInvite={canInvite}
+    />
   );
 }

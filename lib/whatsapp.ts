@@ -58,7 +58,7 @@ export async function sendWhatsAppText(to: string, body: string): Promise<boolea
   const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
   if (!phoneNumberId || !accessToken) {
     console.error(
-      "Missing WHATSAPP_PHONE_NUMBER_ID or WHATSAPP_ACCESS_TOKEN environment variables"
+      "[whatsapp-webhook] send skipped — missing WHATSAPP_PHONE_NUMBER_ID or WHATSAPP_ACCESS_TOKEN"
     );
     return false;
   }
@@ -84,8 +84,14 @@ export async function sendWhatsAppText(to: string, body: string): Promise<boolea
 
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    console.error(`WhatsApp send failed (${res.status}): ${detail}`);
+    console.error(
+      `[whatsapp-webhook] send failed to=${to} phoneNumberId=${phoneNumberId} status=${res.status}: ${detail}`
+    );
     return false;
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`[whatsapp-webhook] send OK to=${to}`);
   }
 
   return true;
