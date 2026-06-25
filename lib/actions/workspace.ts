@@ -14,6 +14,7 @@ import {
   deleteAsset,
   deleteTask,
   ServiceError,
+  updateAssetTags,
   updateTask,
   uploadAsset,
 } from "@/lib/services/project";
@@ -25,6 +26,7 @@ import {
   deleteWorkspace,
   leaveWorkspace,
   removeMember,
+  renameWorkspace,
   revokeInvite,
   saveExcalidrawState,
   updateMemberRole,
@@ -137,12 +139,32 @@ export async function deleteTaskAction(
   return {};
 }
 
+export async function renameWorkspaceAction(
+  workspaceId: string,
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const user = await requireUser();
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) return { error: "Workspace name is required" };
+
+  try {
+    await renameWorkspace(workspaceId, user.id, name);
+  } catch (err) {
+    return { error: errorMessage(err) };
+  }
+  refreshUserWorkspaces(user.id, workspaceId);
+  revalidatePath(`/w/${workspaceId}/settings`);
+  return {};
+}
+
 export async function createInviteAction(
   workspaceId: string
 ): Promise<ActionState & { inviteId?: string }> {
   const user = await requireUser();
   try {
     const invite = await createInvite(workspaceId, user.id);
+    revalidatePath(`/w/${workspaceId}/settings`);
     return { inviteId: invite.id };
   } catch (err) {
     return { error: errorMessage(err) };
@@ -187,6 +209,26 @@ export async function uploadAssetAction(
   }
   revalidatePath(`/w/${workspaceId}/assets`);
   revalidatePath(`/w/${workspaceId}`);
+  return {};
+}
+
+export async function updateAssetTagsAction(
+  workspaceId: string,
+  assetId: string,
+  tags: string[]
+): Promise<ActionState> {
+  const user = await requireUser();
+  try {
+    await updateAssetTags({
+      workspaceId,
+      assetId,
+      userId: user.id,
+      tags,
+    });
+  } catch (err) {
+    return { error: errorMessage(err) };
+  }
+  revalidatePath(`/w/${workspaceId}/assets`);
   return {};
 }
 
@@ -238,7 +280,7 @@ export async function updateMemberRoleAction(
   } catch (err) {
     return { error: errorMessage(err) };
   }
-  revalidatePath(`/w/${workspaceId}/members`);
+  revalidatePath(`/w/${workspaceId}/settings`);
   return {};
 }
 
@@ -252,7 +294,7 @@ export async function removeMemberAction(
   } catch (err) {
     return { error: errorMessage(err) };
   }
-  revalidatePath(`/w/${workspaceId}/members`);
+  revalidatePath(`/w/${workspaceId}/settings`);
   return {};
 }
 
@@ -292,7 +334,7 @@ export async function revokeInviteAction(
   } catch (err) {
     return { error: errorMessage(err) };
   }
-  revalidatePath(`/w/${workspaceId}/members`);
+  revalidatePath(`/w/${workspaceId}/settings`);
   return {};
 }
 

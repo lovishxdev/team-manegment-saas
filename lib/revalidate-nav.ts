@@ -16,7 +16,7 @@ function revalidateWorkspacePaths(workspaceId?: string) {
   revalidatePath("/settings");
   if (workspaceId) {
     revalidatePath(`/w/${workspaceId}`);
-    revalidatePath(`/w/${workspaceId}/members`);
+    revalidatePath(`/w/${workspaceId}/settings`);
     revalidatePath(`/w/${workspaceId}/assets`);
     revalidatePath(`/w/${workspaceId}/whiteboard`);
   }

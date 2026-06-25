@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { getBoardState, ServiceError } from "@/lib/services/project";
 import { getWorkspaceMembers } from "@/lib/services/workspace";
+import { displayUser } from "@/lib/username";
 import { BoardPageShell } from "@/components/board-page-shell";
 import {
   type BoardMember,
@@ -44,13 +45,13 @@ export default async function WorkspacePage({
       dueDate: t.dueDate?.toISOString() ?? null,
       tags: t.tags,
       assigneeId: t.assignedTo?.id ?? null,
-      assigneeLabel: t.assignedTo?.username ?? t.assignedTo?.email ?? null,
+      assigneeLabel: t.assignedTo ? displayUser(t.assignedTo) : null,
       attachments: t.attachments,
     }));
 
   const boardMembers: BoardMember[] = members.map((m) => ({
     id: m.user.id,
-    label: m.user.username ?? m.user.email,
+    label: displayUser(m.user),
   }));
 
   const canInvite = selfRole === "LEADER" || selfRole === "SUB_LEADER";

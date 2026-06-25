@@ -101,6 +101,10 @@ export function Whiteboard({
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latest = useRef<string | null>(null);
+  const lastPersisted = useRef<string | null>(null);
+  /** Skip saves when onChange only reflects selection / viewport noise. */
+  const lastElementsKey = useRef<string | null>(null);
+  const lastFilesKey = useRef<string | null>(null);
 
   const channelRef = useRef<RealtimeChannel | null>(null);
   const broadcastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -117,6 +121,20 @@ export function Whiteboard({
 
   const hasContent =
     Array.isArray(initialState.elements) && initialState.elements.length > 0;
+
+  // Treat server-loaded state as already persisted so idle canvas stays "Saved".
+  if (lastPersisted.current === null && hasContent) {
+    lastPersisted.current = JSON.stringify({
+      elements: initialState.elements,
+      appState: {
+        ...((initialState.appState as object) ?? {}),
+        theme: "light",
+      },
+      files: initialState.files ?? null,
+    });
+    lastElementsKey.current = JSON.stringify(initialState.elements);
+    lastFilesKey.current = JSON.stringify(initialState.files ?? null);
+  }
 
   const initialData = hasContent
     ? {
@@ -142,18 +160,29 @@ export function Whiteboard({
       // Strip non-serializable / volatile fields before persisting.
       const { collaborators: _collaborators, ...persistableAppState } =
         appState;
-      latest.current = JSON.stringify({
+      const snapshot = JSON.stringify({
         elements,
         appState: { ...persistableAppState, theme: "light" },
         files,
       });
 
+      if (snapshot === lastPersisted.current) return;
+
+      latest.current = snapshot;
+
       if (saveTimer.current) clearTimeout(saveTimer.current);
       setStatus("saving");
       saveTimer.current = setTimeout(async () => {
-        if (!latest.current) return;
-        const result = await saveWhiteboardAction(workspaceId, latest.current);
-        setStatus(result.error ? "error" : "saved");
+        const pending = latest.current;
+        if (!pending || pending === lastPersisted.current) {
+          setStatus("saved");
+          return;
+        }
+        const result = await saveWhiteboardAction(workspaceId, pending);
+        if (latest.current === pending) {
+          if (!result.error) lastPersisted.current = pending;
+          setStatus(result.error ? "error" : "saved");
+        }
       }, SAVE_DEBOUNCE_MS);
     },
     [workspaceId]
@@ -329,17 +358,17 @@ export function Whiteboard({
 
   return (
     <div className="relative h-full w-full">
-      <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
+      <div className="absolute bottom-4 left-4 z-10 flex items-center gap-2">
         {peers > 1 && (
           <div className="rounded-md border border-accent/30 bg-accent-soft px-3 py-1 font-mono text-[11px] font-medium text-accent">
             {peers} online
           </div>
         )}
-        <div className="rounded-md border border-line bg-card/95 px-3 py-1 font-mono text-[11px] text-ink-soft">
-          {status === "saving" && "Saving..."}
+        <div className="pointer-events-none rounded-md border border-line bg-card/95 px-3 py-1 font-mono text-[11px] text-ink-soft shadow-sm backdrop-blur-sm">
+          {status === "saving" && "Saving…"}
           {status === "saved" && "Saved"}
           {status === "error" && (
-            <span className="text-red-400">Save failed - check connection</span>
+            <span className="text-red-400">Save failed — check connection</span>
           )}
         </div>
       </div>
@@ -353,6 +382,17 @@ export function Whiteboard({
           // Remote merges re-trigger onChange; don't save or re-broadcast them.
           if (applyingRemote.current) return;
           scheduleBroadcast();
+
+          const elementsKey = JSON.stringify(elements);
+          const filesKey = JSON.stringify(files);
+          if (
+            elementsKey === lastElementsKey.current &&
+            filesKey === lastFilesKey.current
+          ) {
+            return;
+          }
+          lastElementsKey.current = elementsKey;
+          lastFilesKey.current = filesKey;
           scheduleSave(
             elements,
             appState as unknown as Record<string, unknown>,

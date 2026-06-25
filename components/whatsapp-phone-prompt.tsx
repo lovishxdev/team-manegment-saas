@@ -81,19 +81,22 @@ export function WhatsAppPhonePrompt({
         </button>
       </div>
 
-      <form action={formAction} className="mt-4 flex flex-col gap-3 sm:flex-row">
-        <input
-          name="phone"
-          type="tel"
-          required
-          placeholder="91xxxxxxxxxx"
-          className={`min-w-0 flex-1 ${ui.input}`}
-          aria-label="WhatsApp phone number"
-        />
+      <form action={formAction} className={`mt-4 ${ui.inputRow}`}>
+        <div className={ui.inputRowField}>
+          <input
+            name="phone"
+            type="tel"
+            required
+            disabled={pending}
+            placeholder="91xxxxxxxxxx"
+            className={ui.input}
+            aria-label="WhatsApp phone number"
+          />
+        </div>
         <button
           type="submit"
           disabled={pending}
-          className={`shrink-0 ${ui.btnPrimary}`}
+          className={`${ui.btnPrimary} ${ui.btnShrink}`}
         >
           {pending ? "Saving..." : "Save number"}
         </button>

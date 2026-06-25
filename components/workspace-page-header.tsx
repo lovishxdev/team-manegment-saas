@@ -10,17 +10,16 @@ import {
 } from "@/components/workspace-header-actions";
 
 type TabItem = {
-  id: WorkspaceTab | "overview";
+  id: WorkspaceTab;
   label: string;
   path: string;
 };
 
 const TABS: TabItem[] = [
-  { id: "overview", label: "Overview", path: "" },
-  { id: "board", label: "Kanban", path: "" },
-  { id: "members", label: "Members", path: "/members" },
+  { id: "board", label: "Overview", path: "" },
   { id: "assets", label: "Assets", path: "/assets" },
   { id: "whiteboard", label: "Whiteboard", path: "/whiteboard" },
+  { id: "settings", label: "Settings", path: "/settings" },
 ];
 
 function FolderIcon() {
@@ -87,7 +86,7 @@ export function WorkspacePageHeader({
   workspaceId: string;
   workspaceName: string;
   activeTab: WorkspaceTab;
-  /** Last segment in the breadcrumb trail, e.g. "Kanban". */
+  /** Last segment in the breadcrumb trail, e.g. "Overview". */
   breadcrumbLeaf: string;
   members: HeaderMember[];
   canInvite: boolean;

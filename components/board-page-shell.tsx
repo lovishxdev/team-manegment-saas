@@ -64,7 +64,7 @@ export function BoardPageShell({
         workspaceId={workspaceId}
         workspaceName={workspaceName}
         activeTab="board"
-        breadcrumbLeaf="Kanban"
+        breadcrumbLeaf="Overview"
         members={headerMembers}
         canInvite={canInvite}
         tabBarEnd={

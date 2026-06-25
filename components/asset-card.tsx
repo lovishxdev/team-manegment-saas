@@ -2,13 +2,14 @@
 
 import { useState, useTransition } from "react";
 import { deleteAssetAction } from "@/lib/actions/workspace";
+import { AssetTagEditor } from "@/components/asset-tag-editor";
 
 export type AssetItem = {
   id: string;
   url: string;
   fileType: string;
   tags: string[];
-  uploaderEmail: string | null;
+  uploaderUsername: string;
   createdAt: string;
 };
 
@@ -66,21 +67,15 @@ export function AssetCard({
           </button>
         </div>
         <p className="mt-1 text-[10px] text-ink-faint">
-          {asset.uploaderEmail?.split("@")[0] ?? "unknown"} ·{" "}
+          @{asset.uploaderUsername} ·{" "}
           {new Date(asset.createdAt).toLocaleDateString("en-GB")}
         </p>
-        {asset.tags.length > 0 && (
-          <div className="mt-1.5 flex flex-wrap gap-1">
-            {asset.tags.map((tag) => (
-              <span
-                key={tag}
-                className="rounded-md bg-paper-deep px-1.5 py-0.5 text-[10px] text-ink-soft"
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-        )}
+        <AssetTagEditor
+          key={asset.tags.join("\0")}
+          workspaceId={workspaceId}
+          assetId={asset.id}
+          initialTags={asset.tags}
+        />
         {error && <p className="mt-1 text-xs text-red-300">{error}</p>}
       </div>
     </div>

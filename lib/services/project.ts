@@ -8,6 +8,7 @@ import {
 import { formatTaskTitle } from "@/lib/format-task-title";
 import { prisma } from "@/lib/prisma";
 import { ASSETS_BUCKET, getSupabaseAdmin } from "@/lib/supabase";
+import { displayUser } from "@/lib/username";
 
 /**
  * Core business logic shared by all three interfaces (Web, WhatsApp, MCP).
@@ -179,7 +180,7 @@ async function resolveAssignee(
   if (matches.length > 1) {
     throw new ServiceError(
       `Multiple members match "${idOrEmail}": ${matches
-        .map((m) => m.user.username ?? m.user.email)
+        .map((m) => displayUser(m.user))
         .join(", ")}. Be more specific.`,
       "AMBIGUOUS_WORKSPACE"
     );
@@ -418,7 +419,7 @@ export async function uploadAsset(input: UploadAssetInput) {
       taskId: attachTaskId,
       url: publicUrl,
       fileType,
-      tags: tags ?? [],
+      tags: normalizeAssetTags(tags ?? []),
       uploadedById,
     },
   });
@@ -503,6 +504,129 @@ export async function deleteAsset(input: {
 
   await prisma.asset.delete({ where: { id: asset.id } });
   return asset;
+}
+
+export function assetFileName(url: string): string {
+  return decodeURIComponent(
+    url.split("/").pop()?.replace(/^\d+-/, "") ?? "file"
+  );
+}
+
+export function normalizeAssetTags(tags: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of tags) {
+    const tag = raw.trim().slice(0, 24);
+    if (!tag) continue;
+    const key = tag.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(tag);
+  }
+  return out;
+}
+
+export async function updateAssetTags(input: {
+  workspaceId: string;
+  assetId: string;
+  userId: string;
+  tags: string[];
+}) {
+  const { workspaceId, assetId, userId, tags } = input;
+  await assertMembership(userId, workspaceId);
+
+  const asset = await prisma.asset.findFirst({
+    where: { id: assetId, workspaceId },
+  });
+  if (!asset) {
+    throw new ServiceError("Asset not found in this workspace", "NOT_FOUND");
+  }
+
+  const updated = await prisma.asset.update({
+    where: { id: asset.id },
+    data: { tags: normalizeAssetTags(tags) },
+  });
+  await touchLastActiveWorkspace(userId, workspaceId);
+  return updated;
+}
+
+export type AssetTagMode = "set" | "add" | "remove";
+
+/** Resolve an asset by latest upload or partial file name (for WhatsApp / bots). */
+export async function resolveAssetForTagging(input: {
+  workspaceId: string;
+  userId: string;
+  fileName?: string;
+  latest?: boolean;
+}) {
+  const { workspaceId, userId, fileName, latest } = input;
+  const assets = await listAssets(workspaceId, userId);
+  if (assets.length === 0) {
+    throw new ServiceError("No assets in this workspace yet", "NOT_FOUND");
+  }
+
+  if (latest) return assets[0];
+
+  const needle = fileName?.trim().toLowerCase();
+  if (needle) {
+    const match = assets.find((a) =>
+      assetFileName(a.url).toLowerCase().includes(needle)
+    );
+    if (!match) {
+      throw new ServiceError(
+        `No asset matching "${fileName}" in this workspace`,
+        "NOT_FOUND"
+      );
+    }
+    return match;
+  }
+
+  throw new ServiceError(
+    "Specify which asset to tag (file name or latest upload)",
+    "INVALID_INPUT"
+  );
+}
+
+export async function updateAssetTagsByRef(input: {
+  workspaceId: string;
+  userId: string;
+  tags: string[];
+  mode?: AssetTagMode;
+  fileName?: string;
+  latest?: boolean;
+}) {
+  const {
+    workspaceId,
+    userId,
+    tags,
+    mode = "add",
+    fileName,
+    latest,
+  } = input;
+  const asset = await resolveAssetForTagging({
+    workspaceId,
+    userId,
+    fileName,
+    latest,
+  });
+
+  const incoming = normalizeAssetTags(tags);
+  let next: string[];
+  if (mode === "set") {
+    next = incoming;
+  } else if (mode === "remove") {
+    const remove = new Set(incoming.map((t) => t.toLowerCase()));
+    next = asset.tags.filter((t) => !remove.has(t.toLowerCase()));
+  } else {
+    next = normalizeAssetTags([...asset.tags, ...incoming]);
+  }
+
+  return updateAssetTags({
+    workspaceId,
+    assetId: asset.id,
+    userId,
+    tags: next,
+  });
 }
 
 /** Full board snapshot: tasks grouped by status. Used by MCP + WhatsApp. */

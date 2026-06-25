@@ -24,11 +24,12 @@ export function CreateWorkspaceForm() {
   }, [state.workspaceId, router]);
 
   return (
-    <form action={formAction} className="flex items-start gap-2">
-      <div className="flex-1">
+    <form action={formAction} className={ui.inputRow}>
+      <div className={ui.inputRowField}>
         <input
           name="name"
           required
+          disabled={pending}
           placeholder="New workspace name"
           className={ui.input}
         />
@@ -36,7 +37,11 @@ export function CreateWorkspaceForm() {
           <p className="mt-1 text-xs text-red-300">{state.error}</p>
         )}
       </div>
-      <button type="submit" disabled={pending} className={ui.btnPrimary}>
+      <button
+        type="submit"
+        disabled={pending}
+        className={`${ui.btnPrimary} ${ui.btnShrink}`}
+      >
         {pending ? "Creating..." : "Create"}
       </button>
     </form>

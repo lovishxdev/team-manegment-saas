@@ -31,6 +31,20 @@ export default function SignupPage({
           className={ui.input}
         />
         <input
+          name="username"
+          type="text"
+          required
+          minLength={3}
+          maxLength={24}
+          pattern="[a-z0-9_]{3,24}"
+          placeholder="username"
+          autoComplete="username"
+          className={`${ui.input} font-mono lowercase`}
+        />
+        <p className="-mt-1 text-xs text-ink-faint">
+          3-24 characters: lowercase letters, digits, underscores.
+        </p>
+        <input
           name="password"
           type="password"
           required

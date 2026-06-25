@@ -10,6 +10,7 @@ import {
   formatWhatsAppBotNumber,
   getWhatsAppBotNumber,
 } from "@/lib/whatsapp-bot";
+import { displayUser } from "@/lib/username";
 
 export default async function AssetsPage({
   params,
@@ -48,7 +49,7 @@ export default async function AssetsPage({
     url: a.url,
     fileType: a.fileType,
     tags: a.tags,
-    uploaderEmail: a.uploadedBy.email,
+    uploaderUsername: displayUser(a.uploadedBy),
     createdAt: a.createdAt.toISOString(),
   }));
 
@@ -61,7 +62,7 @@ export default async function AssetsPage({
         breadcrumbLeaf="Assets"
         members={members.map((m) => ({
           id: m.user.id,
-          label: m.user.username ?? m.user.email,
+          label: displayUser(m.user),
         }))}
         canInvite={canInvite}
       />
@@ -69,19 +70,27 @@ export default async function AssetsPage({
       <div className="mb-8 max-w-2xl">
         <AssetUploadForm workspaceId={workspaceId} />
         <p className="mt-2 text-xs text-ink-faint">
-          Max 10 MB. You can also send images or documents to the WhatsApp bot
+          Max 10 MB. Add comma-separated tags when uploading, or edit tags on
+          each card below. On WhatsApp, send a photo or document with a caption
+          like{" "}
+          <span className="font-mono text-ink-soft">booth, banner</span> to tag
+          it — use <span className="font-mono text-ink-soft">#42</span> in the
+          caption to attach to a task. You can also message{" "}
+          <span className="font-mono text-ink-soft">
+            tag the last photo booth, marketing
+          </span>
           {whatsAppBotLabel ? (
             <>
               {" "}
-              at{" "}
+              to the bot at{" "}
               <span className="font-mono text-ink-soft">
                 {whatsAppBotLabel}
               </span>
             </>
-          ) : null}{" "}
-          and they&apos;ll land here.{" "}
+          ) : null}
+          .
           {!whatsAppBotLabel ? (
-            <span>Configure the bot number in Settings.</span>
+            <span> Configure the bot number in Settings.</span>
           ) : null}
         </p>
       </div>

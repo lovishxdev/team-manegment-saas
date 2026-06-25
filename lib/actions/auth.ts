@@ -6,7 +6,14 @@ import {
   resolvePostAuthRedirect,
   storeOAuthReturn,
 } from "@/lib/oauth-return";
+import { prisma } from "@/lib/prisma";
 import { createSupabaseServer } from "@/lib/supabase-server";
+import { ServiceError } from "@/lib/services/project";
+import {
+  normalizeUsername,
+  validateUsernameFormat,
+} from "@/lib/username";
+import { isUsernameTaken } from "@/lib/username-server";
 
 export type AuthFormState = { error?: string; message?: string };
 
@@ -32,6 +39,7 @@ function readCredentials(formData: FormData) {
   return {
     email: String(formData.get("email") ?? "").trim(),
     password: String(formData.get("password") ?? ""),
+    username: normalizeUsername(String(formData.get("username") ?? "")),
   };
 }
 
@@ -53,10 +61,23 @@ export async function signUpAction(
   _prev: AuthFormState,
   formData: FormData
 ): Promise<AuthFormState> {
-  const { email, password } = readCredentials(formData);
+  const { email, password, username } = readCredentials(formData);
   if (!email || !password) return { error: "Email and password are required" };
+  if (!username) return { error: "Username is required" };
   if (password.length < 8) {
     return { error: "Password must be at least 8 characters" };
+  }
+
+  try {
+    validateUsernameFormat(username);
+  } catch (err) {
+    return {
+      error:
+        err instanceof ServiceError ? err.message : "Invalid username",
+    };
+  }
+  if (await isUsernameTaken(username)) {
+    return { error: `Username "${username}" is already taken` };
   }
 
   const next = safeNext(formData.get("next"));
@@ -70,6 +91,14 @@ export async function signUpAction(
     },
   });
   if (error) return { error: error.message };
+
+  if (data.user) {
+    await prisma.user.upsert({
+      where: { id: data.user.id },
+      update: { username, email },
+      create: { id: data.user.id, email, username },
+    });
+  }
 
   // If email confirmations are disabled, a session exists already.
   if (data.session) redirect(await resolvePostAuthRedirect(next));

@@ -6,6 +6,7 @@ import { AppShell } from "@/components/app-shell";
 import { CreateWorkspaceForm } from "@/components/create-workspace-form";
 import { OverviewCard } from "@/components/dashboard-overview";
 import { ui } from "@/components/ui";
+import { displayUser } from "@/lib/username";
 
 export default async function DashboardPage() {
   const user = await requireUser();
@@ -40,7 +41,7 @@ export default async function DashboardPage() {
   const uniqueMembers = new Set(memberRows.map((m) => m.userId)).size;
 
   return (
-    <AppShell userId={user.id} userLabel={user.username ?? user.email}>
+    <AppShell userId={user.id} userLabel={displayUser(user)}>
       <main className="mx-auto w-full max-w-6xl">
         <div className={ui.pageTitleRow}>
           <h1 className={ui.pageTitle}>Workspace overview</h1>

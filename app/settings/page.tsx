@@ -12,13 +12,14 @@ import {
   getWhatsAppBotNumber,
   whatsAppBotDeepLink,
 } from "@/lib/whatsapp-bot";
+import { displayUser } from "@/lib/username";
 
 export default async function SettingsPage() {
   const user = await requireUser();
   const whatsAppBotNumber = getWhatsAppBotNumber();
 
   return (
-    <AppShell userId={user.id} userLabel={user.username ?? user.email}>
+    <AppShell userId={user.id} userLabel={displayUser(user)}>
       <main className="mx-auto w-full max-w-2xl">
         <div className={`${ui.pageTitleRow} mb-8`}>
           <h1 className={ui.pageTitle}>Settings</h1>
@@ -28,8 +29,17 @@ export default async function SettingsPage() {
           <h2 className="font-display text-base font-semibold">Profile</h2>
           <p className="mb-4 mt-1 text-sm text-ink-soft">
             Signed in as{" "}
-            <span className="font-mono text-xs text-ink">{user.email}</span>.
-            Pick a username your teammates will see on boards and member lists.
+            <span className="font-mono text-xs text-ink">@{user.username}</span>
+            {user.email ? (
+              <>
+                {" "}
+                (<span className="font-mono text-xs text-ink-faint">
+                  {user.email}
+                </span>
+                )
+              </>
+            ) : null}
+            . Your username is shown to teammates on boards and member lists.
           </p>
           <UsernameForm currentUsername={user.username} />
         </section>

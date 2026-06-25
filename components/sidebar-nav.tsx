@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import type { WorkspaceTab } from "@/components/app-shell-shared";
 
 type WorkspaceEntry = {
   id: string;
@@ -12,13 +11,6 @@ type WorkspaceEntry = {
   memberCount: number;
   assetCount: number;
 };
-
-const TAB_META: { id: WorkspaceTab; label: string; path: string }[] = [
-  { id: "board", label: "Overview", path: "" },
-  { id: "members", label: "Members", path: "/members" },
-  { id: "assets", label: "Assets", path: "/assets" },
-  { id: "whiteboard", label: "Whiteboard", path: "/whiteboard" },
-];
 
 function Chevron({ open }: { open: boolean }) {
   return (
@@ -34,7 +26,7 @@ function Chevron({ open }: { open: boolean }) {
   );
 }
 
-function NavIcon({ name }: { name: string }) {
+function NavIcon({ name }: { name: "dashboard" | "workspaces" | "settings" }) {
   const cls = "h-5 w-5 shrink-0";
   switch (name) {
     case "dashboard":
@@ -55,57 +47,17 @@ function NavIcon({ name }: { name: string }) {
       );
     case "settings":
       return (
-        <svg viewBox="0 0 18 18" fill="none" className={cls} stroke="currentColor" strokeWidth="1.4">
-          <circle cx="9" cy="9" r="2.2" />
-          <path d="M9 2.2v1.8M9 14v1.8M2.2 9h1.8M14 9h1.8M4.1 4.1l1.3 1.3M12.6 12.6l1.3 1.3M13.9 4.1l-1.3 1.3M5.4 12.6l-1.3 1.3" />
+        <svg viewBox="0 0 18 18" fill="none" className={cls} stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="9" cy="6.2" r="2.6" />
+          <path d="M3.8 15.2c0-2.6 2.3-4.2 5.2-4.2s5.2 1.6 5.2 4.2" />
         </svg>
       );
-    case "board":
-      return (
-        <svg viewBox="0 0 16 16" fill="none" className={cls} stroke="currentColor" strokeWidth="1.3">
-          <rect x="1.5" y="2" width="3.6" height="12" rx="1" />
-          <rect x="6.2" y="2" width="3.6" height="8" rx="1" />
-          <rect x="10.9" y="2" width="3.6" height="10" rx="1" />
-        </svg>
-      );
-    case "members":
-      return (
-        <svg viewBox="0 0 16 16" fill="none" className={cls} stroke="currentColor" strokeWidth="1.3">
-          <circle cx="5.5" cy="5" r="2.2" />
-          <path d="M1.5 13.5c0-2.2 1.8-4 4-4s4 1.8 4 4" />
-          <circle cx="11.5" cy="5.5" r="1.8" />
-          <path d="M10.5 9.8c2 .2 3.6 1.8 3.9 3.7" />
-        </svg>
-      );
-    case "assets":
-      return (
-        <svg viewBox="0 0 16 16" fill="none" className={cls} stroke="currentColor" strokeWidth="1.3">
-          <rect x="2" y="2.5" width="12" height="11" rx="1.5" />
-          <circle cx="5.5" cy="6" r="1.2" />
-          <path d="M2 11.5l3.5-3 3 2.5 3-2 2.5 2" />
-        </svg>
-      );
-    case "whiteboard":
-      return (
-        <svg viewBox="0 0 16 16" fill="none" className={cls} stroke="currentColor" strokeWidth="1.3">
-          <path d="M10.8 2.3l2.9 2.9L5.4 13.5l-3.4.5.5-3.4 8.3-8.3z" />
-          <path d="M9.3 3.8l2.9 2.9" />
-        </svg>
-      );
-    default:
-      return null;
   }
 }
 
-function Badge({ count, tone }: { count: number; tone: "orange" | "green" }) {
-  const cls =
-    tone === "orange"
-      ? "bg-orange-400 text-white"
-      : "bg-emerald-400 text-white";
+function Badge({ count }: { count: number }) {
   return (
-    <span
-      className={`inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-semibold leading-none ${cls}`}
-    >
+    <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-orange-400 px-1 text-[10px] font-semibold leading-none text-white">
       {count}
     </span>
   );
@@ -127,18 +79,8 @@ function subItemCls(active: boolean) {
   }`;
 }
 
-function tabItemCls(active: boolean) {
-  return `flex w-full min-w-0 items-center gap-2 rounded-xl px-2.5 h-9 text-[15px] leading-5 transition ${
-    active
-      ? "bg-paper font-medium text-ink shadow-sm"
-      : "text-ink-soft hover:bg-paper/50 hover:text-ink"
-  }`;
-}
-
 /** Icon column offset: px-3 (12px) + half of 20px icon = 22px */
 const TREE_X = 22;
-/** Extra indent for tab labels under an active workspace (no nested tree lines) */
-const TAB_INDENT = 14;
 const ROW_H = 42;
 const MID_Y = ROW_H / 2;
 const CURVE_Y = MID_Y + 7;
@@ -146,7 +88,6 @@ const CURVE_Y = MID_Y + 7;
 const BRANCH_END = 9;
 const LABEL_GAP = 6;
 const WS_PAD = TREE_X + BRANCH_END + LABEL_GAP;
-const TAB_PAD = WS_PAD + TAB_INDENT;
 /** Bleed into the next row so adjacent SVG segments meet without a gap */
 const TRUNK_BLEED = 1;
 
@@ -232,61 +173,21 @@ function TreeMenuItem({
   );
 }
 
-function TabMenuItem({
-  children,
-  connectors,
-  padLeft,
-}: {
-  children: React.ReactNode;
-  connectors: TreeConnectorSpec[];
-  padLeft: number;
-}) {
-  const hasTrunk = connectors.length > 0;
-
-  return (
-    <li
-      className={`relative overflow-visible ${hasTrunk ? "h-[42px]" : "py-[3px]"}`}
-    >
-      {connectors.map((c, i) => (
-        <TreeConnector key={i} {...c} />
-      ))}
-      <div
-        className={hasTrunk ? "flex h-[42px] items-center pr-2" : "pr-2"}
-        style={{ paddingLeft: padLeft }}
-      >
-        {children}
-      </div>
-    </li>
-  );
-}
-
-/** Derives the active workspace id + tab from the URL so the sidebar can live
- * in a persistent layout (no per-page props needed). */
-function useWorkspaceRoute(): {
-  activeWorkspaceId?: string;
-  activeTab?: WorkspaceTab;
-} {
+/** Active workspace id from the URL — section tabs live in the page header. */
+function useActiveWorkspaceId(): string | undefined {
   const pathname = usePathname();
-  const match = pathname.match(
-    /^\/w\/([^/]+)(?:\/(members|assets|whiteboard))?/
-  );
-  if (!match) return {};
-  return {
-    activeWorkspaceId: match[1],
-    activeTab: (match[2] as WorkspaceTab) ?? "board",
-  };
+  const match = pathname.match(/^\/w\/([^/]+)/);
+  return match?.[1];
 }
 
 export function SidebarNav({ workspaces }: { workspaces: WorkspaceEntry[] }) {
   const pathname = usePathname();
-  const { activeWorkspaceId, activeTab } = useWorkspaceRoute();
+  const activeWorkspaceId = useActiveWorkspaceId();
   const onDashboard = pathname === "/dashboard";
   const onSettings = pathname === "/settings";
   const [workspacesOpen, setWorkspacesOpen] = useState(
     Boolean(activeWorkspaceId) || onDashboard
   );
-
-  const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId);
 
   return (
     <nav className="flex flex-1 flex-col gap-1">
@@ -322,85 +223,32 @@ export function SidebarNav({ workspaces }: { workspaces: WorkspaceEntry[] }) {
                 <p className="text-sm text-ink-faint">No workspaces yet</p>
               </TreeMenuItem>
             ) : (
-              (() => {
-                type Row =
-                  | { kind: "ws"; ws: WorkspaceEntry }
-                  | { kind: "tab"; ws: WorkspaceEntry; tab: (typeof TAB_META)[number] };
+              workspaces.map((ws, wsIndex) => {
+                const hasWsBelow = wsIndex < workspaces.length - 1;
+                const isActive = ws.id === activeWorkspaceId;
 
-                const rows: Row[] = [];
-                for (const ws of workspaces) {
-                  rows.push({ kind: "ws", ws });
-                  if (ws.id === activeWorkspaceId && activeWorkspace) {
-                    for (const tab of TAB_META) {
-                      rows.push({ kind: "tab", ws, tab });
-                    }
-                  }
-                }
-
-                return rows.map((row) => {
-                  if (row.kind === "ws") {
-                    const wsIndex = workspaces.findIndex((w) => w.id === row.ws.id);
-                    const hasWsBelow = wsIndex < workspaces.length - 1;
-                    const connectors: TreeConnectorSpec[] = [
+                return (
+                  <TreeMenuItem
+                    key={ws.id}
+                    connectors={[
                       {
                         x: TREE_X,
                         kind: "branch",
                         trunkDown: hasWsBelow,
                       },
-                    ];
-
-                    return (
-                      <TreeMenuItem
-                        key={row.ws.id}
-                        connectors={connectors}
-                        padLeft={WS_PAD}
-                      >
-                        <Link
-                          href={`/w/${row.ws.id}`}
-                          className={subItemCls(false)}
-                        >
-                          <span className="truncate">{row.ws.name}</span>
-                        </Link>
-                      </TreeMenuItem>
-                    );
-                  }
-
-                  const { ws, tab } = row;
-                  const wsIndex = workspaces.findIndex((w) => w.id === ws.id);
-                  const hasWsBelow = wsIndex < workspaces.length - 1;
-                  const connectors: TreeConnectorSpec[] = hasWsBelow
-                    ? [{ x: TREE_X, kind: "trunk", trunkDown: true }]
-                    : [];
-
-                  const href = `/w/${ws.id}${tab.path}`;
-                  const isActive = tab.id === activeTab;
-                  const count =
-                    tab.id === "board"
-                      ? ws.openTasks
-                      : tab.id === "members"
-                        ? ws.memberCount
-                        : tab.id === "assets"
-                          ? ws.assetCount
-                          : 0;
-
-                  return (
-                    <TabMenuItem
-                      key={`${ws.id}-${tab.id}`}
-                      connectors={connectors}
-                      padLeft={TAB_PAD}
+                    ]}
+                    padLeft={WS_PAD}
+                  >
+                    <Link
+                      href={`/w/${ws.id}`}
+                      className={subItemCls(isActive)}
                     >
-                      <Link href={href} className={tabItemCls(isActive)}>
-                        <span className="flex-1 truncate">{tab.label}</span>
-                        {tab.id === "board" && count > 0 ? (
-                          <Badge count={count} tone="orange" />
-                        ) : tab.id === "assets" && count > 0 ? (
-                          <Badge count={count} tone="green" />
-                        ) : null}
-                      </Link>
-                    </TabMenuItem>
-                  );
-                });
-              })()
+                      <span className="flex-1 truncate">{ws.name}</span>
+                      {ws.openTasks > 0 ? <Badge count={ws.openTasks} /> : null}
+                    </Link>
+                  </TreeMenuItem>
+                );
+              })
             )}
           </TreeMenu>
         )}

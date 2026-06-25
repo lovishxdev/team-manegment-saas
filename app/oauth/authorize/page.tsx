@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { createSupabaseServer } from "@/lib/supabase-server";
 import { prisma } from "@/lib/prisma";
 import { oauthAuthorizePath } from "@/lib/oauth-return";
+import { displayUser } from "@/lib/username";
+import { ensureUserUsername, resolveNewUsername } from "@/lib/username-server";
 import { getClient } from "@/lib/services/oauth";
 import {
   approveAuthorizationAction,
@@ -46,17 +48,30 @@ export default async function AuthorizePage({
     redirect(`/login?next=${encodeURIComponent(oauthAuthorizePath(search))}`);
   }
 
-  const user =
-    (await prisma.user.findUnique({ where: { id: authId } })) ??
-    (await prisma.user.create({
-      data: {
-        id: authId,
-        email:
-          typeof claimsData?.claims?.email === "string"
-            ? claimsData.claims.email
-            : null,
-      },
-    }));
+  let user = await prisma.user.findUnique({ where: { id: authId } });
+  const metadata =
+    claimsData?.claims?.user_metadata &&
+    typeof claimsData.claims.user_metadata === "object" &&
+    !Array.isArray(claimsData.claims.user_metadata)
+      ? (claimsData.claims.user_metadata as Record<string, unknown>)
+      : null;
+
+  if (!user) {
+    const email =
+      typeof claimsData?.claims?.email === "string"
+        ? claimsData.claims.email
+        : null;
+    const username = await resolveNewUsername({
+      userId: authId,
+      email,
+      metadata,
+    });
+    user = await prisma.user.create({
+      data: { id: authId, email, username },
+    });
+  } else {
+    user = await ensureUserUsername(user, metadata);
+  }
 
   const {
     response_type: responseType,
@@ -105,7 +120,7 @@ export default async function AuthorizePage({
         <p className="mt-3 text-center text-sm text-ink-soft">
           <span className="font-medium text-ink">{client.name}</span> wants to
           access your workspaces as{" "}
-          <span className="font-medium text-ink">{user.email}</span>.
+          <span className="font-medium text-ink">@{displayUser(user)}</span>.
         </p>
 
         <ul className="mt-5 space-y-2 rounded-md border border-line bg-paper-deep p-4 text-sm text-ink-soft">

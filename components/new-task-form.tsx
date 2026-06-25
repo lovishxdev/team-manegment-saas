@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { createTaskAction, type ActionState } from "@/lib/actions/workspace";
 import { Select } from "@/components/select";
 import { ui } from "@/components/ui";
@@ -14,7 +14,10 @@ const SCOPE_OPTIONS = SCOPES.map((s) => ({
 }));
 
 export function NewTaskForm({ workspaceId }: { workspaceId: string }) {
-  const action = createTaskAction.bind(null, workspaceId);
+  const action = useMemo(
+    () => createTaskAction.bind(null, workspaceId),
+    [workspaceId]
+  );
   const [state, formAction, pending] = useActionState(action, initialState);
   const formRef = useRef<HTMLFormElement>(null);
   const [scope, setScope] = useState<string>("GENERAL");
@@ -27,11 +30,12 @@ export function NewTaskForm({ workspaceId }: { workspaceId: string }) {
   }, [pending, state]);
 
   return (
-    <form ref={formRef} action={formAction} className="flex items-start gap-2">
-      <div className="flex-1">
+    <form ref={formRef} action={formAction} className={ui.inputRow}>
+      <div className={ui.inputRowField}>
         <input
           name="title"
           required
+          disabled={pending}
           placeholder="Add a task..."
           className={ui.input}
         />
@@ -44,10 +48,14 @@ export function NewTaskForm({ workspaceId }: { workspaceId: string }) {
         value={scope}
         onChange={setScope}
         options={SCOPE_OPTIONS}
-        className="w-[132px]"
+        className="w-[132px] shrink-0"
         aria-label="Task scope"
       />
-      <button type="submit" disabled={pending} className={ui.btnPrimary}>
+      <button
+        type="submit"
+        disabled={pending}
+        className={`${ui.btnPrimary} ${ui.btnShrink}`}
+      >
         {pending ? "Adding..." : "Add"}
       </button>
     </form>

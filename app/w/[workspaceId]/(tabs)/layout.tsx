@@ -1,8 +1,9 @@
 import { requireUser } from "@/lib/auth";
 import { AppShell } from "@/components/app-shell";
+import { displayUser } from "@/lib/username";
 
 /**
- * Persistent shell for the workspace tabs (board / members / assets).
+ * Persistent shell for the workspace tabs (board / assets / settings).
  * Because the sidebar + chrome live here instead of inside each page, the
  * App Router keeps them mounted when switching tabs — only the inner page
  * re-fetches, so navigation no longer re-queries the whole sidebar.
@@ -18,7 +19,7 @@ export default async function WorkspaceTabsLayout({
   const user = await requireUser();
 
   return (
-    <AppShell userId={user.id} userLabel={user.username ?? user.email}>
+    <AppShell userId={user.id} userLabel={displayUser(user)}>
       {children}
     </AppShell>
   );

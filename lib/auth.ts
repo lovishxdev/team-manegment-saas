@@ -2,6 +2,10 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { createSupabaseServer } from "@/lib/supabase-server";
+import {
+  ensureUserUsername,
+  resolveNewUsername,
+} from "@/lib/username-server";
 
 /**
  * Returns the authenticated user's profile row, or redirects to /login.
@@ -20,15 +24,30 @@ export const requireUser = cache(async function requireUser() {
 
   if (!claims?.sub) redirect("/login");
 
+  const metadata =
+    claims.user_metadata &&
+    typeof claims.user_metadata === "object" &&
+    !Array.isArray(claims.user_metadata)
+      ? (claims.user_metadata as Record<string, unknown>)
+      : null;
+
   const existing = await prisma.user.findUnique({
     where: { id: claims.sub },
   });
-  if (existing) return existing;
+  if (existing) return ensureUserUsername(existing, metadata);
+
+  const email = typeof claims.email === "string" ? claims.email : null;
+  const username = await resolveNewUsername({
+    userId: claims.sub,
+    email,
+    metadata,
+  });
 
   return prisma.user.create({
     data: {
       id: claims.sub,
-      email: typeof claims.email === "string" ? claims.email : null,
+      email,
+      username,
     },
   });
 });

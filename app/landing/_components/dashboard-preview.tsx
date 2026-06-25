@@ -1,5 +1,14 @@
 "use client";
 
+import {
+  ArrowRight,
+  Eraser,
+  Hand,
+  MousePointer2,
+  Pencil,
+  Square,
+  Type,
+} from "lucide-react";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 
@@ -86,6 +95,7 @@ const VIEW_MS = 9000;
 
 export function DashboardPreview() {
   const [view, setView] = useState<View>("board");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     const id = window.setInterval(
@@ -97,26 +107,41 @@ export function DashboardPreview() {
 
   return (
     <div className="overflow-hidden rounded-2xl border border-line bg-shell shadow-[0_40px_120px_-40px_rgba(20,20,30,0.18)]">
-      {/* Faux window chrome */}
-      <div className="flex items-center gap-2 border-b border-line bg-paper-deep/50 px-4 py-2.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-rose-300/80" />
-        <span className="h-2.5 w-2.5 rounded-full bg-amber-300/80" />
-        <span className="h-2.5 w-2.5 rounded-full bg-emerald-300/80" />
-        <div className="mx-auto flex items-center gap-2 rounded-md bg-white/80 px-3 py-1 text-[10.5px] text-ink-soft shadow-sm">
-          <svg viewBox="0 0 14 14" fill="none" className="h-3 w-3" stroke="currentColor" strokeWidth="1.4">
+      {/* Faux window chrome — grid keeps traffic-light dots circular on narrow screens */}
+      <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1 border-b border-line bg-paper-deep/50 px-3 py-2.5 sm:grid-cols-[auto_1fr_auto] sm:gap-2 sm:px-4">
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          <span className="size-2.5 shrink-0 rounded-full bg-rose-300/80" />
+          <span className="size-2.5 shrink-0 rounded-full bg-amber-300/80" />
+          <span className="size-2.5 shrink-0 rounded-full bg-emerald-300/80" />
+        </div>
+        <div className="col-span-2 flex min-w-0 items-center gap-2 rounded-md bg-white/80 px-2.5 py-1 text-[10px] text-ink-soft shadow-sm sm:col-span-1 sm:mx-auto sm:px-3 sm:text-[10.5px]">
+          <svg viewBox="0 0 14 14" fill="none" className="h-3 w-3 shrink-0" stroke="currentColor" strokeWidth="1.4">
             <rect x="2" y="3" width="10" height="8" rx="2" />
             <path d="M5 3V2.2A1.2 1.2 0 0 1 6.2 1h1.6A1.2 1.2 0 0 1 9 2.2V3" />
           </svg>
-          <span className="font-mono">
+          <span className="truncate font-mono">
             euclis.app / w / weekend-hack-2026
             {view === "whiteboard" ? " / whiteboard" : ""}
           </span>
         </div>
-        <div className="w-12" />
+        <div className="hidden w-12 shrink-0 sm:block" aria-hidden />
       </div>
 
-      <div className="grid grid-cols-[180px_1fr] sm:grid-cols-[200px_1fr]">
-        <aside className="border-r border-line bg-shell px-3 py-4">
+      <div className="relative md:grid md:grid-cols-[200px_1fr]">
+        {sidebarOpen && (
+          <button
+            type="button"
+            aria-label="Close sidebar"
+            className="absolute inset-0 z-10 bg-ink/25 md:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+
+        <aside
+          className={`absolute inset-y-0 left-0 z-20 w-[min(11.5rem,78vw)] border-r border-line bg-shell px-3 py-4 shadow-lg transition-transform duration-200 md:static md:z-auto md:w-auto md:translate-x-0 md:shadow-none ${
+            sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+          }`}
+        >
           <div className="flex items-center gap-2 px-1 pb-4">
             <Image
               src="/euclis-logo.png"
@@ -126,6 +151,16 @@ export function DashboardPreview() {
               className="shrink-0 rounded-md shadow-sm ring-1 ring-line/80"
             />
             <span className="text-[13px] font-semibold tracking-tight">Euclis</span>
+            <button
+              type="button"
+              aria-label="Close sidebar"
+              className="ml-auto rounded-md p-1 text-ink-faint md:hidden"
+              onClick={() => setSidebarOpen(false)}
+            >
+              <svg viewBox="0 0 16 16" fill="none" className="h-4 w-4" stroke="currentColor" strokeWidth="1.5">
+                <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
+              </svg>
+            </button>
           </div>
           <nav className="flex flex-col gap-0.5 text-[11.5px]">
             <SidebarItem icon="grid" label="Dashboard" />
@@ -143,25 +178,30 @@ export function DashboardPreview() {
           </div>
         </aside>
 
-        <div className="bg-shell px-4 py-4 sm:px-5 sm:py-5">
-          <WorkspaceHeader view={view} />
+        <div className="min-w-0 bg-shell px-3 py-4 sm:px-5 sm:py-5">
+          <WorkspaceHeader
+            view={view}
+            onOpenSidebar={() => setSidebarOpen(true)}
+          />
 
-          <div className="relative min-h-[268px] sm:min-h-[288px]">
-            <div
-              className={`lp-preview-pane absolute inset-0 ${
-                view === "board" ? "" : "is-hidden"
-              }`}
-              aria-hidden={view !== "board"}
-            >
-              <BoardView />
-            </div>
-            <div
-              className={`lp-preview-pane absolute inset-0 ${
-                view === "whiteboard" ? "" : "is-hidden"
-              }`}
-              aria-hidden={view !== "whiteboard"}
-            >
-              <WhiteboardView />
+          <div className="lp-preview-stage max-h-[min(70vh,440px)] overflow-y-auto sm:max-h-none sm:overflow-visible">
+            <div className="relative sm:min-h-[288px]">
+              <div
+                className={`lp-preview-pane sm:absolute sm:inset-0 ${
+                  view === "board" ? "" : "hidden sm:block is-hidden"
+                }`}
+                aria-hidden={view !== "board"}
+              >
+                <BoardView />
+              </div>
+              <div
+                className={`lp-preview-pane sm:absolute sm:inset-0 ${
+                  view === "whiteboard" ? "" : "hidden sm:block is-hidden"
+                }`}
+                aria-hidden={view !== "whiteboard"}
+              >
+                <WhiteboardView />
+              </div>
             </div>
           </div>
         </div>
@@ -170,26 +210,44 @@ export function DashboardPreview() {
   );
 }
 
-function WorkspaceHeader({ view }: { view: View }) {
+function WorkspaceHeader({
+  view,
+  onOpenSidebar,
+}: {
+  view: View;
+  onOpenSidebar: () => void;
+}) {
   return (
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <h3 className="text-[15px] font-semibold tracking-tight text-ink sm:text-[17px]">
-          weekend-hack-2026
-        </h3>
-        <p className="mt-0.5 text-[10.5px] text-ink-soft">
-          {view === "board"
-            ? "5 open · 4 members"
-            : "4 on canvas · excalidraw"}
-        </p>
+      <div className="flex min-w-0 items-start gap-2">
+        <button
+          type="button"
+          aria-label="Open sidebar"
+          className="mt-0.5 shrink-0 rounded-md border border-line bg-paper p-1.5 text-ink-soft shadow-sm md:hidden"
+          onClick={onOpenSidebar}
+        >
+          <svg viewBox="0 0 16 16" fill="none" className="h-4 w-4" stroke="currentColor" strokeWidth="1.5">
+            <path d="M2.5 4h11M2.5 8h11M2.5 12h11" strokeLinecap="round" />
+          </svg>
+        </button>
+        <div className="min-w-0">
+          <h3 className="truncate text-[15px] font-semibold tracking-tight text-ink sm:text-[17px]">
+            weekend-hack-2026
+          </h3>
+          <p className="mt-0.5 text-[10.5px] text-ink-soft">
+            {view === "board"
+              ? "5 open · 4 members"
+              : "4 on canvas · excalidraw"}
+          </p>
+        </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 max-sm:w-full">
         <div className="flex rounded-lg bg-paper-deep p-0.5 text-[10px] font-medium">
           <ViewTab active={view === "board"} label="Board" />
           <ViewTab active={view === "whiteboard"} label="Whiteboard" />
         </div>
         <AvatarStack />
-        <button className="rounded-md border border-line bg-paper px-2 py-1 text-[10px] font-medium text-ink-soft">
+        <button className="hidden rounded-md border border-line bg-paper px-2 py-1 text-[10px] font-medium text-ink-soft min-[400px]:inline-block">
           + Invite
         </button>
       </div>
@@ -211,22 +269,24 @@ function ViewTab({ active, label }: { active: boolean; label: string }) {
 
 function BoardView() {
   return (
-    <div className="grid grid-cols-3 gap-2 sm:gap-3">
-      <KanbanColumn label="To Do" dot="bg-rose-500" tint="bg-rose-100/70">
-        {TODO.map((c) => (
-          <KCard key={c.id} card={c} />
-        ))}
-      </KanbanColumn>
-      <KanbanColumn label="In Progress" dot="bg-orange-500" tint="bg-orange-100/70">
-        {IN_PROGRESS.map((c) => (
-          <KCard key={c.id} card={c} highlight={c.id === "p2"} />
-        ))}
-      </KanbanColumn>
-      <KanbanColumn label="Done" dot="bg-violet-500" tint="bg-violet-100/70">
-        {DONE.map((c) => (
-          <KCard key={c.id} card={c} />
-        ))}
-      </KanbanColumn>
+    <div className="-mx-0.5 overflow-x-auto pb-1 sm:overflow-visible">
+      <div className="flex w-max gap-2 sm:grid sm:w-full sm:grid-cols-3 sm:gap-3">
+        <KanbanColumn label="To Do" dot="bg-rose-500" tint="bg-rose-100/70" className="w-[9.5rem] shrink-0 sm:w-auto">
+          {TODO.map((c) => (
+            <KCard key={c.id} card={c} />
+          ))}
+        </KanbanColumn>
+        <KanbanColumn label="In Progress" dot="bg-orange-500" tint="bg-orange-100/70" className="w-[9.5rem] shrink-0 sm:w-auto">
+          {IN_PROGRESS.map((c) => (
+            <KCard key={c.id} card={c} highlight={c.id === "p2"} />
+          ))}
+        </KanbanColumn>
+        <KanbanColumn label="Done" dot="bg-violet-500" tint="bg-violet-100/70" className="w-[9.5rem] shrink-0 sm:w-auto">
+          {DONE.map((c) => (
+            <KCard key={c.id} card={c} />
+          ))}
+        </KanbanColumn>
+      </div>
     </div>
   );
 }
@@ -235,13 +295,15 @@ function WhiteboardView() {
   return (
     <div className="flex h-full min-h-[268px] overflow-hidden rounded-xl border border-line bg-white shadow-sm sm:min-h-[288px]">
       {/* Excalidraw-style tool rail */}
-      <div className="flex w-9 shrink-0 flex-col items-center gap-1.5 border-r border-line bg-paper py-2">
-        <ToolBtn active />
-        <ToolBtn />
-        <ToolBtn />
-        <ToolBtn />
-        <div className="mt-auto">
-          <ToolBtn />
+      <div className="flex w-9 shrink-0 flex-col items-center gap-1 border-r border-line bg-paper py-2">
+        <ToolBtn icon="hand" />
+        <ToolBtn icon="select" />
+        <ToolBtn icon="pen" active />
+        <ToolBtn icon="rectangle" />
+        <ToolBtn icon="arrow" />
+        <div className="mt-auto flex flex-col items-center gap-1">
+          <ToolBtn icon="text" />
+          <ToolBtn icon="eraser" />
         </div>
       </div>
 
@@ -370,14 +432,31 @@ function WhiteboardView() {
   );
 }
 
-function ToolBtn({ active = false }: { active?: boolean }) {
+const WB_TOOL_ICONS = {
+  hand: Hand,
+  select: MousePointer2,
+  pen: Pencil,
+  rectangle: Square,
+  arrow: ArrowRight,
+  text: Type,
+  eraser: Eraser,
+} as const;
+
+function ToolBtn({
+  icon,
+  active = false,
+}: {
+  icon: keyof typeof WB_TOOL_ICONS;
+  active?: boolean;
+}) {
+  const Icon = WB_TOOL_ICONS[icon];
   return (
     <div
       className={`grid h-6 w-6 place-items-center rounded-md ${
-        active ? "bg-orange-50 ring-1 ring-orange-200" : "hover:bg-paper-deep"
+        active ? "bg-violet-100 ring-1 ring-violet-200" : "hover:bg-paper-deep"
       }`}
     >
-      <div className="h-2.5 w-2.5 rounded-sm border border-ink/50" />
+      <Icon className="h-3.5 w-3.5 text-ink" strokeWidth={1.75} aria-hidden />
     </div>
   );
 }
@@ -515,15 +594,17 @@ function KanbanColumn({
   label,
   dot,
   tint,
+  className = "",
   children,
 }: {
   label: string;
   dot: string;
   tint: string;
+  className?: string;
   children: React.ReactNode;
 }) {
   return (
-    <section className={`rounded-xl p-2 sm:p-2.5 ${tint}`}>
+    <section className={`rounded-xl p-2 sm:p-2.5 ${tint} ${className}`}>
       <header className="mb-2 flex items-center gap-1.5 px-1">
         <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
         <h4 className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.12em] text-ink">
@@ -542,14 +623,14 @@ function KCard({ card, highlight = false }: { card: Card; highlight?: boolean })
         highlight ? "ring-1 ring-orange-400/40" : ""
       }`}
     >
-      <div className="flex items-center gap-1">
+      <div className="flex min-w-0 items-start gap-1">
         <span
-          className={`rounded px-1.5 py-0.5 font-mono text-[8.5px] font-semibold uppercase tracking-wide ${card.chipCls}`}
+          className={`max-w-[58%] truncate rounded px-1.5 py-0.5 font-mono text-[8.5px] font-semibold uppercase tracking-wide ${card.chipCls}`}
         >
           {card.chip}
         </span>
         <span
-          className={`ml-auto rounded px-1.5 py-0.5 font-mono text-[8.5px] font-semibold uppercase tracking-wide ${card.priorityCls}`}
+          className={`ml-auto shrink-0 rounded px-1.5 py-0.5 font-mono text-[8px] font-semibold uppercase tracking-wide ${card.priorityCls}`}
         >
           {card.priority}
         </span>
@@ -557,21 +638,22 @@ function KCard({ card, highlight = false }: { card: Card; highlight?: boolean })
       <p className="mt-1.5 line-clamp-2 text-[11px] font-medium leading-snug text-ink">
         {card.title}
       </p>
-      <div className="mt-1.5 flex items-center justify-between">
+      <div className="mt-1.5 flex items-start justify-between gap-1.5">
         <span
-          className={`grid h-4 w-4 place-items-center rounded-full text-[8.5px] font-semibold ${card.assignee.cls}`}
+          className={`grid h-4 w-4 shrink-0 place-items-center rounded-full text-[8.5px] font-semibold ${card.assignee.cls}`}
         >
           {card.assignee.initial}
         </span>
-        <span className="flex items-center gap-1.5 font-mono text-[9px] text-ink-faint">
+        <span className="min-w-0 flex-1 text-right font-mono text-[8px] leading-tight text-ink-faint">
           {card.attachments && (
-            <span className="inline-flex items-center gap-0.5">
-              <svg viewBox="0 0 12 12" fill="none" className="h-2.5 w-2.5" stroke="currentColor" strokeWidth="1.2">
+            <span className="inline-flex items-center justify-end gap-0.5">
+              <svg viewBox="0 0 12 12" fill="none" className="h-2.5 w-2.5 shrink-0" stroke="currentColor" strokeWidth="1.2">
                 <path d="M8 3.5 4.3 7.2a1.2 1.2 0 0 0 1.7 1.7L9.7 5.2a2.4 2.4 0 1 0-3.4-3.4L2.5 5.6a3.6 3.6 0 0 0 5.1 5.1l2.6-2.6" />
               </svg>
               {card.attachments}
             </span>
           )}
+          {card.attachments && card.due && <span className="mx-0.5">·</span>}
           {card.due && <span>{card.due}</span>}
         </span>
       </div>

@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { ServiceError } from "@/lib/services/project";
 import { getExcalidrawState } from "@/lib/services/workspace";
 import { Whiteboard } from "@/components/whiteboard";
+import { displayUser } from "@/lib/username";
 
 export default async function WhiteboardPage({
   params,
@@ -43,7 +44,7 @@ export default async function WhiteboardPage({
         <Whiteboard
           workspaceId={workspaceId}
           initialState={initialState}
-          userLabel={user.username ?? user.email ?? "Anonymous"}
+          userLabel={displayUser(user)}
         />
       </div>
     </div>

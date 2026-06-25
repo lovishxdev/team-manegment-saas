@@ -20,9 +20,10 @@ export async function updateUsernameAction(
 ): Promise<SettingsState> {
   const user = await requireUser();
   const raw = String(formData.get("username") ?? "").trim();
+  if (!raw) return { error: "Username is required" };
 
   try {
-    await updateUsername(user.id, raw === "" ? null : raw);
+    await updateUsername(user.id, raw);
   } catch (err) {
     return {
       error:
@@ -30,7 +31,7 @@ export async function updateUsernameAction(
     };
   }
   revalidatePath("/settings");
-  return { message: raw === "" ? "Username removed" : "Username saved" };
+  return { message: "Username saved" };
 }
 
 export async function updatePhoneAction(

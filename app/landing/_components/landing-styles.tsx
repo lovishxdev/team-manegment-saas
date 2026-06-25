@@ -302,6 +302,7 @@ export function LandingStyles() {
       .lp-preview-pane.is-hidden {
         opacity: 0;
         pointer-events: none;
+        visibility: hidden;
       }
       .lp-wb-grid {
         background-color: #ffffff;

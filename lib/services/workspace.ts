@@ -4,6 +4,11 @@ import { invalidateMcpToken, invalidatePhone } from "@/lib/identity-cache";
 import { prisma } from "@/lib/prisma";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getActorMembership, ServiceError } from "@/lib/services/project";
+import {
+  normalizeUsername,
+  validateUsernameFormat,
+} from "@/lib/username";
+import { isUsernameTaken } from "@/lib/username-server";
 
 export async function createWorkspace(userId: string, name: string) {
   const workspace = await prisma.workspace.create({
@@ -267,6 +272,38 @@ export async function deleteWorkspace(workspaceId: string, userId: string) {
   await prisma.workspace.delete({ where: { id: workspaceId } });
 }
 
+/** LEADER only. Renames the workspace; blocks duplicate names among the actor's workspaces. */
+export async function renameWorkspace(
+  workspaceId: string,
+  userId: string,
+  name: string
+) {
+  await requireLeader(workspaceId, userId);
+  const trimmed = name.trim();
+  if (!trimmed) {
+    throw new ServiceError("Workspace name cannot be empty", "INVALID_INPUT");
+  }
+
+  const duplicate = await prisma.workspaceMembership.findFirst({
+    where: {
+      userId,
+      workspaceId: { not: workspaceId },
+      workspace: { name: { equals: trimmed, mode: "insensitive" } },
+    },
+  });
+  if (duplicate) {
+    throw new ServiceError(
+      "You already have a workspace with that name",
+      "INVALID_INPUT"
+    );
+  }
+
+  return prisma.workspace.update({
+    where: { id: workspaceId },
+    data: { name: trimmed },
+  });
+}
+
 /** Active + spent invites for the management UI. LEADER/SUB_LEADER. */
 export async function listInvites(workspaceId: string, userId: string) {
   const membership = await getActorMembership(userId, workspaceId);
@@ -352,14 +389,13 @@ export async function regenerateMcpToken(userId: string) {
 /** Meta sends phone numbers as E.164 without the plus sign. */
 const PHONE_REGEX = /^[1-9]\d{7,14}$/;
 
-const USERNAME_REGEX = /^[a-z0-9_]{3,24}$/;
-
-/** Sets (or clears) the user's unique handle. Input is lowercased. */
-export async function updateUsername(userId: string, username: string | null) {
-  const normalized = username?.trim().toLowerCase() ?? null;
-  if (normalized !== null && !USERNAME_REGEX.test(normalized)) {
+/** Sets the user's unique handle. Input is lowercased. */
+export async function updateUsername(userId: string, username: string) {
+  const normalized = normalizeUsername(username);
+  validateUsernameFormat(normalized);
+  if (await isUsernameTaken(normalized, userId)) {
     throw new ServiceError(
-      "Username must be 3-24 characters: lowercase letters, digits, underscores",
+      `Username "${normalized}" is already taken`,
       "INVALID_INPUT"
     );
   }

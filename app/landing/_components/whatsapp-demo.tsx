@@ -297,29 +297,31 @@ export function WhatsAppDemo() {
             </span>
           </div>
 
-          <div className="grid grid-cols-3 items-stretch gap-2.5">
-            <Column label="To Do" dot="bg-rose-500" tint="bg-rose-50/70">
+          <div className="-mx-1 overflow-x-auto pb-1 lg:mx-0 lg:overflow-visible">
+            <div className="flex w-max gap-2 lg:grid lg:w-full lg:grid-cols-3 lg:gap-2.5">
+            <Column label="To Do" dot="bg-rose-500" tint="bg-rose-50/70" className="w-[9.25rem] shrink-0 lg:w-auto">
               <Skeleton />
               <TaskSlot show={sceneIdx === 1 && taskVisible}>
                 <TaskMini task={scene.task} />
               </TaskSlot>
             </Column>
-            <Column label="In Progress" dot="bg-orange-500" tint="bg-orange-50/70">
+            <Column label="In Progress" dot="bg-orange-500" tint="bg-orange-50/70" className="w-[9.25rem] shrink-0 lg:w-auto">
               <Skeleton dim />
               <TaskSlot show={sceneIdx === 0 && taskVisible}>
                 <TaskMini task={scene.task} />
               </TaskSlot>
             </Column>
-            <Column label="Done" dot="bg-violet-500" tint="bg-violet-50/70">
+            <Column label="Done" dot="bg-violet-500" tint="bg-violet-50/70" className="w-[9.25rem] shrink-0 lg:w-auto">
               <Skeleton />
               <TaskSlot show={sceneIdx === 2 && taskVisible}>
                 <TaskMini task={scene.task} />
               </TaskSlot>
             </Column>
+            </div>
           </div>
 
-          <div className="mt-4 flex min-h-[2.75rem] items-center justify-between rounded-lg border border-dashed border-line-strong/60 bg-card-high/60 px-3 py-2 text-[11.5px] text-ink-soft">
-            <span>
+          <div className="mt-4 flex flex-col gap-2 rounded-lg border border-dashed border-line-strong/60 bg-card-high/60 px-3 py-2.5 text-[11px] leading-snug text-ink-soft sm:flex-row sm:items-center sm:justify-between sm:py-2 sm:text-[11.5px]">
+            <span className="min-w-0">
               {phase === "typing" || phase === "sent"
                 ? "Listening for your next message…"
                 : phase === "replying"
@@ -404,18 +406,20 @@ function Column({
   label,
   dot,
   tint,
+  className = "",
   children,
 }: {
   label: string;
   dot: string;
   tint: string;
+  className?: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className={`flex h-full flex-col rounded-lg p-2 ${tint}`}>
-      <div className="mb-2 flex items-center gap-1.5 px-1">
-        <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
-        <span className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.12em] text-ink">
+    <div className={`flex h-full min-w-0 flex-col rounded-lg p-2 ${tint} ${className}`}>
+      <div className="mb-2 flex min-w-0 items-center gap-1.5 px-1">
+        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} />
+        <span className="truncate font-mono text-[9.5px] font-semibold uppercase tracking-[0.12em] text-ink">
           {label}
         </span>
       </div>
@@ -459,14 +463,14 @@ function Skeleton({ dim = false }: { dim?: boolean }) {
 function TaskMini({ task }: { task: Scene["task"] }) {
   return (
     <div className="lp-card-pop rounded-md border border-line bg-card p-2 shadow-sm">
-      <div className="flex items-center gap-1">
+      <div className="flex min-w-0 items-start gap-1">
         <span
-          className={`rounded px-1.5 py-0.5 font-mono text-[8.5px] font-semibold uppercase tracking-wide ${task.chipCls}`}
+          className={`max-w-[58%] truncate rounded px-1.5 py-0.5 font-mono text-[8.5px] font-semibold uppercase tracking-wide ${task.chipCls}`}
         >
           {task.chip}
         </span>
         <span
-          className={`ml-auto rounded px-1.5 py-0.5 font-mono text-[8.5px] font-semibold uppercase tracking-wide ${task.priorityCls}`}
+          className={`ml-auto shrink-0 rounded px-1.5 py-0.5 font-mono text-[8px] font-semibold uppercase tracking-wide ${task.priorityCls}`}
         >
           {task.priorityLabel}
         </span>
@@ -474,13 +478,15 @@ function TaskMini({ task }: { task: Scene["task"] }) {
       <p className="mt-1.5 line-clamp-2 text-[11px] font-medium leading-snug text-ink">
         {task.title}
       </p>
-      <div className="mt-1.5 flex items-center justify-between">
+      <div className="mt-1.5 flex items-start justify-between gap-1.5">
         <span
-          className={`grid h-4 w-4 place-items-center rounded-full text-[8.5px] font-semibold ${task.assignee.cls}`}
+          className={`grid h-4 w-4 shrink-0 place-items-center rounded-full text-[8.5px] font-semibold ${task.assignee.cls}`}
         >
           {task.assignee.initial}
         </span>
-        <span className="font-mono text-[9px] text-ink-faint">{task.meta}</span>
+        <span className="min-w-0 flex-1 text-right font-mono text-[8px] leading-tight text-ink-faint">
+          {task.meta}
+        </span>
       </div>
     </div>
   );

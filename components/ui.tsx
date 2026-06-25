@@ -13,6 +13,10 @@ export const ui = {
     "rounded-lg border border-line bg-paper px-3 py-2.5 text-sm text-ink-soft outline-none transition focus:border-ink/30 focus:ring-1 focus:ring-ink/10",
   label:
     "mb-1.5 block text-xs font-medium text-ink-soft",
+  /** Input + button row — wrap the field in `inputRowField` so `w-full` inputs don't overlap the button. */
+  inputRow: "flex items-start gap-2",
+  inputRowField: "min-w-0 flex-1",
+  btnShrink: "shrink-0 min-w-[7.25rem]",
   btnPrimary:
     "rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white transition hover:bg-ink/90 disabled:opacity-50",
   btnSecondary:

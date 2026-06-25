@@ -1,6 +1,10 @@
 /** Shared layout tokens/types safe for client + server (no Prisma imports). */
 
-export type WorkspaceTab = "board" | "members" | "assets" | "whiteboard";
+export type WorkspaceTab =
+  | "board"
+  | "assets"
+  | "whiteboard"
+  | "settings";
 
 /** Top padding shared by sidebar brand and main content so rows align. */
 export const SHELL_TOP = "pt-10";

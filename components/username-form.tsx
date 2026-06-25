@@ -12,7 +12,7 @@ const initialState: SettingsState = {};
 export function UsernameForm({
   currentUsername,
 }: {
-  currentUsername: string | null;
+  currentUsername: string;
 }) {
   const [state, formAction, pending] = useActionState(
     updateUsernameAction,
@@ -21,28 +21,36 @@ export function UsernameForm({
 
   return (
     <form action={formAction} className="flex flex-col gap-3">
-      <input
-        name="username"
-        type="text"
-        defaultValue={currentUsername ?? ""}
-        placeholder="your_handle"
-        maxLength={24}
-        autoComplete="off"
-        className={`${ui.input} font-mono lowercase`}
-      />
+      <div className={ui.inputRow}>
+        <div className={ui.inputRowField}>
+          <input
+            name="username"
+            type="text"
+            required
+            disabled={pending}
+            defaultValue={currentUsername}
+            placeholder="your_handle"
+            minLength={3}
+            maxLength={24}
+            pattern="[a-z0-9_]{3,24}"
+            autoComplete="username"
+            className={`${ui.input} font-mono lowercase`}
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={pending}
+          className={`${ui.btnPrimary} ${ui.btnShrink}`}
+        >
+          {pending ? "Saving..." : "Save"}
+        </button>
+      </div>
       <p className="text-xs text-ink-faint">
         3-24 characters: lowercase letters, digits, underscores. Shown to your
-        teammates instead of your email. Leave empty to remove.
+        teammates on boards and member lists.
       </p>
       {state.error && <p className={ui.errorText}>{state.error}</p>}
       {state.message && <p className="text-sm text-accent">{state.message}</p>}
-      <button
-        type="submit"
-        disabled={pending}
-        className={`self-start ${ui.btnPrimary}`}
-      >
-        {pending ? "Saving..." : "Save"}
-      </button>
     </form>
   );
 }

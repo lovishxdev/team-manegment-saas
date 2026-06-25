@@ -180,9 +180,16 @@ function TaskCard({
         )}
         <span
           title="Add tag"
-          className="inline-flex h-[22px] w-[22px] items-center justify-center rounded bg-paper-deep text-[13px] leading-none text-ink-faint transition hover:bg-line hover:text-ink"
+          className="inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded bg-paper-deep text-ink-faint transition hover:bg-line hover:text-ink"
         >
-          +
+          <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none" aria-hidden>
+            <path
+              d="M6 2.5v7M2.5 6h7"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
+          </svg>
         </span>
         <span className="ml-auto font-mono text-[10px] font-medium text-ink-faint/70">
           #{task.shortId}

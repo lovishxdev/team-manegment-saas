@@ -12,6 +12,7 @@ import {
   updateTask,
 } from "@/lib/services/project";
 import { createWorkspace } from "@/lib/services/workspace";
+import { displayUser } from "@/lib/username";
 
 /**
  * Claude App Remote MCP connector (Streamable HTTP transport).
@@ -142,7 +143,7 @@ const handler = createMcpHandler(
                 ? `, due ${final.dueDate.toISOString().slice(0, 10)}`
                 : "") +
               (final.assignedTo
-                ? `, assigned to ${final.assignedTo.username ?? final.assignedTo.email}`
+                ? `, assigned to ${displayUser(final.assignedTo)}`
                 : "") +
               `) in workspace "${ctx.workspaceName}".`
           );
@@ -211,7 +212,7 @@ const handler = createMcpHandler(
                 ? `, due ${task.dueDate.toISOString().slice(0, 10)}`
                 : "") +
               (task.assignedTo
-                ? `, assigned to ${task.assignedTo.username ?? task.assignedTo.email}`
+                ? `, assigned to ${displayUser(task.assignedTo)}`
                 : ", unassigned") +
               ` (workspace "${ctx.workspaceName}").`
           );
@@ -267,7 +268,7 @@ const handler = createMcpHandler(
                   (a) =>
                     `- ${a.url}\n  type: ${a.fileType}` +
                     (a.tags.length ? `, tags: ${a.tags.join(", ")}` : "") +
-                    (a.uploadedBy.email ? `, by ${a.uploadedBy.email}` : "")
+                    (a.uploadedBy ? `, by @${displayUser(a.uploadedBy)}` : "")
                 )
                 .join("\n")
           );
@@ -304,7 +305,7 @@ const handler = createMcpHandler(
                         ? ` due ${t.dueDate.toISOString().slice(0, 10)}`
                         : "") +
                       (t.assignedTo
-                        ? ` -> ${t.assignedTo.username ?? t.assignedTo.email}`
+                        ? ` -> @${displayUser(t.assignedTo)}`
                         : "")
                   )
                   .join("\n")

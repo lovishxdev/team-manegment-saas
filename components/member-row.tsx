@@ -7,6 +7,7 @@ import {
 } from "@/lib/actions/workspace";
 import { Select } from "@/components/select";
 import { Avatar } from "@/components/ui";
+import { displayUser } from "@/lib/username";
 
 type Role = "LEADER" | "SUB_LEADER" | "MEMBER";
 
@@ -50,8 +51,7 @@ export function MemberRow({
     });
   }
 
-  const displayName =
-    member.username ?? member.email ?? member.userId.slice(0, 8);
+  const displayName = displayUser(member);
 
   function remove() {
     if (!window.confirm(`Remove ${displayName} from the workspace?`)) return;
@@ -81,7 +81,7 @@ export function MemberRow({
               )}
             </p>
             <p className="truncate font-mono text-[11px] text-ink-faint">
-              {member.username && member.email ? `${member.email} · ` : ""}
+              {member.email ? `${member.email} · ` : ""}
               Joined {new Date(member.joinedAt).toLocaleDateString("en-GB")}
             </p>
           </div>

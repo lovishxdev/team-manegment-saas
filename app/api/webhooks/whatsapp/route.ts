@@ -7,20 +7,24 @@ import {
 } from "@/lib/generated/prisma/client";
 import { getUserIdByPhone } from "@/lib/identity-cache";
 import {
+  assetFileName,
   createTask,
   deleteTask,
   getBoardState,
   resolveUserWorkspaceContext,
   ServiceError,
+  updateAssetTagsByRef,
   updateTask,
   uploadAsset,
 } from "@/lib/services/project";
+import { parseAssetTagCommand } from "@/lib/whatsapp-asset-tags";
 import {
   getRecentConversation,
   recordExchange,
 } from "@/lib/services/conversation";
 import { findOrCreateWorkspaceByName } from "@/lib/services/workspace";
 import { revalidateUserWorkspaces } from "@/lib/revalidate-nav";
+import { displayUser } from "@/lib/username";
 import {
   claimInboundMessage,
   pruneInboundDedup,
@@ -70,8 +74,11 @@ Convert the user's message into tool calls when they want to act on their board:
 - delete_task: when they explicitly want to remove/delete a task (only when clearly intended)
 - get_board_state: when they ask what's on the board, task lists, or progress
 - create_workspace: when they want to create/start a new workspace, project, or board (e.g. "create a workspace called Marketing")
+- update_asset_tags: when they want to tag an already-uploaded file/photo (e.g. "tag the last photo booth, marketing" or "remove tag draft from banner.png"). ALWAYS call this tool for tagging requests — never say you cannot tag files.
 
 Rules:
+- Images/documents sent directly in WhatsApp (not via this text tool) are saved as assets automatically. Caption text becomes comma-separated tags; #N in the caption attaches the file to task #N. Tell users they can tag on upload by adding a caption like "booth, banner" or "#42 booth".
+- You CAN tag and label uploaded files via update_asset_tags. Never claim you lack that capability.
 - Conversation history is context only, never proof of completion. Every actionable request - even one identical to an earlier message - must be executed with fresh tool calls in THIS turn. Never claim something was created, updated, or deleted unless a tool result in this turn confirms it.
 - Compound requests need multiple tool calls: execute them one step at a time, using each result before the next call. E.g. "create a workspace and add 3 tasks" = create_workspace first, then create_task three times. Always pass the workspace name on every tool after create_workspace in the same request.
 - When the user says "task 1", "task 2", etc. in a batch they just asked you to create, they mean the 1st/2nd/... task you created in THIS request — use the #N shortId from each create_task tool result, NOT the literal number N.
@@ -208,6 +215,42 @@ const TOOLS: Anthropic.Tool[] = [
         name: { type: "string", description: "Name for the new workspace" },
       },
       required: ["name"],
+    },
+  },
+  {
+    name: "update_asset_tags",
+    description:
+      "Add, remove, or replace tags on an uploaded file, photo, or document in the workspace. REQUIRED for any request to tag, label, or categorize an existing upload. Use latest=true for 'last photo' / 'that file'. New uploads with captions are tagged automatically on upload — use this for follow-up tagging via text.",
+    input_schema: {
+      type: "object",
+      properties: {
+        tags: {
+          type: "array",
+          items: { type: "string" },
+          description: "Tag labels to add, remove, or set",
+        },
+        mode: {
+          type: "string",
+          enum: ["add", "remove", "set"],
+          description:
+            "Whether to add to existing tags, remove matching tags, or replace all tags. Default add.",
+        },
+        latest: {
+          type: "boolean",
+          description:
+            "Target the most recently uploaded asset (use for 'last photo', 'that file', etc.)",
+        },
+        fileName: {
+          type: "string",
+          description:
+            "Part of the file name to match when not using latest (e.g. 'banner' for banner.png)",
+        },
+        workspace: {
+          type: "string",
+          description: "Workspace name, only if the user explicitly mentioned one",
+        },
+      },
+      required: ["tags"],
     },
   },
 ];
@@ -450,7 +493,7 @@ function buildDeterministicSummary(
   budgetExhausted: boolean
 ): string {
   if (actionResults.length === 0) {
-    return 'I can create tasks, update their status, or show your board. Try: "add a task to fix the login bug"';
+    return 'I can create tasks, tag uploaded photos/files, or show your board. Try: "add a task to fix the login bug" or "tag the last photo booth, marketing".';
   }
 
   const lines = actionResults.map((r, i) => `${i + 1}. ${r}`);
@@ -481,6 +524,39 @@ async function handleMessage(
   }
 
   waWebhookLog("user matched", { from, userId });
+
+  const tagCommand = parseAssetTagCommand(text);
+  if (tagCommand) {
+    try {
+      const ctx = await resolveUserWorkspaceContext(userId);
+      const asset = await updateAssetTagsByRef({
+        workspaceId: ctx.workspaceId,
+        userId,
+        tags: tagCommand.tags,
+        mode: tagCommand.mode,
+        latest: tagCommand.latest ?? !tagCommand.fileName,
+        fileName: tagCommand.fileName,
+      });
+      revalidateUserWorkspaces(userId, ctx.workspaceId);
+      const name = assetFileName(asset.url);
+      const tagLine =
+        asset.tags.length > 0 ? asset.tags.join(", ") : "(none)";
+      const reply = `Tagged "${name}" in ${ctx.workspaceName}: ${tagLine}.`;
+      await sendWhatsAppText(from, reply);
+      await recordExchange(userId, text, reply).catch((err) =>
+        console.error("Failed to record conversation:", err)
+      );
+      return;
+    } catch (err) {
+      const msg =
+        err instanceof ServiceError
+          ? err.message
+          : "Could not update tags. Try again in a moment.";
+      await sendWhatsAppText(from, msg);
+      await recordExchange(userId, text, msg).catch(() => {});
+      return;
+    }
+  }
 
   // Recent exchanges give Haiku the context to resolve follow-ups like
   // "make that one high priority" (the prior reply names the task #N).
@@ -551,7 +627,7 @@ async function handleMessage(
     reply = buildDeterministicSummary(actionResults, budgetExhausted);
   } else if (!reply) {
     reply =
-      'I can create tasks, update their status, or show your board. Try: "add a task to fix the login bug"';
+      'I can create tasks, update their status, tag uploaded files, or show your board. Try: "add a task to fix the login bug"';
   }
 
   await sendWhatsAppText(from, reply);
@@ -586,11 +662,11 @@ function taskSummary(task: {
   scope: TaskScope;
   priority: TaskPriority;
   dueDate: Date | null;
-  assignedTo: { email: string | null } | null;
+  assignedTo: { email: string | null; username: string | null } | null;
 }): string {
   const parts = [`${task.scope}`, `${task.priority}`];
   if (task.dueDate) parts.push(`due ${task.dueDate.toISOString().slice(0, 10)}`);
-  if (task.assignedTo?.email) parts.push(`-> ${task.assignedTo.email}`);
+  if (task.assignedTo) parts.push(`-> @${displayUser(task.assignedTo)}`);
   return `#${task.shortId} "${task.title}" (${parts.join(", ")})`;
 }
 
@@ -711,8 +787,8 @@ async function executeAction(
                   if (t.priority === "HIGH") line += " ⚠";
                   if (t.dueDate)
                     line += ` (due ${t.dueDate.toISOString().slice(0, 10)})`;
-                  if (t.assignedTo?.email)
-                    line += ` @${t.assignedTo.email.split("@")[0]}`;
+                  if (t.assignedTo)
+                    line += ` @${displayUser(t.assignedTo)}`;
                   return line;
                 })
                 .join("\n")}`
@@ -725,6 +801,40 @@ async function executeAction(
         ]
           .filter(Boolean)
           .join("\n\n");
+      }
+
+      case "update_asset_tags": {
+        const rawTags = input.tags;
+        const tags = Array.isArray(rawTags)
+          ? rawTags.map((t) => String(t))
+          : String(rawTags ?? "")
+              .split(",")
+              .map((t) => t.trim())
+              .filter(Boolean);
+        if (tags.length === 0) {
+          return "Which tags should I apply?";
+        }
+
+        const mode =
+          input.mode === "set" || input.mode === "remove" ? input.mode : "add";
+        const latest = input.latest === true;
+        const fileName =
+          typeof input.fileName === "string" ? input.fileName : undefined;
+
+        const asset = await updateAssetTagsByRef({
+          workspaceId: ctx.workspaceId,
+          userId,
+          tags,
+          mode,
+          latest: latest || (!fileName && mode !== "set"),
+          fileName,
+        });
+        revalidateUserWorkspaces(userId, ctx.workspaceId);
+
+        const name = assetFileName(asset.url);
+        const tagLine =
+          asset.tags.length > 0 ? asset.tags.join(", ") : "(none)";
+        return `Updated tags on "${name}" in ${ctx.workspaceName}: ${tagLine}.`;
       }
 
       default:
