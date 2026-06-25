@@ -1,5 +1,3 @@
-import { ServiceError } from "@/lib/services/project";
-
 export const USERNAME_REGEX = /^[a-z0-9_]{3,24}$/;
 
 export function normalizeUsername(raw: string): string {
@@ -8,9 +6,8 @@ export function normalizeUsername(raw: string): string {
 
 export function validateUsernameFormat(username: string): void {
   if (!USERNAME_REGEX.test(username)) {
-    throw new ServiceError(
-      "Username must be 3-24 characters: lowercase letters, digits, underscores",
-      "INVALID_INPUT"
+    throw new Error(
+      "Username must be 3-24 characters: lowercase letters, digits, underscores"
     );
   }
 }

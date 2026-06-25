@@ -72,8 +72,7 @@ export async function signUpAction(
     validateUsernameFormat(username);
   } catch (err) {
     return {
-      error:
-        err instanceof ServiceError ? err.message : "Invalid username",
+      error: err instanceof Error ? err.message : "Invalid username",
     };
   }
   if (await isUsernameTaken(username)) {

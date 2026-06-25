@@ -392,7 +392,14 @@ const PHONE_REGEX = /^[1-9]\d{7,14}$/;
 /** Sets the user's unique handle. Input is lowercased. */
 export async function updateUsername(userId: string, username: string) {
   const normalized = normalizeUsername(username);
-  validateUsernameFormat(normalized);
+  try {
+    validateUsernameFormat(normalized);
+  } catch (err) {
+    throw new ServiceError(
+      err instanceof Error ? err.message : "Invalid username",
+      "INVALID_INPUT"
+    );
+  }
   if (await isUsernameTaken(normalized, userId)) {
     throw new ServiceError(
       `Username "${normalized}" is already taken`,
