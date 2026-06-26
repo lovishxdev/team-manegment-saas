@@ -9,6 +9,7 @@ import { formatTaskTitle } from "@/lib/format-task-title";
 import { prisma } from "@/lib/prisma";
 import { ASSETS_BUCKET, getSupabaseAdmin } from "@/lib/supabase";
 import { displayUser } from "@/lib/username";
+import { notifyTaskAssigned } from "@/lib/whatsapp-notify";
 
 /**
  * Core business logic shared by all three interfaces (Web, WhatsApp, MCP).
@@ -267,6 +268,24 @@ export async function createTask(input: CreateTaskInput) {
         });
       });
       await touchLastActiveWorkspace(userId, workspaceId);
+
+      if (assignedToId && assignedToId !== userId) {
+        const workspace = await prisma.workspace.findUnique({
+          where: { id: workspaceId },
+          select: { name: true },
+        });
+        if (workspace) {
+          void notifyTaskAssigned({
+            assigneeUserId: assignedToId,
+            actorUserId: userId,
+            workspaceId,
+            workspaceName: workspace.name,
+            taskShortId: task.shortId,
+            taskTitle: task.title,
+          }).catch((err) => console.error("WhatsApp assign notify failed:", err));
+        }
+      }
+
       return task;
     } catch (err) {
       const isUniqueViolation =
@@ -350,6 +369,28 @@ export async function updateTask(input: UpdateTaskInput) {
     include: { assignedTo: { select: { id: true, email: true, username: true } } },
   });
   await touchLastActiveWorkspace(userId, workspaceId);
+
+  if (
+    input.assignee !== undefined &&
+    task.assignedToId &&
+    task.assignedToId !== existing.assignedToId
+  ) {
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { name: true },
+    });
+    if (workspace) {
+      void notifyTaskAssigned({
+        assigneeUserId: task.assignedToId,
+        actorUserId: userId,
+        workspaceId,
+        workspaceName: workspace.name,
+        taskShortId: task.shortId,
+        taskTitle: task.title,
+      }).catch((err) => console.error("WhatsApp assign notify failed:", err));
+    }
+  }
+
   return task;
 }
 

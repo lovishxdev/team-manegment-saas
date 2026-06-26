@@ -89,7 +89,7 @@ export async function createWorkspaceLink(input: {
     );
   }
 
-  return prisma.workspaceLink.create({
+  const link = await prisma.workspaceLink.create({
     data: {
       workspaceId,
       title,
@@ -99,6 +99,8 @@ export async function createWorkspaceLink(input: {
       createdById: userId,
     },
   });
+  await touchLastActiveWorkspace(userId, workspaceId);
+  return link;
 }
 
 /** List workspace bookmarks (MCP, WhatsApp, etc.). */
@@ -111,13 +113,15 @@ export async function listWorkspaceLinks(workspaceId: string, userId: string) {
     );
   }
 
-  return prisma.workspaceLink.findMany({
+  const links = await prisma.workspaceLink.findMany({
     where: { workspaceId },
     include: {
       createdBy: { select: { id: true, email: true, username: true } },
     },
     orderBy: [{ pinned: "desc" }, { createdAt: "desc" }],
   });
+  await touchLastActiveWorkspace(userId, workspaceId);
+  return links;
 }
 
 export async function deleteWorkspaceLink(input: {

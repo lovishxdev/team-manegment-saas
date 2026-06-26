@@ -7,6 +7,11 @@ import { DeleteAccount } from "@/components/delete-account";
 import { PhoneForm } from "@/components/phone-form";
 import { UsernameForm } from "@/components/username-form";
 import { WhatsAppBotNumber } from "@/components/whatsapp-bot-number";
+import { WhatsAppChatHistory } from "@/components/whatsapp-chat-history";
+import {
+  listWhatsAppChatHistory,
+  userHasInitiatedWhatsAppChat,
+} from "@/lib/services/conversation";
 import {
   formatWhatsAppBotNumber,
   getWhatsAppBotNumber,
@@ -17,6 +22,11 @@ export default async function SettingsPage() {
   const user = await requireUser();
   const whatsAppBotNumber = getWhatsAppBotNumber();
   const mcpConnectorUrl = await getMcpConnectorUrl();
+  const showWhatsAppHistory =
+    Boolean(user.phone) || (await userHasInitiatedWhatsAppChat(user.id));
+  const whatsAppHistory = showWhatsAppHistory
+    ? await listWhatsAppChatHistory(user.id)
+    : [];
 
   return (
       <main className="mx-auto w-full max-w-2xl">
@@ -79,6 +89,16 @@ export default async function SettingsPage() {
             account you message from. Leave empty if you don&apos;t use WhatsApp.
           </p>
           <PhoneForm currentPhone={user.phone} />
+
+          {showWhatsAppHistory ? (
+            <div className="mt-6 border-t border-line pt-5">
+              <h3 className="text-sm font-semibold text-ink">Recent chat</h3>
+              <p className="mb-3 mt-1 text-xs text-ink-faint">
+                Last messages with the Euclis bot (synced from WhatsApp).
+              </p>
+              <WhatsAppChatHistory messages={whatsAppHistory} />
+            </div>
+          ) : null}
         </section>
 
         <section className="mb-6 rounded-2xl bg-paper p-6 shadow-sm">

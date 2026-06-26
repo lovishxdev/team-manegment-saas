@@ -198,7 +198,7 @@ export function formatLinkList(
 ): string {
   if (links.length === 0) {
     return channel === "whatsapp"
-      ? `🔗 No links saved in *${workspaceName}* yet.`
+      ? `🔗 No links in *${workspaceName}* yet.`
       : `No links saved in "${workspaceName}" yet.`;
   }
 

@@ -22,7 +22,6 @@ import {
   createWorkspaceLink,
   listWorkspaceLinks,
 } from "@/lib/services/links";
-import { parseAssetTagCommand } from "@/lib/whatsapp-asset-tags";
 import {
   getRecentConversation,
   markWhatsAppChatInitiated,
@@ -68,8 +67,6 @@ import {
   BUTTON,
   GREETING_MENU_ROWS,
   HELP_TEXT,
-  isBoardCommand,
-  isMenuCommand,
   linkedGreetingBody,
   parseButtonId,
 } from "@/lib/whatsapp-interactive";
@@ -77,12 +74,22 @@ import {
   sendWhatsAppButtons,
   sendWhatsAppCtaUrl,
   sendWhatsAppList,
+  type WhatsAppListRow,
 } from "@/lib/whatsapp-messages";
 import {
   clearPending,
+  consumeContinueMessage,
   getPendingDelete,
+  stageContinueMessage,
   stageDeleteTask,
 } from "@/lib/whatsapp-pending";
+import {
+  activateWorkspace,
+  listWorkspacePickerOptions,
+  parseWorkspacePickId,
+  sendWorkspacePicker,
+  shouldPromptWorkspacePick,
+} from "@/lib/whatsapp-workspace";
 
 /**
  * WhatsApp bot interface (Meta Cloud API webhook).
@@ -101,10 +108,13 @@ const DENIED_MESSAGE =
 const UNLINKED_GREETING_REPLY =
   "Hey! I'm the Euclis bot. To get started, sign in to Euclis, add this WhatsApp number under Settings → WhatsApp, then send hi again. I'll help you manage tasks from here.";
 
-function buildSystemPrompt(): string {
+function buildSystemPrompt(activeWorkspaceName: string): string {
   const today = new Date().toISOString().slice(0, 10);
   const weekday = new Date().toLocaleDateString("en-US", { weekday: "long" });
   return `You are the WhatsApp assistant for a project management tool. Today is ${weekday}, ${today}.
+
+The user's active workspace is "${activeWorkspaceName}". Omit the workspace parameter on all tools unless they explicitly name a different workspace.
+
 Convert the user's message into tool calls when they want to act on their board:
 - create_task: when they want to add/create a task
 - update_task: when they want to change a task - move/complete/start it, retitle it, set priority, due date, tags, or assign it (they usually reference it as #N)
@@ -113,8 +123,9 @@ Convert the user's message into tool calls when they want to act on their board:
 - create_workspace: when they want to create/start a new workspace, project, or board (e.g. "create a workspace called Marketing")
 - rename_workspace: when they want to rename an existing workspace (leader only)
 - list_assets: when they ask about uploaded files, photos, or documents in the workspace
-- add_link: when they want to save a URL/bookmark to the workspace Links tab (docs, Figma, staging sites, etc.)
-- list_links: when they ask what links are saved in the workspace
+- add_link: when they want to save, bookmark, or store a URL for the team (docs, Figma, staging sites, etc.). ALWAYS call this tool to save a link — never claim a link was saved without a tool result in this turn.
+- list_links: when they ask what links, bookmarks, or URLs are saved. Call only list_links — do not call add_link in the same turn unless they also asked to save a new link.
+- show_workspace_picker: when they want to choose or switch workspace, ask which workspace they're on, or pick a different board — but NOT when they already named a specific workspace to act on (use the workspace parameter on other tools instead). Sends an interactive picker to the chat.
 - update_asset_tags: when they want to tag an already-uploaded file/photo (e.g. "tag the last photo booth, marketing" or "remove tag draft from banner.png"). ALWAYS call this tool for tagging requests — never say you cannot tag files.
 
 Rules:
@@ -129,7 +140,7 @@ Rules:
 - Resolve relative due dates ("Friday", "tomorrow", "next week") to a concrete YYYY-MM-DD date using today's date above.
 - "assign to me" means assignee "me"; a named person means part of their email or name as the assignee parameter.
 - Use the conversation history to resolve references: "that task" / "it" usually means the task #N mentioned in your most recent reply.
-- If the user names a specific workspace/project, pass it as the "workspace" parameter; otherwise omit it.
+- If the user names a specific workspace/project that is NOT "${activeWorkspaceName}", pass it as the workspace parameter; otherwise always omit workspace.
 - If the message is NOT an actionable board request (greetings, questions, chit-chat), do not call a tool. Reply with one short, friendly sentence telling them what you can do.
 - Never invent task IDs or titles.`;
 }
@@ -336,6 +347,15 @@ const TOOLS: Anthropic.Tool[] = [
           description: "Workspace name, only if the user explicitly mentioned one",
         },
       },
+    },
+  },
+  {
+    name: "show_workspace_picker",
+    description:
+      "Send an interactive workspace picker in WhatsApp when the user wants to choose or switch which workspace/board to use. Use for 'choose workspace', 'which workspace am I on', 'switch workspace' — not when they named a target workspace for a specific action.",
+    input_schema: {
+      type: "object",
+      properties: {},
     },
   },
   {
@@ -640,14 +660,23 @@ async function sendGreetingWithButtons(
   from: string,
   userId: string,
   workspaceName: string,
-  userText: string
+  userText: string,
+  multiWorkspace: boolean
 ) {
   const body = linkedGreetingBody(workspaceName);
+  const rows: WhatsAppListRow[] = GREETING_MENU_ROWS.map((r) => ({ ...r }));
+  if (multiWorkspace) {
+    rows.push({
+      id: BUTTON.menuSwitch,
+      title: "📂 Choose workspace",
+      description: "Switch active board",
+    });
+  }
   const sent = await sendWhatsAppList(
     from,
     body,
     "Choose action",
-    [{ title: "Quick actions", rows: [...GREETING_MENU_ROWS] }],
+    [{ title: "Quick actions", rows }],
     { header: "Euclis", footer: workspaceName }
   );
   if (!sent) {
@@ -676,6 +705,34 @@ async function handleInteractiveMessage(
   const action = parseButtonId(buttonId);
   const userText = `[tapped: ${title || buttonId}]`;
 
+  const workspacePickId = parseWorkspacePickId(buttonId);
+  if (workspacePickId) {
+    try {
+      const activated = await activateWorkspace(userId, workspacePickId);
+      const pending = await consumeContinueMessage(from, userId);
+      if (pending) {
+        await recordExchange(
+          userId,
+          userText,
+          `Switched to ${activated.workspaceName}, continuing your request.`
+        ).catch(() => {});
+        await handleMessage(from, pending);
+        return;
+      }
+      const reply = `Switched to *${activated.workspaceName}*. What would you like to do?`;
+      await sendWhatsAppText(from, reply);
+      await recordExchange(userId, userText, reply).catch(() => {});
+    } catch (err) {
+      const reply =
+        err instanceof ServiceError
+          ? err.message
+          : "Could not switch workspace. Try again.";
+      await sendWhatsAppText(from, reply);
+      await recordExchange(userId, userText, reply).catch(() => {});
+    }
+    return;
+  }
+
   if (!action) {
     const reply = "I didn't recognize that option. Send *menu* for quick actions.";
     await sendWhatsAppText(from, reply);
@@ -702,6 +759,25 @@ async function handleInteractiveMessage(
       const reply = await fetchBoardReply(userId);
       await sendWhatsAppText(from, reply);
       await recordExchange(userId, userText, reply).catch(() => {});
+      return;
+    }
+
+    if (action.type === "menu_switch") {
+      const options = await listWorkspacePickerOptions(userId);
+      if (options.length <= 1) {
+        const reply = "You only belong to one workspace right now.";
+        await sendWhatsAppText(from, reply);
+        await recordExchange(userId, userText, reply).catch(() => {});
+        return;
+      }
+      await sendWorkspacePicker(
+        from,
+        options.map((m) => m.workspace),
+        "Pick a workspace to use:"
+      );
+      await recordExchange(userId, userText, "[workspace picker shown]").catch(
+        () => {}
+      );
       return;
     }
 
@@ -788,90 +864,42 @@ async function handleMessage(
   if (isWhatsAppGreeting(text)) {
     try {
       const ctx = await resolveUserWorkspaceContext(userId);
-      await sendGreetingWithButtons(from, userId, ctx.workspaceName, text);
-      return;
-    } catch (err) {
-      const msg =
-        err instanceof ServiceError
-          ? err.message
-          : "Something went wrong. Try again in a moment.";
-      await sendWhatsAppText(from, msg);
-      await recordExchange(userId, text, msg).catch(() => {});
-      return;
-    }
-  }
-
-  if (isMenuCommand(text)) {
-    try {
-      const ctx = await resolveUserWorkspaceContext(userId);
-      await sendGreetingWithButtons(from, userId, ctx.workspaceName, text);
-      return;
-    } catch (err) {
-      const msg =
-        err instanceof ServiceError
-          ? err.message
-          : "Something went wrong. Try again in a moment.";
-      await sendWhatsAppText(from, msg);
-      await recordExchange(userId, text, msg).catch(() => {});
-      return;
-    }
-  }
-
-  if (isBoardCommand(text)) {
-    try {
-      const reply = await fetchBoardReply(userId);
-      await sendWhatsAppText(from, reply);
-      await recordExchange(userId, text, reply).catch((err) =>
-        console.error("Failed to record conversation:", err)
-      );
-      return;
-    } catch (err) {
-      const msg =
-        err instanceof ServiceError
-          ? err.message
-          : "Something went wrong. Try again in a moment.";
-      await sendWhatsAppText(from, msg);
-      await recordExchange(userId, text, msg).catch(() => {});
-      return;
-    }
-  }
-
-  const tagCommand = parseAssetTagCommand(text);
-  if (tagCommand) {
-    try {
-      const ctx = await resolveUserWorkspaceContext(userId);
-      const asset = await updateAssetTagsByRef({
-        workspaceId: ctx.workspaceId,
+      const memberships = await listWorkspacePickerOptions(userId);
+      await sendGreetingWithButtons(
+        from,
         userId,
-        tags: tagCommand.tags,
-        mode: tagCommand.mode,
-        latest: tagCommand.latest ?? !tagCommand.fileName,
-        fileName: tagCommand.fileName,
-      });
-      revalidateUserWorkspaces(userId, ctx.workspaceId);
-      const name = assetFileName(asset.url);
-      const tagLine =
-        asset.tags.length > 0 ? asset.tags.join(", ") : "(none)";
-      const reply = `Tagged "${name}" in ${ctx.workspaceName}: ${tagLine}.`;
-      await sendWhatsAppText(from, reply);
-      await recordExchange(userId, text, reply).catch((err) =>
-        console.error("Failed to record conversation:", err)
+        ctx.workspaceName,
+        text,
+        memberships.length > 1
       );
       return;
     } catch (err) {
       const msg =
         err instanceof ServiceError
           ? err.message
-          : "Could not update tags. Try again in a moment.";
+          : "Something went wrong. Try again in a moment.";
       await sendWhatsAppText(from, msg);
       await recordExchange(userId, text, msg).catch(() => {});
       return;
     }
+  }
+
+  if (await shouldPromptWorkspacePick(userId)) {
+    const options = await listWorkspacePickerOptions(userId);
+    await stageContinueMessage(from, userId, text);
+    await sendWorkspacePicker(
+      from,
+      options.map((m) => m.workspace),
+      "Before I continue, which workspace should this apply to?"
+    );
+    await recordExchange(userId, text, "[workspace picker shown]").catch(() => {});
+    return;
   }
 
   // Recent exchanges give Haiku the context to resolve follow-ups like
   // "make that one high priority" (the prior reply names the task #N).
   const history = await getRecentConversation(userId);
+  const activeCtx = await resolveUserWorkspaceContext(userId);
 
   progress?.beginSlowPing(queued);
 
@@ -888,8 +916,8 @@ async function handleMessage(
   let budgetExhausted = true;
   const session: WhatsAppSession = {
     phone: from,
-    workspaceId: null,
-    workspaceName: null,
+    workspaceId: activeCtx.workspaceId,
+    workspaceName: activeCtx.workspaceName,
     createdTaskShortIds: [],
     pendingDeleteShortId: null,
     lastCreatedTask: null,
@@ -900,7 +928,7 @@ async function handleMessage(
     const response = await anthropic.messages.create({
       model: HAIKU_MODEL,
       max_tokens: 1024,
-      system: buildSystemPrompt(),
+      system: buildSystemPrompt(activeCtx.workspaceName),
       tools: TOOLS,
       messages,
     });
@@ -1022,10 +1050,10 @@ async function executeAction(
   session: WhatsAppSession
 ): Promise<string> {
   try {
-    const workspaceHint =
-      (typeof input.workspace === "string" && input.workspace.trim()) ||
-      session.workspaceName ||
-      undefined;
+    const explicitWorkspace =
+      typeof input.workspace === "string" && input.workspace.trim()
+        ? input.workspace.trim()
+        : undefined;
 
     // Workspace creation can't resolve a workspace context first: it's the
     // one action a user with zero workspaces must be able to run.
@@ -1044,9 +1072,24 @@ async function executeAction(
         : `Workspace "${workspace.name}" already exists. Using it as your active workspace for the rest of this request.`;
     }
 
-    const ctx = await resolveUserWorkspaceContext(userId, workspaceHint);
+    const ctx = explicitWorkspace
+      ? await resolveUserWorkspaceContext(userId, explicitWorkspace)
+      : session.workspaceId && session.workspaceName
+        ? {
+            workspaceId: session.workspaceId,
+            workspaceName: session.workspaceName,
+          }
+        : await resolveUserWorkspaceContext(userId);
+
     session.workspaceName = ctx.workspaceName;
     session.workspaceId = ctx.workspaceId;
+
+    waWebhookLog("workspace context", {
+      action,
+      workspaceId: ctx.workspaceId,
+      workspaceName: ctx.workspaceName,
+      explicitWorkspace: explicitWorkspace ?? null,
+    });
 
     switch (action) {
       case "create_task": {
@@ -1188,7 +1231,7 @@ async function executeAction(
         });
         revalidateUserWorkspaces(userId, ctx.workspaceId);
         return (
-          `Saved link *${link.title}*${link.pinned ? " (pinned)" : ""}:\n${link.url}` +
+          `Saved link *${link.title}* in *${ctx.workspaceName}*${link.pinned ? " (pinned)" : ""}:\n${link.url}` +
           (link.description ? `\n_${link.description}_` : "")
         );
       }
@@ -1196,6 +1239,21 @@ async function executeAction(
       case "list_links": {
         const links = await listWorkspaceLinks(ctx.workspaceId, userId);
         return formatLinkList(ctx.workspaceName, links, "whatsapp");
+      }
+
+      case "show_workspace_picker": {
+        const options = await listWorkspacePickerOptions(userId);
+        if (options.length <= 1) {
+          return `You only have one workspace (*${ctx.workspaceName}*).`;
+        }
+        const sent = await sendWorkspacePicker(
+          session.phone,
+          options.map((m) => m.workspace),
+          `You're on *${ctx.workspaceName}*. Pick a workspace:`
+        );
+        return sent
+          ? "Sent a workspace picker — tap one in the list above."
+          : "Could not send the workspace picker. Try again in a moment.";
       }
 
       case "update_asset_tags": {

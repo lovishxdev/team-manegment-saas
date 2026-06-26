@@ -121,3 +121,27 @@ export async function userHasInitiatedWhatsAppChat(
   });
   return true;
 }
+
+export type WhatsAppChatRow = {
+  role: "user" | "assistant";
+  content: string;
+  createdAt: Date;
+};
+
+/** Recent bot chat for the Settings UI (newest last). */
+export async function listWhatsAppChatHistory(
+  userId: string,
+  limit = 40
+): Promise<WhatsAppChatRow[]> {
+  const rows = await prisma.whatsAppMessage.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    select: { role: true, content: true, createdAt: true },
+  });
+  return rows.reverse().map((row) => ({
+    role: row.role === "assistant" ? "assistant" : "user",
+    content: row.content,
+    createdAt: row.createdAt,
+  }));
+}
