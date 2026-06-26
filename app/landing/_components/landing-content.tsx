@@ -198,7 +198,7 @@ export function LandingContent() {
               No new app. No new login. Just text the Euclis bot like you&apos;d
               text a teammate. It parses the intent with{" "}
               <span className="font-medium text-ink">Claude Haiku</span>,
-              updates the board, and replies with what it did. Send a photo —
+              updates the board, and replies with what it did. Send a photo and
               it lands in your assets, attached to the right task.
             </p>
           </Reveal>
@@ -269,7 +269,7 @@ export function LandingContent() {
               <DoorCard
                 badge="WHATSAPP"
                 title="The assistant"
-                desc='"Add a task to fix the login bug, high priority, due Friday." Done. Send a photo — it lands in your assets, attached to the right task.'
+                desc='"Add a task to fix the login bug, high priority, due Friday." Done. Send a photo and it lands in your assets, attached to the right task.'
                 visual={<MiniWhatsApp />}
                 accent
               />
@@ -278,7 +278,7 @@ export function LandingContent() {
               <DoorCard
                 badge="CLAUDE"
                 title="The connector"
-                desc="Plug Euclis into Claude as an MCP connector and manage your board mid-conversation — create, update, and review tasks without switching tabs."
+                desc="Plug Euclis into Claude as an MCP connector and manage your board mid-conversation: create, update, and review tasks without switching tabs."
                 visual={<MiniClaude />}
               />
             </Reveal>
@@ -303,22 +303,22 @@ export function LandingContent() {
                   .
                 </h2>
                 <p className="mt-5 text-[15px] leading-relaxed text-ink-soft">
-                  Because every update — whether someone dragged a card on the
+                  Because every update, whether someone dragged a card on the
                   web, fired a message on WhatsApp, or had Claude rebuild the
-                  backlog — lands in the same Postgres row. Everyone sees the
+                  backlog, lands in the same Postgres row. Everyone sees the
                   change as it happens.
                 </p>
                 <ul className="mt-6 space-y-2.5 text-[14px] text-ink">
                   <Bullet>
-                    <strong className="font-medium">Drag-and-drop kanban</strong>{" "}
-                    — three columns, real cards, real keyboard shortcuts.
+                    <strong className="font-medium">Drag-and-drop kanban</strong>
+                    : three columns, real cards, real keyboard shortcuts.
                   </Bullet>
                   <Bullet>
                     <strong className="font-medium">Live cursor sync</strong> on
                     a multiplayer whiteboard for thinking out loud.
                   </Bullet>
                   <Bullet>
-                    <strong className="font-medium">Shared assets</strong> — any
+                    <strong className="font-medium">Shared assets</strong>: any
                     file dropped on WhatsApp lands here, tagged.
                   </Bullet>
                   <Bullet>
@@ -366,7 +366,7 @@ export function LandingContent() {
           <Reveal delay={80}>
             <p className="mx-auto mt-5 max-w-xl text-[16px] text-ink-soft">
               Email is enough. No card. No phone number required. Works with
-              WhatsApp, Claude, and the web — and none of them are required to
+              WhatsApp, Claude, and the web. None of them are required to
               get started.
             </p>
           </Reveal>

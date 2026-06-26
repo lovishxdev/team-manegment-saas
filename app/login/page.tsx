@@ -63,9 +63,10 @@ export default function LoginPage({
         <button
           type="submit"
           disabled={pending}
-          className={`mt-1 ${ui.btnPrimary}`}
+          aria-busy={pending}
+          className={`mt-1 w-full ${ui.btnPrimary}`}
         >
-          {pending ? "Signing in..." : "Sign in"}
+          Sign in
         </button>
       </form>
       <p className="mt-5 text-center text-sm text-ink-soft">

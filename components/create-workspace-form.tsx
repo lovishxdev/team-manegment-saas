@@ -40,9 +40,10 @@ export function CreateWorkspaceForm() {
       <button
         type="submit"
         disabled={pending}
-        className={`${ui.btnPrimary} ${ui.btnShrink}`}
+        aria-busy={pending}
+        className={`${ui.btnPrimary} ${ui.btnShrink} self-center`}
       >
-        {pending ? "Creating..." : "Create"}
+        Create
       </button>
     </form>
   );

@@ -81,7 +81,11 @@ function subItemCls(active: boolean) {
 const TREE_X = 22;
 const ROW_H = 42;
 const MID_Y = ROW_H / 2;
-const CURVE_Y = MID_Y + 7;
+/** Horizontal branch at vertically centered label text */
+const BRANCH_Y = MID_Y;
+/** Vertical run before the bend — sets curve radius */
+const CURVE_DEPTH = 7;
+const JOIN_Y = BRANCH_Y - CURVE_DEPTH;
 /** X where the curved branch ends — no horizontal tail into the label */
 const BRANCH_END = 9;
 const LABEL_GAP = 6;
@@ -100,9 +104,10 @@ function TreeConnector({
   kind: ConnectorKind;
   trunkDown: boolean;
 }) {
+  const branchCurve = `Q 1 ${BRANCH_Y} ${BRANCH_END} ${BRANCH_Y}`;
   const svgH =
     kind === "branch" && !trunkDown
-      ? CURVE_Y + 2
+      ? BRANCH_Y + 2
       : trunkDown
         ? ROW_H + TRUNK_BLEED
         : ROW_H;
@@ -112,8 +117,8 @@ function TreeConnector({
     d = `M 1 0 V ${ROW_H + TRUNK_BLEED}`;
   } else if (kind === "branch") {
     d = trunkDown
-      ? `M 1 0 V ${ROW_H + TRUNK_BLEED} M 1 ${MID_Y} Q 1 ${CURVE_Y} ${BRANCH_END} ${CURVE_Y}`
-      : `M 1 0 V ${MID_Y} Q 1 ${CURVE_Y} ${BRANCH_END} ${CURVE_Y}`;
+      ? `M 1 0 V ${ROW_H + TRUNK_BLEED} M 1 ${JOIN_Y} ${branchCurve}`
+      : `M 1 0 V ${JOIN_Y} ${branchCurve}`;
   }
 
   if (!d) return null;

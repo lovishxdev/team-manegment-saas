@@ -40,9 +40,10 @@ export function UsernameForm({
         <button
           type="submit"
           disabled={pending}
-          className={`${ui.btnPrimary} ${ui.btnShrink}`}
+          aria-busy={pending}
+          className={`${ui.btnPrimary} ${ui.btnShrink} self-center`}
         >
-          {pending ? "Saving..." : "Save"}
+          Save
         </button>
       </div>
       <p className="text-xs text-ink-faint">

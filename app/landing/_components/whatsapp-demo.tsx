@@ -29,7 +29,7 @@ type Scene = {
 
 const SCENES: Scene[] = [
   {
-    user: "add a task — design the hackathon landing page hero, assign aarav, high priority, due friday",
+    user: "add a task: design the hackathon landing page hero, assign aarav, high priority, due friday",
     reply:
       "Done. Added “Design the hackathon landing page hero” to In Progress, assigned Aarav, due Fri 18 Jun.",
     task: {
@@ -43,7 +43,7 @@ const SCENES: Scene[] = [
     },
   },
   {
-    user: "remind everyone the demo is at 6 — add a task to record the walkthrough video tomorrow, assign me",
+    user: "remind everyone the demo is at 6. add a task to record the walkthrough video tomorrow, assign me",
     reply:
       "Reminder sent to the group. Added “Record the walkthrough video” to To Do, assigned you, due tomorrow.",
     task: {
@@ -57,7 +57,7 @@ const SCENES: Scene[] = [
     },
   },
   {
-    user: "📷 sent a photo — attach this to the booth setup task and mark it done",
+    user: "📷 sent a photo, attach this to the booth setup task and mark it done",
     reply:
       "Got the photo. Attached to “Set up the booth banner” and moved it to Done. Nice work 👏",
     task: {
@@ -326,7 +326,7 @@ export function WhatsAppDemo() {
                 ? "Listening for your next message…"
                 : phase === "replying"
                   ? "Updating the board…"
-                  : "✓ Board updated for everyone — instantly."}
+                  : "✓ Board updated for everyone, instantly."}
             </span>
             <span className="font-mono text-[10px] text-ink-faint">
               {sceneIdx + 1} / {SCENES.length}

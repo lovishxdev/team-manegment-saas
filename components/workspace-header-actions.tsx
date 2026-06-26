@@ -1,12 +1,12 @@
 "use client";
 
-import { Avatar } from "@/components/ui";
 import { InviteButton } from "@/components/invite-button";
+import {
+  MemberAvatarStack,
+  type MemberAvatar,
+} from "@/components/member-avatar-stack";
 
-export type HeaderMember = {
-  id: string;
-  label: string | null;
-};
+export type { MemberAvatar as HeaderMember };
 
 function FilterIcon() {
   return (
@@ -22,46 +22,6 @@ function FilterIcon() {
   );
 }
 
-function MemberAvatarStack({
-  members,
-  max = 4,
-}: {
-  members: HeaderMember[];
-  max?: number;
-}) {
-  const shown = members.slice(0, max);
-  const overflow = members.length - max;
-
-  return (
-    <div className="flex items-center pr-1">
-      {shown.map((member, index) => (
-        <span
-          key={member.id}
-          className="relative rounded-full ring-2 ring-paper"
-          style={{
-            marginLeft: index === 0 ? 0 : -10,
-            zIndex: shown.length - index,
-          }}
-        >
-          <Avatar
-            seed={member.id}
-            label={member.label}
-            size="h-9 w-9 text-xs"
-          />
-        </span>
-      ))}
-      {overflow > 0 && (
-        <span
-          className="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-paper text-xs font-medium text-ink-soft ring-2 ring-paper"
-          style={{ marginLeft: shown.length > 0 ? -10 : 0, zIndex: 0 }}
-        >
-          +{overflow}
-        </span>
-      )}
-    </div>
-  );
-}
-
 const iconBtnCls =
   "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-line bg-paper text-ink-soft shadow-sm transition hover:border-line-strong hover:text-ink";
 
@@ -73,7 +33,7 @@ export function WorkspaceHeaderActions({
   onFilterClick,
   filterActive,
 }: {
-  members: HeaderMember[];
+  members: MemberAvatar[];
   workspaceId: string;
   canInvite: boolean;
   showFilter?: boolean;
@@ -82,7 +42,11 @@ export function WorkspaceHeaderActions({
 }) {
   return (
     <div className="flex items-center gap-3">
-      {members.length > 0 && <MemberAvatarStack members={members} />}
+      {members.length > 0 && (
+        <div className="pr-1">
+          <MemberAvatarStack members={members} />
+        </div>
+      )}
       {canInvite && <InviteButton workspaceId={workspaceId} variant="pill" />}
       {showFilter && onFilterClick && (
         <button

@@ -7,6 +7,7 @@ import { getActorMembership, ServiceError } from "@/lib/services/project";
 import {
   normalizeUsername,
   validateUsernameFormat,
+  displayUser,
 } from "@/lib/username";
 import { isUsernameTaken } from "@/lib/username-server";
 
@@ -82,6 +83,80 @@ export const listUserWorkspaces = cache(async function listUserWorkspaces(
     orderBy: { joinedAt: "desc" },
   });
 });
+
+export type WorkspaceDashboardStats = {
+  openTasks: number;
+  assignedToYou: number;
+};
+
+/** Open + assigned-to-me task counts per workspace for the dashboard cards. */
+export async function getWorkspaceDashboardStats(
+  userId: string,
+  workspaceIds: string[]
+): Promise<Map<string, WorkspaceDashboardStats>> {
+  const stats = new Map<string, WorkspaceDashboardStats>(
+    workspaceIds.map((id) => [id, { openTasks: 0, assignedToYou: 0 }])
+  );
+  if (workspaceIds.length === 0) return stats;
+
+  const [openGroups, assignedGroups] = await Promise.all([
+    prisma.task.groupBy({
+      by: ["workspaceId"],
+      where: { workspaceId: { in: workspaceIds }, status: { not: "DONE" } },
+      _count: { _all: true },
+    }),
+    prisma.task.groupBy({
+      by: ["workspaceId"],
+      where: {
+        workspaceId: { in: workspaceIds },
+        assignedToId: userId,
+        status: { not: "DONE" },
+      },
+      _count: { _all: true },
+    }),
+  ]);
+
+  for (const g of openGroups) {
+    stats.get(g.workspaceId)!.openTasks = g._count._all;
+  }
+  for (const g of assignedGroups) {
+    stats.get(g.workspaceId)!.assignedToYou = g._count._all;
+  }
+
+  return stats;
+}
+
+export type WorkspaceDashboardMember = {
+  id: string;
+  label: string | null;
+};
+
+/** Member labels per workspace for dashboard cards. */
+export async function getWorkspaceDashboardMembers(
+  workspaceIds: string[]
+): Promise<Map<string, WorkspaceDashboardMember[]>> {
+  const membersByWorkspace = new Map<string, WorkspaceDashboardMember[]>(
+    workspaceIds.map((id) => [id, []])
+  );
+  if (workspaceIds.length === 0) return membersByWorkspace;
+
+  const memberships = await prisma.workspaceMembership.findMany({
+    where: { workspaceId: { in: workspaceIds } },
+    include: {
+      user: { select: { id: true, username: true, email: true } },
+    },
+    orderBy: { joinedAt: "asc" },
+  });
+
+  for (const m of memberships) {
+    membersByWorkspace.get(m.workspaceId)!.push({
+      id: m.user.id,
+      label: displayUser(m.user),
+    });
+  }
+
+  return membersByWorkspace;
+}
 
 export async function getWorkspaceMembers(workspaceId: string, userId: string) {
   const self = await getActorMembership(userId, workspaceId);
@@ -439,7 +514,7 @@ export async function updateUsername(userId: string, username: string) {
 export async function updateUserPhone(userId: string, phone: string | null) {
   if (phone !== null && !PHONE_REGEX.test(phone)) {
     throw new ServiceError(
-      "Phone must be country code + number with no + or spaces (e.g. 91xxxxxxxxxx)",
+      "Enter a valid mobile number (country code + number, digits only)",
       "INVALID_INPUT"
     );
   }

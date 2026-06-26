@@ -32,7 +32,7 @@ function SortIcon() {
 }
 
 const actionBtnCls =
-  "inline-flex h-9 items-center gap-2 rounded-xl border border-line bg-paper px-3.5 text-sm text-ink-soft shadow-sm transition hover:border-line-strong hover:text-ink";
+  "inline-flex h-9 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-line bg-paper px-3.5 text-sm text-ink-soft shadow-sm transition-colors hover:border-line-strong hover:text-ink";
 
 export function BoardToolbar({
   filtersApplied,
@@ -80,10 +80,9 @@ export function BoardToolbar({
         type="button"
         onClick={onAddTaskClick}
         aria-expanded={addTaskOpen}
-        className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-ink px-4 text-sm font-medium text-white shadow-sm transition hover:bg-ink/90"
+        className="inline-flex h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-xl bg-ink px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-ink/90"
       >
-        <span className="text-base leading-none">+</span>
-        Add Task
+        + Add Task
       </button>
     </div>
   );

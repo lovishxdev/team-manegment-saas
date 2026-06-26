@@ -37,7 +37,7 @@ export function InviteButton({
   }
 
   const pillCls =
-    "inline-flex h-9 items-center gap-1.5 rounded-xl border border-line bg-paper px-4 text-sm font-medium text-ink-soft shadow-sm transition hover:border-line-strong hover:text-ink disabled:opacity-50";
+    "inline-flex h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-line bg-paper px-4 text-sm font-medium text-ink-soft shadow-sm transition-colors hover:border-line-strong hover:text-ink disabled:cursor-not-allowed disabled:opacity-60";
 
   return (
     <div
@@ -50,18 +50,10 @@ export function InviteButton({
       <button
         onClick={generate}
         disabled={pending}
+        aria-busy={pending}
         className={variant === "pill" ? pillCls : ui.btnPrimary}
       >
-        {pending ? (
-          "Generating..."
-        ) : variant === "pill" ? (
-          <>
-            <span className="text-base leading-none">+</span>
-            Invite
-          </>
-        ) : (
-          "+ Invite members"
-        )}
+        {variant === "pill" ? "+ Invite" : "+ Invite members"}
       </button>
       {error && (
         <p

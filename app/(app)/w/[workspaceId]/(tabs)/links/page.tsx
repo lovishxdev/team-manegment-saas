@@ -1,19 +1,14 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { ServiceError } from "@/lib/services/project";
 import { getLinksView } from "@/lib/services/links";
 import { LinkForm } from "@/components/link-form";
 import { LinkRow, type LinkItem } from "@/components/link-row";
-import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { displayUser } from "@/lib/username";
-import { Role } from "@/lib/generated/prisma/client";
+import { LinksContentSkeleton } from "@/components/tab-content-skeleton";
 
-export default async function LinksPage({
-  params,
-}: {
-  params: Promise<{ workspaceId: string }>;
-}) {
-  const { workspaceId } = await params;
+async function LinksData({ workspaceId }: { workspaceId: string }) {
   const user = await requireUser();
 
   let data;
@@ -24,9 +19,7 @@ export default async function LinksPage({
     throw err;
   }
 
-  const { workspace, links, selfRole } = data;
-  const canInvite =
-    selfRole === Role.LEADER || selfRole === Role.SUB_LEADER;
+  const { links } = data;
 
   const items: LinkItem[] = links.map((link) => ({
     id: link.id,
@@ -39,20 +32,11 @@ export default async function LinksPage({
   }));
 
   return (
-    <main className="mx-auto w-full max-w-6xl">
-      <WorkspacePageHeader
-        workspaceId={workspaceId}
-        workspaceName={workspace.name}
-        activeTab="links"
-        breadcrumbLeaf="Links"
-        members={[]}
-        canInvite={canInvite}
-      />
-
+    <>
       <section className="mb-8 max-w-2xl">
         <h2 className="mb-1 text-sm font-semibold text-ink">Add a link</h2>
         <p className="mb-4 text-sm text-ink-soft">
-          Save important URLs for the whole workspace — docs, Figma files,
+          Save important URLs for the whole workspace: docs, Figma files,
           staging sites, and anything the team needs quick access to.
         </p>
         <LinkForm workspaceId={workspaceId} />
@@ -72,6 +56,20 @@ export default async function LinksPage({
           ))}
         </div>
       )}
-    </main>
+    </>
+  );
+}
+
+export default async function LinksPage({
+  params,
+}: {
+  params: Promise<{ workspaceId: string }>;
+}) {
+  const { workspaceId } = await params;
+
+  return (
+    <Suspense fallback={<LinksContentSkeleton />}>
+      <LinksData workspaceId={workspaceId} />
+    </Suspense>
   );
 }

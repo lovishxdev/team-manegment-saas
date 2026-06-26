@@ -40,8 +40,10 @@ model User {
   email         String? @unique
   /// Unique handle shown across the UI instead of the email (lowercase a-z0-9_)
   username      String  @unique
-  /// E.164 format (e.g. 91xxxxxxxxxx) - used to route incoming WhatsApp messages
+  /// E.164 digits without + (country code + national number) — routes WhatsApp messages
   phone         String? @unique
+  /// First inbound WhatsApp message from this user to the bot.
+  whatsappChatInitiatedAt DateTime?
   /// User-level secret for the Claude App Remote MCP connector
   mcpToken      String  @unique @default(uuid()) @db.Uuid
   lastIpAddress String?

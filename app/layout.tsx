@@ -32,7 +32,7 @@ const caveat = Caveat({
 
 export const metadata: Metadata = {
   title: {
-    default: "Euclis — where your team's work flows together",
+    default: "Euclis | Where your team's work flows together",
     template: "%s · Euclis",
   },
   description:

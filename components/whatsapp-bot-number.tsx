@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ui } from "@/components/ui";
+import { WHATSAPP_START_MESSAGE } from "@/lib/whatsapp-bot";
 
 export function WhatsAppBotNumber({
   e164,
@@ -26,7 +27,7 @@ export function WhatsAppBotNumber({
   return (
     <div className="rounded-lg border border-line bg-paper-deep/50 p-4">
       <p className="text-xs font-medium uppercase tracking-wide text-ink-faint">
-        Text this number
+        Send {WHATSAPP_START_MESSAGE} to start
       </p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <code className="rounded-md border border-line bg-paper px-3 py-2 font-mono text-sm text-ink">
@@ -41,11 +42,12 @@ export function WhatsAppBotNumber({
           rel="noopener noreferrer"
           className={`${ui.btnSecondary} py-1.5`}
         >
-          Open in WhatsApp
+          Send {WHATSAPP_START_MESSAGE} on WhatsApp
         </a>
       </div>
-      <p className="mt-2 font-mono text-[11px] text-ink-faint">
-        E.164: {e164}
+      <p className="mt-2 text-[11px] text-ink-faint">
+        Opens WhatsApp with &quot;{WHATSAPP_START_MESSAGE}&quot; ready to send. E.164:{" "}
+        {e164}
       </p>
     </div>
   );

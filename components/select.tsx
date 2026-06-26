@@ -5,6 +5,8 @@ import { useEffect, useId, useRef, useState } from "react";
 export type SelectOption = {
   value: string;
   label: string;
+  /** Shorter label for the closed trigger when the menu label is wider. */
+  triggerLabel?: string;
 };
 
 function ChevronDown({ open }: { open: boolean }) {
@@ -124,7 +126,7 @@ export function Select({
         }`}
       >
         <span className={selected ? "truncate text-ink" : "truncate text-ink-soft"}>
-          {selected?.label ?? placeholder}
+          {selected?.triggerLabel ?? selected?.label ?? placeholder}
         </span>
         <ChevronDown open={open} />
       </button>
@@ -133,7 +135,7 @@ export function Select({
         <ul
           id={listId}
           role="listbox"
-          className={`absolute left-0 right-0 top-full z-50 mt-1.5 max-h-60 overflow-auto rounded-lg border border-line bg-paper ${styles.menu}`}
+          className={`absolute left-0 top-full z-50 mt-1.5 max-h-60 min-w-full w-max overflow-auto rounded-lg border border-line bg-paper ${styles.menu}`}
         >
           {options.map((option) => {
             const isSelected = option.value === value;
@@ -151,7 +153,7 @@ export function Select({
                   <span className="flex h-4 w-4 shrink-0 items-center justify-center">
                     {isSelected ? <CheckIcon /> : null}
                   </span>
-                  <span className="truncate">{option.label}</span>
+                  <span className="whitespace-nowrap">{option.label}</span>
                 </button>
               </li>
             );

@@ -20,6 +20,7 @@ import {
 import { parseAssetTagCommand } from "@/lib/whatsapp-asset-tags";
 import {
   getRecentConversation,
+  markWhatsAppChatInitiated,
   recordExchange,
 } from "@/lib/services/conversation";
 import { findOrCreateWorkspaceByName } from "@/lib/services/workspace";
@@ -49,6 +50,7 @@ import {
   summarizeMetaPayload,
   waWebhookLog,
 } from "@/lib/whatsapp-webhook-log";
+import { isWhatsAppGreeting } from "@/lib/whatsapp-bot";
 
 /**
  * WhatsApp bot interface (Meta Cloud API webhook).
@@ -63,6 +65,13 @@ const HAIKU_MODEL = "claude-haiku-4-5";
 
 const DENIED_MESSAGE =
   "This WhatsApp number isn't linked to an account. If you want to use the bot, sign in to the web app and add this number under Settings → WhatsApp. The web dashboard works without it.";
+
+const UNLINKED_GREETING_REPLY =
+  "Hey! I'm the Euclis bot. To get started, sign in to Euclis, add this WhatsApp number under Settings → WhatsApp, then send hi again. I'll help you manage tasks from here.";
+
+function linkedGreetingReply(workspaceName: string): string {
+  return `Hey! You're connected to Euclis (${workspaceName}). Ask me to add tasks, check your board, create a workspace, or send photos with captions to save assets. What would you like to do?`;
+}
 
 function buildSystemPrompt(): string {
   const today = new Date().toISOString().slice(0, 10);
@@ -367,7 +376,7 @@ export async function POST(req: NextRequest) {
   if (queueMode === "queued" && queueDepth > 1) {
     await sendWhatsAppText(
       message.from,
-      `Queued — ${queueDepth - 1} message${queueDepth - 1 === 1 ? "" : "s"} ahead of yours. I'll work through them in order.`
+      `Queued. ${queueDepth - 1} message${queueDepth - 1 === 1 ? "" : "s"} ahead of yours. I'll work through them in order.`
     ).catch(() => {});
   }
 
@@ -439,6 +448,8 @@ async function handleMediaMessage(
     await sendWhatsAppText(message.from, DENIED_MESSAGE);
     return;
   }
+
+  await markWhatsAppChatInitiated(userId);
 
   const ctx = await resolveUserWorkspaceContext(userId);
   const file = await downloadWhatsAppMedia(message.mediaId);
@@ -518,12 +529,35 @@ async function handleMessage(
       from,
       hint: "Save this exact number in Settings → WhatsApp (E.164, no +)",
     });
-    const sent = await sendWhatsAppText(from, DENIED_MESSAGE);
-    waWebhookLog("denied reply sent", { ok: sent });
+    const reply = isWhatsAppGreeting(text) ? UNLINKED_GREETING_REPLY : DENIED_MESSAGE;
+    const sent = await sendWhatsAppText(from, reply);
+    waWebhookLog("denied reply sent", { ok: sent, greeting: isWhatsAppGreeting(text) });
     return;
   }
 
   waWebhookLog("user matched", { from, userId });
+
+  await markWhatsAppChatInitiated(userId);
+
+  if (isWhatsAppGreeting(text)) {
+    try {
+      const ctx = await resolveUserWorkspaceContext(userId);
+      const reply = linkedGreetingReply(ctx.workspaceName);
+      await sendWhatsAppText(from, reply);
+      await recordExchange(userId, text, reply).catch((err) =>
+        console.error("Failed to record conversation:", err)
+      );
+      return;
+    } catch (err) {
+      const msg =
+        err instanceof ServiceError
+          ? err.message
+          : "Something went wrong. Try again in a moment.";
+      await sendWhatsAppText(from, msg);
+      await recordExchange(userId, text, msg).catch(() => {});
+      return;
+    }
+  }
 
   const tagCommand = parseAssetTagCommand(text);
   if (tagCommand) {
@@ -694,8 +728,8 @@ async function executeAction(
       session.workspaceName = workspace.name;
       revalidateUserWorkspaces(userId, workspace.id);
       return created
-        ? `Created workspace "${workspace.name}" — you're its leader and it's now your active workspace. New tasks will land here unless you name another workspace.`
-        : `Workspace "${workspace.name}" already exists — using it as your active workspace for the rest of this request.`;
+        ? `Created workspace "${workspace.name}". You're its leader and it's now your active workspace. New tasks will land here unless you name another workspace.`
+        : `Workspace "${workspace.name}" already exists. Using it as your active workspace for the rest of this request.`;
     }
 
     const ctx = await resolveUserWorkspaceContext(userId, workspaceHint);

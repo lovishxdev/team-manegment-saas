@@ -7,6 +7,16 @@ export function getWhatsAppBotNumber(): string | null {
   return digits.length > 0 ? digits : null;
 }
 
+/** Prefilled first message when opening the bot chat. */
+export const WHATSAPP_START_MESSAGE = "hi";
+
+const GREETING_PATTERN =
+  /^(hi+|hii+|hello+|hey+|heya+|hola+|yo+)\b[\s!.?]*$/i;
+
+export function isWhatsAppGreeting(text: string): boolean {
+  return GREETING_PATTERN.test(text.trim());
+}
+
 export function formatWhatsAppBotNumber(e164: string): string {
   if (e164.length === 11 && e164.startsWith("1")) {
     return `+1 (${e164.slice(1, 4)}) ${e164.slice(4, 7)}-${e164.slice(7)}`;
@@ -19,6 +29,11 @@ export function formatWhatsAppBotNumber(e164: string): string {
   return `+${e164}`;
 }
 
-export function whatsAppBotDeepLink(e164: string): string {
-  return `https://wa.me/${e164}`;
+export function whatsAppBotDeepLink(
+  e164: string,
+  text: string = WHATSAPP_START_MESSAGE
+): string {
+  const base = `https://wa.me/${e164}`;
+  if (!text.trim()) return base;
+  return `${base}?text=${encodeURIComponent(text)}`;
 }

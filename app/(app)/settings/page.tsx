@@ -1,5 +1,6 @@
 import { requireUser } from "@/lib/auth";
 import { getMcpConnectorUrl } from "@/lib/app-origin";
+import { SHELL_BRAND_ROW } from "@/components/app-shell-shared";
 import { ui } from "@/components/ui";
 import { CopyField } from "@/components/copy-field";
 import { DeleteAccount } from "@/components/delete-account";
@@ -19,7 +20,7 @@ export default async function SettingsPage() {
 
   return (
       <main className="mx-auto w-full max-w-2xl">
-        <div className={`${ui.pageTitleRow} mb-8`}>
+        <div className={`${SHELL_BRAND_ROW} mb-8`}>
           <h1 className={ui.pageTitle}>Settings</h1>
         </div>
 
@@ -45,8 +46,9 @@ export default async function SettingsPage() {
         <section className="mb-6 rounded-2xl bg-paper p-6 shadow-sm">
           <h2 className="font-display text-base font-semibold">WhatsApp</h2>
           <p className="mb-4 mt-1 text-sm text-ink-soft">
-            Link a phone here only if you want to use the WhatsApp bot. Not part
-            of signup — skip this section if you use the web dashboard only.
+            Link your number below, then send{" "}
+            <span className="font-medium text-ink">hi</span> on WhatsApp to start
+            the bot. Optional. Skip if you only use the web dashboard.
           </p>
 
           {whatsAppBotNumber ? (
@@ -86,8 +88,8 @@ export default async function SettingsPage() {
           <p className="mb-4 mt-1 text-sm text-ink-soft">
             In Claude, open <span className="text-ink">Settings → Connectors</span>
             , choose <span className="text-ink">Add custom connector</span>, and
-            paste the URL below. Claude will sign you in with your Euclis account
-            — no bearer token or API key needed.
+            paste the URL below. Claude will sign you in with your Euclis account.
+            No bearer token or API key needed.
           </p>
           <p className="mb-2 text-xs font-medium text-ink-soft">
             Connector URL

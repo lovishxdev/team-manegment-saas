@@ -21,8 +21,8 @@ export class WhatsAppProgress {
     await sendWhatsAppText(
       this.to,
       queued
-        ? "Working on your next queued message — this may take a minute for big requests."
-        : "Got it — working on that now. Big requests can take up to a minute; I'll send updates as I go."
+        ? "Working on your next queued message. This may take a minute for big requests."
+        : "Got it. Working on that now. Big requests can take up to a minute; I'll send updates as I go."
     ).catch(() => {});
   }
 

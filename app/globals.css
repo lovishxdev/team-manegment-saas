@@ -27,6 +27,14 @@
   --color-accent-soft: rgba(0, 200, 150, 0.12);
   --color-on-accent: #ffffff;
 
+  /* Claude brand */
+  --color-claude: #d97757;
+  --color-claude-dark: #c15f3c;
+
+  /* WhatsApp brand */
+  --color-whatsapp: #25d366;
+  --color-whatsapp-dark: #1da851;
+
   /* Typography */
   --font-display: var(--font-hanken), ui-sans-serif, system-ui, sans-serif;
   --font-sans: var(--font-hanken), ui-sans-serif, system-ui, sans-serif;

@@ -3,12 +3,12 @@
 import { useRef, useState } from "react";
 import { BoardToolbar } from "@/components/board-toolbar";
 import { NewTaskForm } from "@/components/new-task-form";
+import { WorkspaceToolbarPortal } from "@/components/workspace-toolbar-slot";
 import {
   TaskBoard,
   type BoardSort,
   type BoardTask,
 } from "@/components/task-board";
-import { WorkspacePageHeader } from "@/components/workspace-page-header";
 
 const SORT_LABELS: Record<BoardSort, string> = {
   default: "Sorting",
@@ -16,18 +16,14 @@ const SORT_LABELS: Record<BoardSort, string> = {
   due: "Due date",
 };
 
-export function BoardPageShell({
+export function BoardPageContent({
   workspaceId,
-  workspaceName,
   tasks,
   currentUserId,
-  canInvite,
 }: {
   workspaceId: string;
-  workspaceName: string;
   tasks: BoardTask[];
   currentUserId: string;
-  canInvite: boolean;
 }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [scopeFilter, setScopeFilter] = useState("");
@@ -53,28 +49,20 @@ export function BoardPageShell({
   }
 
   return (
-    <main className="mx-auto w-full max-w-6xl">
-      <WorkspacePageHeader
-        workspaceId={workspaceId}
-        workspaceName={workspaceName}
-        activeTab="board"
-        breadcrumbLeaf="Overview"
-        members={[]}
-        canInvite={canInvite}
-        tabBarEnd={
-          <BoardToolbar
-            filtersApplied={filtersApplied}
-            filtersOpen={filtersOpen}
-            onFilterClick={() => setFiltersOpen((open) => !open)}
-            sortLabel={SORT_LABELS[sortBy]}
-            onSortClick={cycleSort}
-            onAddTaskClick={() =>
-              addTaskOpen ? setAddTaskOpen(false) : openAddTask()
-            }
-            addTaskOpen={addTaskOpen}
-          />
-        }
-      />
+    <>
+      <WorkspaceToolbarPortal>
+        <BoardToolbar
+          filtersApplied={filtersApplied}
+          filtersOpen={filtersOpen}
+          onFilterClick={() => setFiltersOpen((open) => !open)}
+          sortLabel={SORT_LABELS[sortBy]}
+          onSortClick={cycleSort}
+          onAddTaskClick={() =>
+            addTaskOpen ? setAddTaskOpen(false) : openAddTask()
+          }
+          addTaskOpen={addTaskOpen}
+        />
+      </WorkspaceToolbarPortal>
 
       {addTaskOpen && (
         <div ref={addTaskRef} className="mb-6 max-w-2xl">
@@ -95,6 +83,6 @@ export function BoardPageShell({
         onMineOnlyChange={setMineOnly}
         sortBy={sortBy}
       />
-    </main>
+    </>
   );
 }

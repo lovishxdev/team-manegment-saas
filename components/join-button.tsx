@@ -21,9 +21,10 @@ export function JoinButton({ inviteId }: { inviteId: string }) {
       <button
         onClick={join}
         disabled={pending}
-        className={`px-6 ${ui.btnPrimary}`}
+        aria-busy={pending}
+        className={`whitespace-nowrap px-6 ${ui.btnPrimary}`}
       >
-        {pending ? "Joining..." : "Join workspace"}
+        Join workspace
       </button>
       {error && <p className={ui.errorText}>{error}</p>}
     </div>

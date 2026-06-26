@@ -1,22 +1,17 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { getAssetsView, ServiceError } from "@/lib/services/project";
 import { AssetCard, type AssetItem } from "@/components/asset-card";
 import { AssetUploadForm } from "@/components/asset-upload-form";
-import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import {
   formatWhatsAppBotNumber,
   getWhatsAppBotNumber,
 } from "@/lib/whatsapp-bot";
 import { displayUser } from "@/lib/username";
-import { Role } from "@/lib/generated/prisma/client";
+import { AssetsContentSkeleton } from "@/components/tab-content-skeleton";
 
-export default async function AssetsPage({
-  params,
-}: {
-  params: Promise<{ workspaceId: string }>;
-}) {
-  const { workspaceId } = await params;
+async function AssetsData({ workspaceId }: { workspaceId: string }) {
   const user = await requireUser();
 
   let data;
@@ -27,9 +22,7 @@ export default async function AssetsPage({
     throw err;
   }
 
-  const { workspace, assets, selfRole } = data;
-  const canInvite =
-    selfRole === Role.LEADER || selfRole === Role.SUB_LEADER;
+  const { assets } = data;
   const whatsAppBotNumber = getWhatsAppBotNumber();
   const whatsAppBotLabel = whatsAppBotNumber
     ? formatWhatsAppBotNumber(whatsAppBotNumber)
@@ -45,16 +38,7 @@ export default async function AssetsPage({
   }));
 
   return (
-    <main className="mx-auto w-full max-w-6xl">
-      <WorkspacePageHeader
-        workspaceId={workspaceId}
-        workspaceName={workspace.name}
-        activeTab="assets"
-        breadcrumbLeaf="Assets"
-        members={[]}
-        canInvite={canInvite}
-      />
-
+    <>
       <div className="mb-8 max-w-2xl">
         <AssetUploadForm workspaceId={workspaceId} />
         <p className="mt-2 text-xs text-ink-faint">
@@ -62,7 +46,7 @@ export default async function AssetsPage({
           each card below. On WhatsApp, send a photo or document with a caption
           like{" "}
           <span className="font-mono text-ink-soft">booth, banner</span> to tag
-          it — use <span className="font-mono text-ink-soft">#42</span> in the
+          it. Use <span className="font-mono text-ink-soft">#42</span> in the
           caption to attach to a task. You can also message{" "}
           <span className="font-mono text-ink-soft">
             tag the last photo booth, marketing
@@ -108,6 +92,20 @@ export default async function AssetsPage({
           ))}
         </div>
       )}
-    </main>
+    </>
+  );
+}
+
+export default async function AssetsPage({
+  params,
+}: {
+  params: Promise<{ workspaceId: string }>;
+}) {
+  const { workspaceId } = await params;
+
+  return (
+    <Suspense fallback={<AssetsContentSkeleton />}>
+      <AssetsData workspaceId={workspaceId} />
+    </Suspense>
   );
 }

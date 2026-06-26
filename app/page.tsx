@@ -11,9 +11,9 @@ import { LandingContent } from "./landing/_components/landing-content";
  * (the same body rendered at `/landing`).
  */
 export const metadata: Metadata = {
-  title: "Euclis — run your team from anywhere, even WhatsApp",
+  title: "Euclis | Run your team from anywhere, even WhatsApp",
   description:
-    "A shared task board your team can reach from anywhere the conversation happens — the web dashboard, a WhatsApp message, or a chat with Claude. Built for hackathons, side projects, hostel fests, study groups and every small team in between.",
+    "A shared task board your team can reach from anywhere the conversation happens: the web dashboard, a WhatsApp message, or a chat with Claude. Built for hackathons, side projects, hostel fests, study groups and every small team in between.",
 };
 
 export default async function Home() {

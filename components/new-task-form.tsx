@@ -54,9 +54,10 @@ export function NewTaskForm({ workspaceId }: { workspaceId: string }) {
       <button
         type="submit"
         disabled={pending}
-        className={`${ui.btnPrimary} ${ui.btnShrink}`}
+        aria-busy={pending}
+        className={`${ui.btnPrimary} ${ui.btnShrink} self-center`}
       >
-        {pending ? "Adding..." : "Add"}
+        Add
       </button>
     </form>
   );

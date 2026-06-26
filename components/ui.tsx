@@ -16,15 +16,16 @@ export const ui = {
   /** Input + button row — wrap the field in `inputRowField` so `w-full` inputs don't overlap the button. */
   inputRow: "flex items-start gap-2",
   inputRowField: "min-w-0 flex-1",
-  btnShrink: "shrink-0 min-w-[7.25rem]",
+  btnShrink:
+    "inline-flex shrink-0 items-center justify-center whitespace-nowrap min-w-[5.5rem]",
   btnPrimary:
-    "rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white transition hover:bg-ink/90 disabled:opacity-50",
+    "inline-flex items-center justify-center rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-ink/90 disabled:cursor-not-allowed disabled:opacity-60",
   btnSecondary:
-    "rounded-lg border border-line-strong bg-paper px-3.5 py-2 text-sm text-ink-soft transition hover:border-ink/20 hover:text-ink disabled:opacity-50",
+    "inline-flex items-center justify-center whitespace-nowrap rounded-lg border border-line-strong bg-paper px-3.5 py-2 text-sm text-ink-soft transition-colors hover:border-ink/20 hover:text-ink disabled:cursor-not-allowed disabled:opacity-60",
   btnDanger:
-    "rounded-lg border border-red-200 bg-red-50 px-3.5 py-2 text-sm text-red-600 transition hover:bg-red-100 disabled:opacity-50",
+    "inline-flex items-center justify-center whitespace-nowrap rounded-lg border border-red-200 bg-red-50 px-3.5 py-2 text-sm text-red-600 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60",
   btnGhostDanger:
-    "rounded-lg border border-line-strong px-3.5 py-2 text-sm text-ink-soft transition hover:border-red-300 hover:text-red-600 disabled:opacity-50",
+    "inline-flex items-center justify-center whitespace-nowrap rounded-lg border border-line-strong px-3.5 py-2 text-sm text-ink-soft transition-colors hover:border-red-300 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-60",
   card: "rounded-2xl bg-paper shadow-sm",
   errorText: "text-sm text-red-600",
   mutedText: "text-sm text-ink-soft",

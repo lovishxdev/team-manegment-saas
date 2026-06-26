@@ -8,13 +8,16 @@ import { Avatar } from "@/components/ui";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { AppRealtimeSync } from "@/components/app-realtime-sync";
 import { MobileWorkspaceTabs } from "@/components/mobile-workspace-tabs";
-import { WhatsAppPhonePrompt } from "@/components/whatsapp-phone-prompt";
+import { IntegrationsPrompt } from "@/components/integrations-prompt";
+import { WhatsAppOnboardingSync } from "@/components/whatsapp-onboarding-sync";
+import { getMcpConnectorUrl } from "@/lib/app-origin";
+import { userHasInitiatedWhatsAppChat } from "@/lib/services/conversation";
 import {
   formatWhatsAppBotNumber,
   getWhatsAppBotNumber,
   whatsAppBotDeepLink,
 } from "@/lib/whatsapp-bot";
-import { SHELL_BRAND_ROW, SHELL_TOP } from "@/components/app-shell-shared";
+import { SHELL_BRAND_ROW, SHELL_MAIN_X, SHELL_SIDEBAR_X, SHELL_TOP } from "@/components/app-shell-shared";
 
 export type { WorkspaceTab } from "@/components/app-shell-shared";
 
@@ -59,6 +62,8 @@ export async function AppShell({
   const botDeepLink = whatsAppBotNumber
     ? whatsAppBotDeepLink(whatsAppBotNumber)
     : null;
+  const mcpConnectorUrl = await getMcpConnectorUrl();
+  const whatsappChatStarted = await userHasInitiatedWhatsAppChat(userId);
 
   const workspaceNavData = memberships.map(({ workspace }) => ({
     id: workspace.id,
@@ -69,25 +74,26 @@ export async function AppShell({
   return (
     <>
       <AppRealtimeSync userId={userId} workspaceIds={workspaceIds} />
-      <div className="flex min-h-screen">
+      <div className="flex min-h-screen items-start">
       {/* Sidebar */}
-      <aside className="hidden w-60 shrink-0 flex-col pb-6 md:flex lg:w-64">
-        <div className={`px-4 ${SHELL_TOP} lg:px-5`}>
+      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col pb-6 md:flex lg:w-64">
+        <header className={`${SHELL_SIDEBAR_X} ${SHELL_TOP}`}>
           <Link href="/dashboard" className={`${SHELL_BRAND_ROW} gap-2.5 px-2`}>
             <Image
               src="/euclis-logo.png"
               alt="Euclis"
               width={39}
               height={39}
-              className="shrink-0 rounded-md"
+              className="block shrink-0 rounded-md"
+              priority
             />
             <span className="text-[1.375rem] font-semibold leading-none tracking-tight">
               Euclis
             </span>
           </Link>
-        </div>
+        </header>
 
-        <div className="mt-8 flex flex-1 flex-col px-4 lg:px-5">
+        <div className={`mt-8 flex flex-1 flex-col ${SHELL_SIDEBAR_X}`}>
           <SidebarNav workspaces={workspaceNavData} />
 
           <div className="mt-auto pt-6">
@@ -121,7 +127,7 @@ export async function AppShell({
       </aside>
 
       {/* Main */}
-      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-between border-b border-line px-4 py-3 md:hidden">
           <Link href="/dashboard" className="flex items-center gap-2">
             <Image
@@ -165,13 +171,18 @@ export async function AppShell({
         <MobileWorkspaceTabs />
 
         <div className="flex-1 overflow-y-auto">
-          <div className={`flex flex-col px-6 pb-8 ${SHELL_TOP} sm:px-8`}>
-            {!currentUser.phone && (
-              <WhatsAppPhonePrompt
-                userId={userId}
-                botDisplay={botDisplay}
-                botDeepLink={botDeepLink}
-              />
+          <div className={`${SHELL_MAIN_X} pb-8 ${SHELL_TOP}`}>
+            {!whatsappChatStarted && (
+              <>
+                <WhatsAppOnboardingSync />
+                <IntegrationsPrompt
+                  userId={userId}
+                  currentPhone={currentUser.phone}
+                  botDisplay={botDisplay}
+                  botDeepLink={botDeepLink}
+                  mcpConnectorUrl={mcpConnectorUrl}
+                />
+              </>
             )}
             {children}
           </div>

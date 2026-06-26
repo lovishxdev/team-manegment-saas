@@ -59,9 +59,10 @@ export default function SignupPage({
         <button
           type="submit"
           disabled={pending}
-          className={`mt-1 ${ui.btnPrimary}`}
+          aria-busy={pending}
+          className={`mt-1 w-full ${ui.btnPrimary}`}
         >
-          {pending ? "Creating account..." : "Create account"}
+          Create account
         </button>
       </form>
       <p className="mt-5 text-center text-sm text-ink-soft">

@@ -289,10 +289,11 @@ export function TaskDetailModal({
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
-                className="flex h-16 w-16 items-center justify-center rounded-md border border-dashed border-line-strong text-lg text-ink-faint transition hover:border-ink/30 hover:text-ink disabled:opacity-60"
+                aria-busy={uploading}
+                className="flex h-16 w-16 items-center justify-center rounded-md border border-dashed border-line-strong text-lg text-ink-faint transition-colors hover:border-ink/30 hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
                 title="Attach image or file"
               >
-                {uploading ? "…" : "+"}
+                +
               </button>
               <input
                 ref={fileInputRef}
@@ -324,9 +325,10 @@ export function TaskDetailModal({
               <button
                 onClick={save}
                 disabled={pending}
+                aria-busy={pending}
                 className={ui.btnPrimary}
               >
-                {pending ? "Saving..." : "Save"}
+                Save
               </button>
             </div>
           </div>

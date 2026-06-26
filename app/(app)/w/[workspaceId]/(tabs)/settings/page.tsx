@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { ServiceError } from "@/lib/services/project";
@@ -6,16 +7,10 @@ import { prisma } from "@/lib/prisma";
 import { DangerZone } from "@/components/danger-zone";
 import { InviteRow } from "@/components/invite-row";
 import { MemberRow } from "@/components/member-row";
-import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { WorkspaceRenameForm } from "@/components/workspace-rename-form";
-import { displayUser } from "@/lib/username";
+import { SettingsContentSkeleton } from "@/components/tab-content-skeleton";
 
-export default async function WorkspaceSettingsPage({
-  params,
-}: {
-  params: Promise<{ workspaceId: string }>;
-}) {
-  const { workspaceId } = await params;
+async function SettingsData({ workspaceId }: { workspaceId: string }) {
   const user = await requireUser();
 
   let memberData;
@@ -39,19 +34,7 @@ export default async function WorkspaceSettingsPage({
   const invites = canInvite ? await listInvites(workspaceId, user.id) : [];
 
   return (
-    <main className="mx-auto w-full max-w-6xl">
-      <WorkspacePageHeader
-        workspaceId={workspaceId}
-        workspaceName={workspace.name}
-        activeTab="settings"
-        breadcrumbLeaf="Settings"
-        members={members.map((m) => ({
-          id: m.user.id,
-          label: displayUser(m.user),
-        }))}
-        canInvite={canInvite}
-      />
-
+    <>
       <section className="mb-10 max-w-2xl">
         <h2 className="mb-1 text-sm font-semibold text-ink">General</h2>
         <p className="mb-4 text-sm text-ink-soft">
@@ -128,6 +111,20 @@ export default async function WorkspaceSettingsPage({
           isLeader={isLeader}
         />
       </section>
-    </main>
+    </>
+  );
+}
+
+export default async function WorkspaceSettingsPage({
+  params,
+}: {
+  params: Promise<{ workspaceId: string }>;
+}) {
+  const { workspaceId } = await params;
+
+  return (
+    <Suspense fallback={<SettingsContentSkeleton />}>
+      <SettingsData workspaceId={workspaceId} />
+    </Suspense>
   );
 }

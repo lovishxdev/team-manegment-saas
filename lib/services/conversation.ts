@@ -1,3 +1,4 @@
+import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -84,4 +85,39 @@ export async function recordExchange(
       where: { id: { in: excess.map((row) => row.id) } },
     });
   }
+}
+
+/** Marks the first inbound WhatsApp message from this user (idempotent). */
+export async function markWhatsAppChatInitiated(userId: string): Promise<void> {
+  const { count } = await prisma.user.updateMany({
+    where: { id: userId, whatsappChatInitiatedAt: null },
+    data: { whatsappChatInitiatedAt: new Date() },
+  });
+  if (count > 0) {
+    revalidatePath("/", "layout");
+  }
+}
+
+/** Whether the user has ever messaged the WhatsApp bot. */
+export async function userHasInitiatedWhatsAppChat(
+  userId: string
+): Promise<boolean> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { whatsappChatInitiatedAt: true },
+  });
+  if (user?.whatsappChatInitiatedAt) return true;
+
+  const first = await prisma.whatsAppMessage.findFirst({
+    where: { userId, role: "user" },
+    orderBy: { createdAt: "asc" },
+    select: { createdAt: true },
+  });
+  if (!first) return false;
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { whatsappChatInitiatedAt: first.createdAt },
+  });
+  return true;
 }

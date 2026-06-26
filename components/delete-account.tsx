@@ -40,9 +40,10 @@ export function DeleteAccount({
         <button
           type="submit"
           disabled={pending}
+          aria-busy={pending}
           className={`self-start ${ui.btnDanger}`}
         >
-          {pending ? "Deleting..." : "Delete my account"}
+          Delete my account
         </button>
       </form>
     </section>

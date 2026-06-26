@@ -368,7 +368,7 @@ export function Whiteboard({
           {status === "saving" && "Saving…"}
           {status === "saved" && "Saved"}
           {status === "error" && (
-            <span className="text-red-400">Save failed — check connection</span>
+            <span className="text-red-400">Save failed. Check connection</span>
           )}
         </div>
       </div>

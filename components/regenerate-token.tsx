@@ -27,9 +27,10 @@ export function RegenerateToken() {
       <button
         onClick={regenerate}
         disabled={pending}
+        aria-busy={pending}
         className={`self-start ${ui.btnGhostDanger}`}
       >
-        {pending ? "Generating..." : "Regenerate token"}
+        Regenerate token
       </button>
       {message && <p className="text-xs text-amber-300">{message}</p>}
     </div>

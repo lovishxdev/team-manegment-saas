@@ -1,17 +1,17 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { getBoardView, ServiceError } from "@/lib/services/project";
 import { displayUser } from "@/lib/username";
-import { BoardPageShell } from "@/components/board-page-shell";
+import { BoardPageContent } from "@/components/board-page-content";
+import { BoardContentSkeleton } from "@/components/tab-content-skeleton";
 import { type BoardTask } from "@/components/task-board";
-import { Role } from "@/lib/generated/prisma/client";
 
-export default async function WorkspacePage({
-  params,
+async function BoardData({
+  workspaceId,
 }: {
-  params: Promise<{ workspaceId: string }>;
+  workspaceId: string;
 }) {
-  const { workspaceId } = await params;
   const user = await requireUser();
 
   let boardData;
@@ -22,7 +22,7 @@ export default async function WorkspacePage({
     throw err;
   }
 
-  const { workspace, board, selfRole } = boardData;
+  const { board } = boardData;
 
   const tasks: BoardTask[] = Object.values(board)
     .flat()
@@ -41,16 +41,25 @@ export default async function WorkspacePage({
       attachments: t.attachments,
     }));
 
-  const canInvite =
-    selfRole === Role.LEADER || selfRole === Role.SUB_LEADER;
-
   return (
-    <BoardPageShell
-      workspaceId={workspace.id}
-      workspaceName={workspace.name}
+    <BoardPageContent
+      workspaceId={workspaceId}
       tasks={tasks}
       currentUserId={user.id}
-      canInvite={canInvite}
     />
+  );
+}
+
+export default async function WorkspacePage({
+  params,
+}: {
+  params: Promise<{ workspaceId: string }>;
+}) {
+  const { workspaceId } = await params;
+
+  return (
+    <Suspense fallback={<BoardContentSkeleton />}>
+      <BoardData workspaceId={workspaceId} />
+    </Suspense>
   );
 }
