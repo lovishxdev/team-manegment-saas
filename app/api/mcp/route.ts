@@ -18,6 +18,8 @@ import {
 } from "@/lib/services/links";
 import {
   formatBoardState,
+  formatAssetList,
+  formatLinkList,
   formatTaskDeepLink,
 } from "@/lib/channel-formatters";
 import { workspaceUrl } from "@/lib/app-url";
@@ -300,20 +302,7 @@ const handler = createMcpHandler(
         try {
           const ctx = await resolveUserWorkspaceContext(userId, workspace);
           const assets = await listAssets(ctx.workspaceId, userId);
-          if (assets.length === 0) {
-            return text(`No assets in workspace "${ctx.workspaceName}" yet.`);
-          }
-          return text(
-            `Assets in "${ctx.workspaceName}" (${assets.length}):\n` +
-              assets
-                .map(
-                  (a) =>
-                    `- ${a.url}\n  type: ${a.fileType}` +
-                    (a.tags.length ? `, tags: ${a.tags.join(", ")}` : "") +
-                    (a.uploadedBy ? `, by @${displayUser(a.uploadedBy)}` : "")
-                )
-                .join("\n")
-          );
+          return text(formatAssetList(ctx.workspaceName, assets, "mcp"));
         } catch (err) {
           return toolError(err);
         }
@@ -376,20 +365,7 @@ const handler = createMcpHandler(
         try {
           const ctx = await resolveUserWorkspaceContext(userId, workspace);
           const links = await listWorkspaceLinks(ctx.workspaceId, userId);
-          if (links.length === 0) {
-            return text(`No links saved in workspace "${ctx.workspaceName}" yet.`);
-          }
-          return text(
-            `Links in "${ctx.workspaceName}" (${links.length}):\n` +
-              links
-                .map(
-                  (link) =>
-                    `- ${link.pinned ? "[pinned] " : ""}${link.title}\n  ${link.url}` +
-                    (link.description ? `\n  note: ${link.description}` : "") +
-                    `\n  by @${displayUser(link.createdBy)}`
-                )
-                .join("\n")
-          );
+          return text(formatLinkList(ctx.workspaceName, links, "mcp"));
         } catch (err) {
           return toolError(err);
         }

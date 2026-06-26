@@ -1,4 +1,7 @@
 /** Fast-path text commands — bypass Haiku. */
+import { isWhatsAppGreeting } from "@/lib/whatsapp-bot";
+import { parseAssetTagCommand } from "@/lib/whatsapp-asset-tags";
+
 const MENU_PATTERN = /^(menu|help|commands?)$/i;
 const BOARD_PATTERN = /^(board|show\s+board|my\s+board)$/i;
 
@@ -8,6 +11,17 @@ export function isMenuCommand(text: string): boolean {
 
 export function isBoardCommand(text: string): boolean {
   return BOARD_PATTERN.test(text.trim());
+}
+
+/** True when the message will go through Haiku (not a fast path). */
+export function willUseAiAgent(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  if (isWhatsAppGreeting(t)) return false;
+  if (isMenuCommand(t)) return false;
+  if (isBoardCommand(t)) return false;
+  if (parseAssetTagCommand(t)) return false;
+  return true;
 }
 
 export const BUTTON = {
@@ -49,13 +63,35 @@ export function parseButtonId(id: string):
 export const HELP_TEXT = `*What I can do*
 
 • Add tasks — "add a task to fix the login bug"
-• Update tasks — "move #12 to in progress" or "mark #8 done"
-• Show board — send *board* or tap View board
+• Update tasks — "move #12 to in progress" or "tag #8 marketing, v2"
+• Show board — send *board* or tap Board in the menu
+• List files — "what files do we have?" or "show uploads"
+• Save links — "save link Figma mockups https://figma.com/..."
+• List links — "show workspace links"
+• Rename workspace — "rename workspace to Product Team" (leader only)
 • Upload files — send a photo/document (caption = tags, #N = attach to task)
 • Tag files — "tag the last photo booth, marketing"
 
-Send *menu* anytime for these options.`;
+Send *menu* anytime for quick options.`;
 
 export function linkedGreetingBody(workspaceName: string): string {
-  return `Hey! You're connected to Euclis (*${workspaceName}*). What would you like to do?`;
+  return `You're connected to *${workspaceName}*. Pick an action below — tasks sync to your dashboard instantly.`;
 }
+
+export const GREETING_MENU_ROWS = [
+  {
+    id: BUTTON.menuBoard,
+    title: "📋 Board",
+    description: "Tasks grouped by status",
+  },
+  {
+    id: BUTTON.menuAdd,
+    title: "➕ New task",
+    description: "Describe what to create",
+  },
+  {
+    id: BUTTON.menuHelp,
+    title: "💡 Help",
+    description: "Commands & examples",
+  },
+] as const;

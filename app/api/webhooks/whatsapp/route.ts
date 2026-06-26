@@ -11,19 +11,24 @@ import {
   createTask,
   deleteTask,
   getBoardState,
+  listAssets,
   resolveUserWorkspaceContext,
   ServiceError,
   updateAssetTagsByRef,
   updateTask,
   uploadAsset,
 } from "@/lib/services/project";
+import {
+  createWorkspaceLink,
+  listWorkspaceLinks,
+} from "@/lib/services/links";
 import { parseAssetTagCommand } from "@/lib/whatsapp-asset-tags";
 import {
   getRecentConversation,
   markWhatsAppChatInitiated,
   recordExchange,
 } from "@/lib/services/conversation";
-import { findOrCreateWorkspaceByName } from "@/lib/services/workspace";
+import { findOrCreateWorkspaceByName, renameWorkspace } from "@/lib/services/workspace";
 import { revalidateUserWorkspaces } from "@/lib/revalidate-nav";
 import {
   claimInboundMessage,
@@ -51,7 +56,9 @@ import {
 } from "@/lib/whatsapp-webhook-log";
 import {
   formatActionSummary,
+  formatAssetList,
   formatBoardState,
+  formatLinkList,
   formatTaskDeepLink,
   formatTaskSummary,
 } from "@/lib/channel-formatters";
@@ -59,6 +66,7 @@ import { workspaceUrl } from "@/lib/app-url";
 import { isWhatsAppGreeting } from "@/lib/whatsapp-bot";
 import {
   BUTTON,
+  GREETING_MENU_ROWS,
   HELP_TEXT,
   isBoardCommand,
   isMenuCommand,
@@ -68,6 +76,7 @@ import {
 import {
   sendWhatsAppButtons,
   sendWhatsAppCtaUrl,
+  sendWhatsAppList,
 } from "@/lib/whatsapp-messages";
 import {
   clearPending,
@@ -98,10 +107,14 @@ function buildSystemPrompt(): string {
   return `You are the WhatsApp assistant for a project management tool. Today is ${weekday}, ${today}.
 Convert the user's message into tool calls when they want to act on their board:
 - create_task: when they want to add/create a task
-- update_task: when they want to change a task - move/complete/start it, retitle it, set priority, due date, or assign it (they usually reference it as #N)
+- update_task: when they want to change a task - move/complete/start it, retitle it, set priority, due date, tags, or assign it (they usually reference it as #N)
 - delete_task: when they explicitly want to remove/delete a task (only when clearly intended)
 - get_board_state: when they ask what's on the board, task lists, or progress
 - create_workspace: when they want to create/start a new workspace, project, or board (e.g. "create a workspace called Marketing")
+- rename_workspace: when they want to rename an existing workspace (leader only)
+- list_assets: when they ask about uploaded files, photos, or documents in the workspace
+- add_link: when they want to save a URL/bookmark to the workspace Links tab (docs, Figma, staging sites, etc.)
+- list_links: when they ask what links are saved in the workspace
 - update_asset_tags: when they want to tag an already-uploaded file/photo (e.g. "tag the last photo booth, marketing" or "remove tag draft from banner.png"). ALWAYS call this tool for tagging requests — never say you cannot tag files.
 
 Rules:
@@ -148,6 +161,11 @@ const TOOLS: Anthropic.Tool[] = [
           type: "string",
           description: "Due date as YYYY-MM-DD (resolve relative dates first)",
         },
+        tags: {
+          type: "array",
+          items: { type: "string" },
+          description: "Free-form labels, e.g. marketing, v2",
+        },
         assignee: {
           type: "string",
           description:
@@ -190,6 +208,11 @@ const TOOLS: Anthropic.Tool[] = [
           type: "string",
           description:
             "Due date as YYYY-MM-DD (resolve relative dates first), or empty string to clear",
+        },
+        tags: {
+          type: "array",
+          items: { type: "string" },
+          description: "Full replacement list of free-form labels",
         },
         assignee: {
           type: "string",
@@ -243,6 +266,76 @@ const TOOLS: Anthropic.Tool[] = [
         name: { type: "string", description: "Name for the new workspace" },
       },
       required: ["name"],
+    },
+  },
+  {
+    name: "rename_workspace",
+    description:
+      "Rename an existing workspace. Only the workspace leader can rename it.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "New workspace name" },
+        workspace: {
+          type: "string",
+          description:
+            "Workspace to rename, only if the user explicitly mentioned one",
+        },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "list_assets",
+    description:
+      "List files/assets uploaded to the workspace (images, documents)",
+    input_schema: {
+      type: "object",
+      properties: {
+        workspace: {
+          type: "string",
+          description: "Workspace name, only if the user explicitly mentioned one",
+        },
+      },
+    },
+  },
+  {
+    name: "add_link",
+    description:
+      "Save an important URL to the workspace Links tab (docs, Figma, staging sites, etc.)",
+    input_schema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Short label for the link" },
+        url: { type: "string", description: "URL (http/https)" },
+        description: {
+          type: "string",
+          description: "Optional note about what the link is for",
+        },
+        pinned: {
+          type: "boolean",
+          description: "Pin to the top of the links list",
+        },
+        workspace: {
+          type: "string",
+          description: "Workspace name, only if the user explicitly mentioned one",
+        },
+      },
+      required: ["title", "url"],
+    },
+  },
+  {
+    name: "list_links",
+    description:
+      "List important URLs saved in the workspace Links tab (pinned links first)",
+    input_schema: {
+      type: "object",
+      properties: {
+        workspace: {
+          type: "string",
+          description: "Workspace name, only if the user explicitly mentioned one",
+        },
+      },
     },
   },
   {
@@ -440,8 +533,7 @@ async function processQueuedMessage(message: InboundMessage, queued: boolean) {
       const progress = new WhatsAppProgress(message.from, () =>
         touchProcessorLock(message.from)
       );
-      await progress.started(queued);
-      await handleMessage(message.from, message.text, progress);
+      await handleMessage(message.from, message.text, progress, queued);
     } else if (message.kind === "interactive") {
       await handleInteractiveMessage(message);
     } else {
@@ -551,13 +643,18 @@ async function sendGreetingWithButtons(
   userText: string
 ) {
   const body = linkedGreetingBody(workspaceName);
-  const sent = await sendWhatsAppButtons(from, body, [
-    { id: BUTTON.menuBoard, title: "View board" },
-    { id: BUTTON.menuAdd, title: "Add task" },
-    { id: BUTTON.menuHelp, title: "Help" },
-  ]);
+  const sent = await sendWhatsAppList(
+    from,
+    body,
+    "Choose action",
+    [{ title: "Quick actions", rows: [...GREETING_MENU_ROWS] }],
+    { header: "Euclis", footer: workspaceName }
+  );
   if (!sent) {
-    await sendWhatsAppText(from, `${body}\n\nSend *menu* for quick options.`);
+    await sendWhatsAppText(
+      from,
+      `${body}\n\n• *board* — view tasks\n• describe a task to add one\n• *menu* — this list again`
+    );
   }
   await recordExchange(userId, userText, body).catch((err) =>
     console.error("Failed to record conversation:", err)
@@ -669,7 +766,8 @@ async function handleInteractiveMessage(
 async function handleMessage(
   from: string,
   text: string,
-  progress?: WhatsAppProgress
+  progress?: WhatsAppProgress,
+  queued = false
 ) {
   const userId = await getUserIdByPhone(from);
   if (!userId) {
@@ -775,6 +873,8 @@ async function handleMessage(
   // "make that one high priority" (the prior reply names the task #N).
   const history = await getRecentConversation(userId);
 
+  progress?.beginSlowPing(queued);
+
   const anthropic = new Anthropic();
   const messages: Anthropic.MessageParam[] = [
     ...history,
@@ -795,6 +895,7 @@ async function handleMessage(
     lastCreatedTask: null,
   };
 
+  try {
   for (let turn = 0; turn < MAX_TOOL_TURNS; turn++) {
     const response = await anthropic.messages.create({
       model: HAIKU_MODEL,
@@ -839,6 +940,9 @@ async function handleMessage(
     }
     messages.push({ role: "user", content: results });
   }
+  } finally {
+    progress?.finish();
+  }
 
   if (actionResults.length > 0) {
     reply = formatActionSummary(actionResults, budgetExhausted, "whatsapp");
@@ -857,24 +961,31 @@ async function handleMessage(
     if (pending) {
       await sendWhatsAppButtons(
         from,
-        `Delete #${pending.shortId} "${pending.taskTitle}"? This cannot be undone.`,
+        `Delete *#${pending.shortId}* "${pending.taskTitle}"?`,
         [
-          { id: BUTTON.deleteConfirm(pending.shortId), title: "Delete" },
-          { id: BUTTON.deleteCancel, title: "Cancel" },
-        ]
+          { id: BUTTON.deleteConfirm(pending.shortId), title: "🗑 Delete" },
+          { id: BUTTON.deleteCancel, title: "✖ Cancel" },
+        ],
+        { header: "Confirm delete", footer: "This cannot be undone" }
       ).catch(() => {});
     }
   } else if (session.lastCreatedTask) {
     const { shortId, workspaceId } = session.lastCreatedTask;
-    await sendWhatsAppButtons(from, `Quick actions for #${shortId}:`, [
-      { id: BUTTON.taskStart(shortId), title: "In progress" },
-      { id: BUTTON.taskDone(shortId), title: "Mark done" },
-    ]).catch(() => {});
+    await sendWhatsAppButtons(
+      from,
+      `Update *#${shortId}* or open it on the web.`,
+      [
+        { id: BUTTON.taskStart(shortId), title: "▶ In progress" },
+        { id: BUTTON.taskDone(shortId), title: "✅ Done" },
+      ],
+      { header: `Task #${shortId}`, footer: "Tap to update status" }
+    ).catch(() => {});
     await sendWhatsAppCtaUrl(
       from,
-      "Open your workspace on the web.",
+      "Open your workspace in the browser.",
       "Open board",
-      workspaceUrl(workspaceId)
+      workspaceUrl(workspaceId),
+      { footer: "Euclis dashboard" }
     ).catch(() => {});
   }
 }
@@ -884,6 +995,12 @@ function parseInputDueDate(value: unknown): Date | null | undefined {
   if (value === "") return null;
   const parsed = new Date(String(value));
   return isNaN(parsed.getTime()) ? undefined : parsed;
+}
+
+function parseTagsInput(value: unknown): string[] | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value)) return undefined;
+  return value.map((t) => String(t).trim()).filter(Boolean);
 }
 
 /** "me" (any case) resolves to the sender; otherwise pass through. */
@@ -942,6 +1059,7 @@ async function executeAction(
           scope: input.scope as TaskScope | undefined,
           priority: input.priority as TaskPriority | undefined,
           dueDate: parseInputDueDate(input.dueDate),
+          tags: parseTagsInput(input.tags),
           userId,
         });
         const assignee = resolveAssigneeInput(input.assignee, userId);
@@ -996,6 +1114,7 @@ async function executeAction(
           scope: input.scope as TaskScope | undefined,
           priority: input.priority as TaskPriority | undefined,
           dueDate: parseInputDueDate(input.dueDate),
+          tags: parseTagsInput(input.tags),
           assignee: resolveAssigneeInput(input.assignee, userId),
         });
         revalidateUserWorkspaces(userId, ctx.workspaceId);
@@ -1036,6 +1155,47 @@ async function executeAction(
           "whatsapp"
         );
         return `${body}\n\nOpen: ${workspaceUrl(ctx.workspaceId)}`;
+      }
+
+      case "rename_workspace": {
+        const name = String(input.name ?? "").trim();
+        if (!name) return "What should the workspace be renamed to?";
+        const updated = await renameWorkspace(ctx.workspaceId, userId, name);
+        session.workspaceName = updated.name;
+        revalidateUserWorkspaces(userId, ctx.workspaceId);
+        return `Renamed workspace to *${updated.name}*.`;
+      }
+
+      case "list_assets": {
+        const assets = await listAssets(ctx.workspaceId, userId);
+        return formatAssetList(ctx.workspaceName, assets, "whatsapp");
+      }
+
+      case "add_link": {
+        const title = String(input.title ?? "").trim();
+        const url = String(input.url ?? "").trim();
+        if (!title || !url) return "I need a title and URL to save a link.";
+        const link = await createWorkspaceLink({
+          workspaceId: ctx.workspaceId,
+          userId,
+          title,
+          url,
+          description:
+            typeof input.description === "string"
+              ? input.description
+              : undefined,
+          pinned: input.pinned === true,
+        });
+        revalidateUserWorkspaces(userId, ctx.workspaceId);
+        return (
+          `Saved link *${link.title}*${link.pinned ? " (pinned)" : ""}:\n${link.url}` +
+          (link.description ? `\n_${link.description}_` : "")
+        );
+      }
+
+      case "list_links": {
+        const links = await listWorkspaceLinks(ctx.workspaceId, userId);
+        return formatLinkList(ctx.workspaceName, links, "whatsapp");
       }
 
       case "update_asset_tags": {
