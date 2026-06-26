@@ -1,7 +1,7 @@
 import { Suspense } from "react";
-import { WorkspaceTabsLayout } from "@/components/workspace-tabs-layout";
-import { WorkspaceTitle } from "@/components/workspace-title";
-import { WorkspaceHeaderActionsLoader } from "@/components/workspace-header-actions-loader";
+import { WorkspaceTabsLayout } from "@/components/workspace/workspace-tabs-layout";
+import { WorkspaceTitle } from "@/components/workspace/workspace-title";
+import { WorkspaceHeaderActionsLoader } from "@/components/workspace/workspace-header-actions-loader";
 
 function TitleSkeleton() {
   return (

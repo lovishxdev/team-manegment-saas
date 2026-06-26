@@ -3,10 +3,10 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { ServiceError } from "@/lib/services/project";
 import { getLinksView } from "@/lib/services/links";
-import { LinkForm } from "@/components/link-form";
-import { LinkRow, type LinkItem } from "@/components/link-row";
+import { LinkForm } from "@/components/links/link-form";
+import { LinkRow, type LinkItem } from "@/components/links/link-row";
 import { displayUser } from "@/lib/username";
-import { LinksContentSkeleton } from "@/components/tab-content-skeleton";
+import { LinksContentSkeleton } from "@/components/ui/tab-content-skeleton";
 
 async function LinksData({ workspaceId }: { workspaceId: string }) {
   const user = await requireUser();

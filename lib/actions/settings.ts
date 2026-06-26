@@ -5,7 +5,6 @@ import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { ServiceError } from "@/lib/services/project";
 import {
-  regenerateMcpToken,
   updateUserPhone,
   updateUsername,
   deleteUserAccount,
@@ -53,16 +52,6 @@ export async function updatePhoneAction(
   revalidatePath("/dashboard");
   revalidatePath("/", "layout");
   return { message: raw === "" ? "Phone number removed" : "Phone number saved" };
-}
-
-export async function regenerateMcpTokenAction(): Promise<SettingsState> {
-  const user = await requireUser();
-  await regenerateMcpToken(user.id);
-  revalidatePath("/settings");
-  return {
-    message:
-      "New token generated. Update it anywhere the old one was configured (Claude, etc.).",
-  };
 }
 
 export async function deleteAccountAction(

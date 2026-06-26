@@ -3,9 +3,9 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { getBoardView, ServiceError } from "@/lib/services/project";
 import { displayUser } from "@/lib/username";
-import { BoardPageContent } from "@/components/board-page-content";
-import { BoardContentSkeleton } from "@/components/tab-content-skeleton";
-import { type BoardTask } from "@/components/task-board";
+import { BoardPageContent } from "@/components/board/board-page-content";
+import { BoardContentSkeleton } from "@/components/ui/tab-content-skeleton";
+import { type BoardTask } from "@/components/board/task-board";
 
 async function BoardData({
   workspaceId,

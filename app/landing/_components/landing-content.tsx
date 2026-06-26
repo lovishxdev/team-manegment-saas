@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ui } from "@/components/ui";
+import { ui } from "@/components/ui/ui";
 import { DashboardPreview } from "./dashboard-preview";
 import { LandingStyles } from "./landing-styles";
 import { Reveal } from "./scroll-reveal";

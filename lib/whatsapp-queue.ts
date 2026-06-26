@@ -299,11 +299,3 @@ export async function ensureQueueProcessed(
     void pruneInboundQueue().catch(() => {});
   }
 }
-
-/** @deprecated Use ensureQueueProcessed */
-export async function scheduleInboundDrain(
-  phone: string,
-  handler: (message: InboundMessage, queued: boolean) => Promise<void>
-): Promise<void> {
-  await ensureQueueProcessed(phone, handler);
-}

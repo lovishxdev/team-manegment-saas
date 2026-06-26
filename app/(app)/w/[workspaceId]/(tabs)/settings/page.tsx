@@ -4,11 +4,11 @@ import { requireUser } from "@/lib/auth";
 import { ServiceError } from "@/lib/services/project";
 import { getWorkspaceMembers, listInvites } from "@/lib/services/workspace";
 import { prisma } from "@/lib/prisma";
-import { DangerZone } from "@/components/danger-zone";
-import { InviteRow } from "@/components/invite-row";
-import { MemberRow } from "@/components/member-row";
-import { WorkspaceRenameForm } from "@/components/workspace-rename-form";
-import { SettingsContentSkeleton } from "@/components/tab-content-skeleton";
+import { DangerZone } from "@/components/settings/danger-zone";
+import { InviteRow } from "@/components/members/invite-row";
+import { MemberRow } from "@/components/members/member-row";
+import { WorkspaceRenameForm } from "@/components/workspace/workspace-rename-form";
+import { SettingsContentSkeleton } from "@/components/ui/tab-content-skeleton";
 
 async function SettingsData({ workspaceId }: { workspaceId: string }) {
   const user = await requireUser();

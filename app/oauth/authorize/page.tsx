@@ -10,7 +10,7 @@ import {
   approveAuthorizationAction,
   denyAuthorizationAction,
 } from "@/lib/actions/oauth";
-import { ui } from "@/components/ui";
+import { ui } from "@/components/ui/ui";
 
 function ErrorCard({ message }: { message: string }) {
   return (

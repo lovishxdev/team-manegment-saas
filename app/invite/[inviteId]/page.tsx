@@ -3,8 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getInvite } from "@/lib/services/workspace";
 import { createSupabaseServer } from "@/lib/supabase-server";
-import { JoinButton } from "@/components/join-button";
-import { ui } from "@/components/ui";
+import { JoinButton } from "@/components/members/join-button";
+import { ui } from "@/components/ui/ui";
 
 export default async function InvitePage({
   params,

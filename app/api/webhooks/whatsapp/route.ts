@@ -62,6 +62,7 @@ import {
   formatTaskSummary,
 } from "@/lib/channel-formatters";
 import { workspaceUrl } from "@/lib/app-url";
+import { getAppOrigin } from "@/lib/app-origin";
 import { isWhatsAppGreeting } from "@/lib/whatsapp-bot";
 import {
   BUTTON,
@@ -85,10 +86,12 @@ import {
 } from "@/lib/whatsapp-pending";
 import {
   activateWorkspace,
+  formatNoWorkspaceWhatsAppReply,
   listWorkspacePickerOptions,
   parseWorkspacePickId,
   sendWorkspacePicker,
   shouldPromptWorkspacePick,
+  userHasAnyWorkspace,
 } from "@/lib/whatsapp-workspace";
 
 /**
@@ -108,12 +111,32 @@ const DENIED_MESSAGE =
 const UNLINKED_GREETING_REPLY =
   "Hey! I'm the Euclis bot. To get started, sign in to Euclis, add this WhatsApp number under Settings → WhatsApp, then send hi again. I'll help you manage tasks from here.";
 
-function buildSystemPrompt(activeWorkspaceName: string): string {
+const NEW_USER_GREETING =
+  "Hey! You're linked to Euclis but don't have a workspace yet.\n\nSay something like:\n*create a workspace called My Team*\n\nThen you can add tasks, upload files, and manage your board from here.";
+
+async function sendNoWorkspaceHint(
+  from: string,
+  userId: string,
+  userText: string
+): Promise<void> {
+  const origin = await getAppOrigin();
+  const reply = formatNoWorkspaceWhatsAppReply(origin);
+  await sendWhatsAppText(from, reply);
+  await recordExchange(userId, userText, reply).catch((err) =>
+    console.error("Failed to record conversation:", err)
+  );
+}
+
+function buildSystemPrompt(activeWorkspaceName: string | null): string {
   const today = new Date().toISOString().slice(0, 10);
   const weekday = new Date().toLocaleDateString("en-US", { weekday: "long" });
+  const workspaceContext = activeWorkspaceName
+    ? `The user's active workspace is "${activeWorkspaceName}". Omit the workspace parameter on all tools unless they explicitly name a different workspace.`
+    : `The user has NO workspace yet. If they want to get started, call create_workspace (e.g. "create a workspace called Marketing"). Do not use task, board, asset, or link tools until a workspace exists.`;
+
   return `You are the WhatsApp assistant for a project management tool. Today is ${weekday}, ${today}.
 
-The user's active workspace is "${activeWorkspaceName}". Omit the workspace parameter on all tools unless they explicitly name a different workspace.
+${workspaceContext}
 
 Convert the user's message into tool calls when they want to act on their board:
 - create_task: when they want to add/create a task
@@ -586,6 +609,11 @@ async function handleMediaMessage(
 
   await markWhatsAppChatInitiated(userId);
 
+  if (!(await userHasAnyWorkspace(userId))) {
+    await sendNoWorkspaceHint(message.from, userId, `[sent a file: ${message.fileName}]`);
+    return;
+  }
+
   const ctx = await resolveUserWorkspaceContext(userId);
   const file = await downloadWhatsAppMedia(message.mediaId);
 
@@ -636,6 +664,7 @@ type WhatsAppSession = {
   createdTaskShortIds: number[];
   pendingDeleteShortId: number | null;
   lastCreatedTask: { shortId: number; workspaceId: string } | null;
+  workspacePickerSent: boolean;
 };
 
 async function fetchBoardReply(
@@ -702,8 +731,10 @@ async function handleInteractiveMessage(
 
   await markWhatsAppChatInitiated(userId);
 
-  const action = parseButtonId(buttonId);
   const userText = `[tapped: ${title || buttonId}]`;
+  const hasWorkspace = await userHasAnyWorkspace(userId);
+
+  const action = parseButtonId(buttonId);
 
   const workspacePickId = parseWorkspacePickId(buttonId);
   if (workspacePickId) {
@@ -748,14 +779,19 @@ async function handleInteractiveMessage(
     }
 
     if (action.type === "menu_add") {
-      const reply =
-        'To add a task, message me something like:\n"add a task to fix the login bug"';
+      const reply = hasWorkspace
+        ? 'To add a task, message me something like:\n"add a task to fix the login bug"'
+        : 'First create a workspace. Say:\n"create a workspace called My Team"';
       await sendWhatsAppText(from, reply);
       await recordExchange(userId, userText, reply).catch(() => {});
       return;
     }
 
     if (action.type === "menu_board") {
+      if (!hasWorkspace) {
+        await sendNoWorkspaceHint(from, userId, userText);
+        return;
+      }
       const reply = await fetchBoardReply(userId);
       await sendWhatsAppText(from, reply);
       await recordExchange(userId, userText, reply).catch(() => {});
@@ -764,6 +800,10 @@ async function handleInteractiveMessage(
 
     if (action.type === "menu_switch") {
       const options = await listWorkspacePickerOptions(userId);
+      if (options.length === 0) {
+        await sendNoWorkspaceHint(from, userId, userText);
+        return;
+      }
       if (options.length <= 1) {
         const reply = "You only belong to one workspace right now.";
         await sendWhatsAppText(from, reply);
@@ -786,6 +826,11 @@ async function handleInteractiveMessage(
       const reply = "Delete cancelled.";
       await sendWhatsAppText(from, reply);
       await recordExchange(userId, userText, reply).catch(() => {});
+      return;
+    }
+
+    if (!hasWorkspace) {
+      await sendNoWorkspaceHint(from, userId, userText);
       return;
     }
 
@@ -861,7 +906,14 @@ async function handleMessage(
 
   await markWhatsAppChatInitiated(userId);
 
+  const hasWorkspace = await userHasAnyWorkspace(userId);
+
   if (isWhatsAppGreeting(text)) {
+    if (!hasWorkspace) {
+      await sendWhatsAppText(from, NEW_USER_GREETING);
+      await recordExchange(userId, text, NEW_USER_GREETING).catch(() => {});
+      return;
+    }
     try {
       const ctx = await resolveUserWorkspaceContext(userId);
       const memberships = await listWorkspacePickerOptions(userId);
@@ -884,7 +936,7 @@ async function handleMessage(
     }
   }
 
-  if (await shouldPromptWorkspacePick(userId)) {
+  if (hasWorkspace && (await shouldPromptWorkspacePick(userId))) {
     const options = await listWorkspacePickerOptions(userId);
     await stageContinueMessage(from, userId, text);
     await sendWorkspacePicker(
@@ -899,7 +951,9 @@ async function handleMessage(
   // Recent exchanges give Haiku the context to resolve follow-ups like
   // "make that one high priority" (the prior reply names the task #N).
   const history = await getRecentConversation(userId);
-  const activeCtx = await resolveUserWorkspaceContext(userId);
+  const activeCtx = hasWorkspace
+    ? await resolveUserWorkspaceContext(userId)
+    : { workspaceId: null, workspaceName: null };
 
   progress?.beginSlowPing(queued);
 
@@ -921,6 +975,7 @@ async function handleMessage(
     createdTaskShortIds: [],
     pendingDeleteShortId: null,
     lastCreatedTask: null,
+    workspacePickerSent: false,
   };
 
   try {
@@ -972,17 +1027,25 @@ async function handleMessage(
     progress?.finish();
   }
 
-  if (actionResults.length > 0) {
-    reply = formatActionSummary(actionResults, budgetExhausted, "whatsapp");
-  } else if (!reply) {
+  const textResults = actionResults.filter((r) => r.trim().length > 0);
+
+  if (textResults.length > 0) {
+    reply = formatActionSummary(textResults, budgetExhausted, "whatsapp");
+  } else if (!reply && !session.workspacePickerSent) {
     reply =
       'I can create tasks, update their status, tag uploaded files, or show your board. Try: "add a task to fix the login bug" or send *menu*.';
   }
 
-  await sendWhatsAppText(from, reply);
-  await recordExchange(userId, text, reply).catch((err) =>
-    console.error("Failed to record conversation:", err)
-  );
+  if (reply) {
+    await sendWhatsAppText(from, reply);
+    await recordExchange(userId, text, reply).catch((err) =>
+      console.error("Failed to record conversation:", err)
+    );
+  } else if (session.workspacePickerSent) {
+    await recordExchange(userId, text, "[workspace picker shown]").catch((err) =>
+      console.error("Failed to record conversation:", err)
+    );
+  }
 
   if (session.pendingDeleteShortId) {
     const pending = await getPendingDelete(from, userId);
@@ -1242,7 +1305,11 @@ async function executeAction(
       }
 
       case "show_workspace_picker": {
+        if (session.workspacePickerSent) return "";
         const options = await listWorkspacePickerOptions(userId);
+        if (options.length === 0) {
+          return 'You have no workspaces yet. Say: "create a workspace called My Team"';
+        }
         if (options.length <= 1) {
           return `You only have one workspace (*${ctx.workspaceName}*).`;
         }
@@ -1251,9 +1318,11 @@ async function executeAction(
           options.map((m) => m.workspace),
           `You're on *${ctx.workspaceName}*. Pick a workspace:`
         );
-        return sent
-          ? "Sent a workspace picker — tap one in the list above."
-          : "Could not send the workspace picker. Try again in a moment.";
+        if (sent) {
+          session.workspacePickerSent = true;
+          return "";
+        }
+        return "Could not send the workspace picker. Try again in a moment.";
       }
 
       case "update_asset_tags": {
@@ -1294,7 +1363,12 @@ async function executeAction(
         return "I didn't understand that action. Try creating a task, updating one, or asking for the board.";
     }
   } catch (err) {
-    if (err instanceof ServiceError) return err.message;
+    if (err instanceof ServiceError) {
+      if (err.code === "NO_WORKSPACE") {
+        return 'You need a workspace first. Say: "create a workspace called My Team"';
+      }
+      return err.message;
+    }
     throw err;
   }
 }

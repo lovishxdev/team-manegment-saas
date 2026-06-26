@@ -1,5 +1,5 @@
 import { requireUser } from "@/lib/auth";
-import { AppShell } from "@/components/app-shell";
+import { AppShell } from "@/components/layout/app-shell";
 import { displayUser } from "@/lib/username";
 
 /**

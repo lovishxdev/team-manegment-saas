@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { ServiceError } from "@/lib/services/project";
 import { getExcalidrawState } from "@/lib/services/workspace";
-import { Whiteboard } from "@/components/whiteboard";
+import { Whiteboard } from "@/components/whiteboard/whiteboard";
 import { displayUser } from "@/lib/username";
 
 export default async function WhiteboardPage({

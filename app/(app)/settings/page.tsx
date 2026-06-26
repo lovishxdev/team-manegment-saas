@@ -1,13 +1,13 @@
 import { requireUser } from "@/lib/auth";
 import { getMcpConnectorUrl } from "@/lib/app-origin";
-import { SHELL_BRAND_ROW } from "@/components/app-shell-shared";
-import { ui } from "@/components/ui";
-import { CopyField } from "@/components/copy-field";
-import { DeleteAccount } from "@/components/delete-account";
-import { PhoneForm } from "@/components/phone-form";
-import { UsernameForm } from "@/components/username-form";
-import { WhatsAppBotNumber } from "@/components/whatsapp-bot-number";
-import { WhatsAppChatHistory } from "@/components/whatsapp-chat-history";
+import { SHELL_BRAND_ROW } from "@/components/layout/app-shell-shared";
+import { ui } from "@/components/ui/ui";
+import { CopyField } from "@/components/ui/copy-field";
+import { DeleteAccount } from "@/components/settings/delete-account";
+import { PhoneForm } from "@/components/settings/phone-form";
+import { UsernameForm } from "@/components/settings/username-form";
+import { WhatsAppBotNumber } from "@/components/whatsapp/whatsapp-bot-number";
+import { WhatsAppChatHistory } from "@/components/whatsapp/whatsapp-chat-history";
 import {
   listWhatsAppChatHistory,
   userHasInitiatedWhatsAppChat,

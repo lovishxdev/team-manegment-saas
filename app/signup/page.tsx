@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { use, useActionState } from "react";
 import { signUpAction, type AuthFormState } from "@/lib/actions/auth";
-import { AuthCard, Divider } from "@/components/auth-card";
-import { OAuthButtons } from "@/components/oauth-buttons";
-import { ui } from "@/components/ui";
+import { AuthCard, Divider } from "@/components/auth/auth-card";
+import { OAuthButtons } from "@/components/auth/oauth-buttons";
+import { ui } from "@/components/ui/ui";
 
 const initialState: AuthFormState = {};
 

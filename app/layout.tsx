@@ -5,7 +5,7 @@ import {
   Instrument_Serif,
   JetBrains_Mono,
 } from "next/font/google";
-import { ShellBackgroundInteraction } from "@/components/shell-background-interaction";
+import { ShellBackgroundInteraction } from "@/components/layout/shell-background-interaction";
 import "./globals.css";
 
 const hanken = Hanken_Grotesk({

@@ -62,18 +62,17 @@ sequenceDiagram
 | `lib/whatsapp-queue.ts` | Per-phone FIFO queue + drain loop |
 | `lib/whatsapp-inbound.ts` | wamid dedup + processor lock |
 | `lib/whatsapp-progress.ts` | "Got it. Working on that now..." + throttled step pings |
-| `lib/whatsapp-asset-tags.ts` | Regex fast-path for "tag the last photo..." (bypasses Haiku) |
 | `lib/whatsapp-webhook-log.ts` | Debug logging (`WHATSAPP_WEBHOOK_DEBUG=1`) |
 | `lib/services/conversation.ts` | Rolling chat memory + `whatsappChatInitiatedAt` |
 | `lib/identity-cache.ts` | Cached `phone → userId` (60s TTL) |
 | `lib/services/project.ts` | **Shared actions**: tasks, board, assets, `resolveUserWorkspaceContext` |
 | `lib/services/workspace.ts` | `updateUserPhone`, `findOrCreateWorkspaceByName` |
 | `lib/actions/settings.ts` | `updatePhoneAction` server action |
-| `components/integrations-prompt.tsx` | Dashboard onboarding card (WhatsApp + Claude tabs) |
-| `components/phone-form.tsx` / `phone-number-input.tsx` | Phone linking UI with country picker |
-| `components/whatsapp-bot-number.tsx` | Settings bot number + "Send hi on WhatsApp" |
-| `components/whatsapp-onboarding-sync.tsx` | Refreshes UI when user returns from WhatsApp tab |
-| `components/app-shell.tsx` | Hides integrations prompt if `userHasInitiatedWhatsAppChat` |
+| `components/integrations/integrations-prompt.tsx` | Dashboard onboarding card (WhatsApp + Claude tabs) |
+| `components/settings/phone-form.tsx` / `settings/phone-number-input.tsx` | Phone linking UI with country picker |
+| `components/whatsapp/whatsapp-bot-number.tsx` | Settings bot number + "Send hi on WhatsApp" |
+| `components/whatsapp/whatsapp-onboarding-sync.tsx` | Refreshes UI when user returns from WhatsApp tab |
+| `components/layout/app-shell.tsx` | Hides integrations prompt if `userHasInitiatedWhatsAppChat` |
 | `scripts/unstick-whatsapp-queue.sql` | Manual recovery for stuck queue |
 | `SETUP.md` §3 | Meta setup instructions |
 
@@ -162,7 +161,7 @@ WhatsAppMessage               userId, role, content  // conversation memory
 ### Linked user — fast paths (no Haiku)
 
 1. **Greeting** (`isWhatsAppGreeting`) → `linkedGreetingReply(workspaceName)`
-2. **Asset tag command** (`parseAssetTagCommand`) → `updateAssetTagsByRef` directly
+2. **Asset tagging** is handled by the Haiku tool `update_asset_tags` → `updateAssetTagsByRef`
 
 ### Linked user — text (Haiku agentic loop)
 
@@ -227,7 +226,7 @@ Start message for onboarding: **`hi`** → `wa.me/<bot>?text=hi`
 
 ## Web UI integration
 
-### Integrations prompt (`components/integrations-prompt.tsx`)
+### Integrations prompt (`components/integrations/integrations-prompt.tsx`)
 
 - Shown in app shell until dismissed (localStorage) **or** `whatsappChatInitiatedAt` is set
 - WhatsApp tab: link phone, Step 2 "Send hi on WhatsApp" deep link
@@ -293,5 +292,4 @@ MCP equivalent: `app/api/mcp/route.ts` (same services, bearer token auth instead
 | Change queue behavior | `lib/whatsapp-queue.ts` |
 | Change onboarding UI | `integrations-prompt.tsx`, `app-shell.tsx` |
 | Change phone validation | `PHONE_REGEX` + `updateUserPhone` in `workspace.ts` |
-| Tag parsing without AI | `lib/whatsapp-asset-tags.ts` |
 | Meta send/read API | `lib/whatsapp.ts` |

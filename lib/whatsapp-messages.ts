@@ -110,6 +110,8 @@ export async function sendWhatsAppButtons(
 }
 
 /** List message — one menu button, cleaner than 3 stacked reply buttons. */
+export const WHATSAPP_LIST_MAX_ROWS = 10;
+
 export async function sendWhatsAppList(
   to: string,
   body: string,
@@ -118,8 +120,10 @@ export async function sendWhatsAppList(
   chrome?: InteractiveChrome
 ): Promise<boolean> {
   const rowCount = sections.reduce((n, s) => n + s.rows.length, 0);
-  if (rowCount === 0 || rowCount > 10) {
-    console.error("[whatsapp] list requires 1–10 rows");
+  if (rowCount === 0 || rowCount > WHATSAPP_LIST_MAX_ROWS) {
+    console.error(
+      `[whatsapp] list requires 1–${WHATSAPP_LIST_MAX_ROWS} rows, got ${rowCount}`
+    );
     return false;
   }
 

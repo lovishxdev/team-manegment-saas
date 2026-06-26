@@ -4,10 +4,10 @@ import {
   getWorkspaceDashboardStats,
   listUserWorkspaces,
 } from "@/lib/services/workspace";
-import { CreateWorkspaceForm } from "@/components/create-workspace-form";
-import { WorkspaceCard } from "@/components/workspace-card";
-import { SHELL_BRAND_ROW } from "@/components/app-shell-shared";
-import { ui } from "@/components/ui";
+import { CreateWorkspaceForm } from "@/components/workspace/create-workspace-form";
+import { WorkspaceCard } from "@/components/workspace/workspace-card";
+import { SHELL_BRAND_ROW } from "@/components/layout/app-shell-shared";
+import { ui } from "@/components/ui/ui";
 
 export default async function DashboardPage() {
   const user = await requireUser();

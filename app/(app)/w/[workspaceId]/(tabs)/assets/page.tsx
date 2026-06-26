@@ -2,14 +2,14 @@ import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { getAssetsView, ServiceError } from "@/lib/services/project";
-import { AssetCard, type AssetItem } from "@/components/asset-card";
-import { AssetUploadForm } from "@/components/asset-upload-form";
+import { AssetCard, type AssetItem } from "@/components/assets/asset-card";
+import { AssetUploadForm } from "@/components/assets/asset-upload-form";
 import {
   formatWhatsAppBotNumber,
   getWhatsAppBotNumber,
 } from "@/lib/whatsapp-bot";
 import { displayUser } from "@/lib/username";
-import { AssetsContentSkeleton } from "@/components/tab-content-skeleton";
+import { AssetsContentSkeleton } from "@/components/ui/tab-content-skeleton";
 
 async function AssetsData({ workspaceId }: { workspaceId: string }) {
   const user = await requireUser();

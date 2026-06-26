@@ -1,6 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { ServiceError, touchLastActiveWorkspace } from "@/lib/services/project";
-import { sendWhatsAppList } from "@/lib/whatsapp-messages";
+import { sendWhatsAppText } from "@/lib/whatsapp";
+import {
+  sendWhatsAppList,
+  WHATSAPP_LIST_MAX_ROWS,
+} from "@/lib/whatsapp-messages";
 
 const WS_PICK_PREFIX = "ws_pick_";
 
@@ -36,29 +40,97 @@ export async function listWorkspacePickerOptions(userId: string) {
   });
 }
 
+export async function userHasAnyWorkspace(userId: string): Promise<boolean> {
+  const count = await prisma.workspaceMembership.count({ where: { userId } });
+  return count > 0;
+}
+
+export function formatNoWorkspaceWhatsAppReply(dashboardUrl: string): string {
+  const url = `${dashboardUrl.replace(/\/$/, "")}/dashboard`;
+  return [
+    "You don't have a workspace yet.",
+    "",
+    'Say something like: *create a workspace called My Team*',
+    "",
+    "Or create one in the dashboard:",
+    url,
+  ].join("\n");
+}
+
+function chunkWorkspaces<T>(items: T[], size: number): T[][] {
+  const pages: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    pages.push(items.slice(i, i + size));
+  }
+  return pages;
+}
+
+async function sendWorkspacePickerTextFallback(
+  to: string,
+  workspaces: { id: string; name: string }[],
+  body: string
+): Promise<boolean> {
+  const lines = workspaces
+    .map((w, i) => `${i + 1}. *${w.name.trim()}*`)
+    .join("\n");
+  return sendWhatsAppText(
+    to,
+    `${body}\n\n${lines}\n\nReply with the workspace name to switch.`
+  );
+}
+
 export async function sendWorkspacePicker(
   to: string,
   workspaces: { id: string; name: string }[],
   body = "You belong to multiple workspaces. Which one should I use for this request?"
 ): Promise<boolean> {
-  if (workspaces.length === 0) return false;
+  const valid = workspaces.filter((w) => w.id && w.name?.trim());
+  if (valid.length === 0) return false;
 
-  return sendWhatsAppList(
-    to,
-    body,
-    "Pick workspace",
-    [
+  const pages = chunkWorkspaces(valid, WHATSAPP_LIST_MAX_ROWS);
+  const totalPages = pages.length;
+
+  for (let i = 0; i < pages.length; i++) {
+    const page = pages[i];
+    const pageNum = i + 1;
+    const isFirst = pageNum === 1;
+    const isLast = pageNum === totalPages;
+
+    const listBody = isFirst
+      ? totalPages > 1
+        ? `${body}\n\nTap a workspace below. ${totalPages} lists in total.`
+        : body
+      : `More workspaces (${pageNum} of ${totalPages}):`;
+
+    const sent = await sendWhatsAppList(
+      to,
+      listBody,
+      totalPages === 1 ? "Pick workspace" : `Page ${pageNum}`,
+      [
+        {
+          title:
+            totalPages === 1
+              ? "Your workspaces"
+              : `Workspaces ${pageNum}/${totalPages}`,
+          rows: page.map((w) => ({
+            id: workspacePickId(w.id),
+            title: w.name.trim().slice(0, 24),
+            description: "Use this workspace",
+          })),
+        },
+      ],
       {
-        title: "Your workspaces",
-        rows: workspaces.map((w) => ({
-          id: workspacePickId(w.id),
-          title: w.name.slice(0, 24),
-          description: "Use this workspace",
-        })),
-      },
-    ],
-    { header: "Euclis", footer: "You can switch anytime" }
-  );
+        header: isFirst ? "Euclis" : "More workspaces",
+        footer: isLast ? "You can switch anytime" : undefined,
+      }
+    );
+
+    if (!sent) {
+      return sendWorkspacePickerTextFallback(to, valid, body);
+    }
+  }
+
+  return true;
 }
 
 export async function activateWorkspace(
