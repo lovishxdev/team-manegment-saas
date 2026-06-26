@@ -1,13 +1,10 @@
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
-import { getBoardState, ServiceError } from "@/lib/services/project";
-import { getWorkspaceMembers } from "@/lib/services/workspace";
+import { getBoardView, ServiceError } from "@/lib/services/project";
 import { displayUser } from "@/lib/username";
 import { BoardPageShell } from "@/components/board-page-shell";
-import {
-  type BoardMember,
-  type BoardTask,
-} from "@/components/task-board";
+import { type BoardTask } from "@/components/task-board";
+import { Role } from "@/lib/generated/prisma/client";
 
 export default async function WorkspacePage({
   params,
@@ -18,19 +15,14 @@ export default async function WorkspacePage({
   const user = await requireUser();
 
   let boardData;
-  let memberData;
   try {
-    [boardData, memberData] = await Promise.all([
-      getBoardState(workspaceId, user.id),
-      getWorkspaceMembers(workspaceId, user.id),
-    ]);
+    boardData = await getBoardView(workspaceId, user.id);
   } catch (err) {
     if (err instanceof ServiceError) notFound();
     throw err;
   }
 
-  const { workspace, board } = boardData;
-  const { selfRole, members } = memberData;
+  const { workspace, board, selfRole } = boardData;
 
   const tasks: BoardTask[] = Object.values(board)
     .flat()
@@ -49,20 +41,14 @@ export default async function WorkspacePage({
       attachments: t.attachments,
     }));
 
-  const boardMembers: BoardMember[] = members.map((m) => ({
-    id: m.user.id,
-    label: displayUser(m.user),
-  }));
-
-  const canInvite = selfRole === "LEADER" || selfRole === "SUB_LEADER";
+  const canInvite =
+    selfRole === Role.LEADER || selfRole === Role.SUB_LEADER;
 
   return (
     <BoardPageShell
       workspaceId={workspace.id}
       workspaceName={workspace.name}
       tasks={tasks}
-      members={boardMembers}
-      headerMembers={boardMembers}
       currentUserId={user.id}
       canInvite={canInvite}
     />

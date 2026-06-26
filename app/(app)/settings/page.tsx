@@ -1,10 +1,9 @@
 import { requireUser } from "@/lib/auth";
-import { AppShell } from "@/components/app-shell";
+import { getMcpConnectorUrl } from "@/lib/app-origin";
 import { ui } from "@/components/ui";
 import { CopyField } from "@/components/copy-field";
 import { DeleteAccount } from "@/components/delete-account";
 import { PhoneForm } from "@/components/phone-form";
-import { RegenerateToken } from "@/components/regenerate-token";
 import { UsernameForm } from "@/components/username-form";
 import { WhatsAppBotNumber } from "@/components/whatsapp-bot-number";
 import {
@@ -12,14 +11,13 @@ import {
   getWhatsAppBotNumber,
   whatsAppBotDeepLink,
 } from "@/lib/whatsapp-bot";
-import { displayUser } from "@/lib/username";
 
 export default async function SettingsPage() {
   const user = await requireUser();
   const whatsAppBotNumber = getWhatsAppBotNumber();
+  const mcpConnectorUrl = await getMcpConnectorUrl();
 
   return (
-    <AppShell userId={user.id} userLabel={displayUser(user)}>
       <main className="mx-auto w-full max-w-2xl">
         <div className={`${ui.pageTitleRow} mb-8`}>
           <h1 className={ui.pageTitle}>Settings</h1>
@@ -86,19 +84,23 @@ export default async function SettingsPage() {
             Claude App connector
           </h2>
           <p className="mb-4 mt-1 text-sm text-ink-soft">
-            Add this app as a custom connector in Claude (Settings &gt;
-            Connectors) using the MCP endpoint{" "}
-            <code className="rounded-md bg-paper-deep px-1.5 py-0.5 text-xs">
-              /api/mcp
-            </code>{" "}
-            and the token below as your Bearer token. Treat it like a password.
+            In Claude, open <span className="text-ink">Settings → Connectors</span>
+            , choose <span className="text-ink">Add custom connector</span>, and
+            paste the URL below. Claude will sign you in with your Euclis account
+            — no bearer token or API key needed.
           </p>
-          <CopyField value={user.mcpToken} />
-          <RegenerateToken />
+          <p className="mb-2 text-xs font-medium text-ink-soft">
+            Connector URL
+          </p>
+          <CopyField value={mcpConnectorUrl} secret={false} />
+          <ol className="mt-4 list-decimal space-y-1.5 pl-5 text-xs text-ink-faint">
+            <li>Copy the URL above.</li>
+            <li>In Claude, add a custom MCP connector and paste it as the server URL.</li>
+            <li>Approve access when Claude redirects you to Euclis to sign in.</li>
+          </ol>
         </section>
 
         <DeleteAccount confirmLabel={user.email ?? "DELETE"} />
       </main>
-    </AppShell>
   );
 }

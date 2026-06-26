@@ -8,8 +8,6 @@ type WorkspaceEntry = {
   id: string;
   name: string;
   openTasks: number;
-  memberCount: number;
-  assetCount: number;
 };
 
 function Chevron({ open }: { open: boolean }) {

@@ -56,6 +56,7 @@ model User {
   assignedTasks  Task[]                @relation("AssignedTasks")
   createdTasks   Task[]                @relation("CreatedTasks")
   uploadedAssets Asset[]
+  createdLinks   WorkspaceLink[]
   oauthCodes     OAuthCode[]
   oauthTokens    OAuthToken[]
   whatsappMessages WhatsAppMessage[]
@@ -70,6 +71,7 @@ model Workspace {
   memberships     WorkspaceMembership[]
   tasks           Task[]
   assets          Asset[]
+  links           WorkspaceLink[]
   invites         WorkspaceInvite[]
   lastActiveUsers User[]                @relation("LastActiveWorkspace")
 }
@@ -136,6 +138,24 @@ model Asset {
 
   @@index([workspaceId])
   @@index([taskId])
+}
+
+/// Workspace-wide bookmarks — shared URLs for the whole team.
+model WorkspaceLink {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  title       String
+  url         String
+  description String?
+  pinned      Boolean  @default(false)
+  createdById String   @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
 }
 
 /// Meta wamid dedup — prevents webhook retries from re-running the same inbound message.

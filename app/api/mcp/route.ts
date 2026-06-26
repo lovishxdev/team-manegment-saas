@@ -11,7 +11,11 @@ import {
   ServiceError,
   updateTask,
 } from "@/lib/services/project";
-import { createWorkspace } from "@/lib/services/workspace";
+import { createWorkspace, renameWorkspace } from "@/lib/services/workspace";
+import {
+  createWorkspaceLink,
+  listWorkspaceLinks,
+} from "@/lib/services/links";
 import { displayUser } from "@/lib/username";
 
 /**
@@ -70,11 +74,14 @@ function toolError(err: unknown) {
 
 const handler = createMcpHandler(
   (server) => {
-    server.tool(
+    server.registerTool(
       "create_workspace",
-      "Create a new workspace (project board). The user becomes its leader and it becomes their active workspace.",
       {
-        name: z.string().min(1).max(80).describe("Workspace name"),
+        description:
+          "Create a new workspace (project board). The user becomes its leader and it becomes their active workspace.",
+        inputSchema: {
+          name: z.string().min(1).max(80).describe("Workspace name"),
+        },
       },
       async ({ name }, extra) => {
         const userId = extra.authInfo!.extra!.userId as string;
@@ -89,27 +96,50 @@ const handler = createMcpHandler(
       }
     );
 
-    server.tool(
-      "create_task",
-      "Create a new task on the project board",
+    server.registerTool(
+      "rename_workspace",
       {
-        title: z.string().min(1).describe("Task title"),
-        description: z.string().optional().describe("Longer task details"),
-        scope: z
-          .enum(SCOPES)
-          .optional()
-          .describe("Area of the task (defaults to GENERAL)"),
-        priority: z
-          .enum(PRIORITIES)
-          .optional()
-          .describe("Priority (defaults to MEDIUM)"),
-        dueDate: dueDateParam,
-        tags: z
-          .array(z.string())
-          .optional()
-          .describe("Free-form labels, e.g. ['marketing', 'v2']"),
-        assignee: assigneeParam,
-        workspace: workspaceParam,
+        description: "Rename a workspace. Only the workspace leader can rename it.",
+        inputSchema: {
+          name: z.string().min(1).max(80).describe("New workspace name"),
+          workspace: workspaceParam,
+        },
+      },
+      async ({ name, workspace }, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const ctx = await resolveUserWorkspaceContext(userId, workspace);
+          const updated = await renameWorkspace(ctx.workspaceId, userId, name);
+          return text(`Renamed workspace to "${updated.name}".`);
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "create_task",
+      {
+        description: "Create a new task on the project board",
+        inputSchema: {
+          title: z.string().min(1).describe("Task title"),
+          description: z.string().optional().describe("Longer task details"),
+          scope: z
+            .enum(SCOPES)
+            .optional()
+            .describe("Area of the task (defaults to GENERAL)"),
+          priority: z
+            .enum(PRIORITIES)
+            .optional()
+            .describe("Priority (defaults to MEDIUM)"),
+          dueDate: dueDateParam,
+          tags: z
+            .array(z.string())
+            .optional()
+            .describe("Free-form labels, e.g. ['marketing', 'v2']"),
+          assignee: assigneeParam,
+          workspace: workspaceParam,
+        },
       },
       async (
         { title, description, scope, priority, dueDate, tags, assignee, workspace },
@@ -128,7 +158,6 @@ const handler = createMcpHandler(
             tags,
             userId,
           });
-          // Assignment goes through updateTask so emails resolve to members.
           const final = assignee
             ? await updateTask({
                 workspaceId: ctx.workspaceId,
@@ -153,27 +182,30 @@ const handler = createMcpHandler(
       }
     );
 
-    server.tool(
+    server.registerTool(
       "update_task",
-      "Update any fields of an existing task, identified by its short ID (the #N number on the board). Only provided fields change.",
       {
-        shortId: z.number().int().positive().describe("Task short ID (#N)"),
-        title: z.string().optional().describe("New title"),
-        description: z.string().optional().describe("New description"),
-        status: z.enum(STATUSES).optional().describe("New status"),
-        scope: z.enum(SCOPES).optional().describe("New scope"),
-        priority: z.enum(PRIORITIES).optional().describe("New priority"),
-        dueDate: dueDateParam.describe(
-          "Due date as YYYY-MM-DD, or empty string to clear it"
-        ),
-        tags: z
-          .array(z.string())
-          .optional()
-          .describe("Full replacement list of free-form labels"),
-        assignee: assigneeParam.describe(
-          "Assignee username or email, or empty string to unassign"
-        ),
-        workspace: workspaceParam,
+        description:
+          "Update any fields of an existing task, identified by its short ID (the #N number on the board). Only provided fields change.",
+        inputSchema: {
+          shortId: z.number().int().positive().describe("Task short ID (#N)"),
+          title: z.string().optional().describe("New title"),
+          description: z.string().optional().describe("New description"),
+          status: z.enum(STATUSES).optional().describe("New status"),
+          scope: z.enum(SCOPES).optional().describe("New scope"),
+          priority: z.enum(PRIORITIES).optional().describe("New priority"),
+          dueDate: dueDateParam.describe(
+            "Due date as YYYY-MM-DD, or empty string to clear it"
+          ),
+          tags: z
+            .array(z.string())
+            .optional()
+            .describe("Full replacement list of free-form labels"),
+          assignee: assigneeParam.describe(
+            "Assignee username or email, or empty string to unassign"
+          ),
+          workspace: workspaceParam,
+        },
       },
       async (
         {
@@ -222,12 +254,15 @@ const handler = createMcpHandler(
       }
     );
 
-    server.tool(
+    server.registerTool(
       "delete_task",
-      "Permanently delete a task, identified by its short ID (the #N number on the board)",
       {
-        shortId: z.number().int().positive().describe("Task short ID (#N)"),
-        workspace: workspaceParam,
+        description:
+          "Permanently delete a task, identified by its short ID (the #N number on the board)",
+        inputSchema: {
+          shortId: z.number().int().positive().describe("Task short ID (#N)"),
+          workspace: workspaceParam,
+        },
       },
       async ({ shortId, workspace }, extra) => {
         const userId = extra.authInfo!.extra!.userId as string;
@@ -247,11 +282,13 @@ const handler = createMcpHandler(
       }
     );
 
-    server.tool(
+    server.registerTool(
       "list_assets",
-      "List files/assets uploaded to the workspace (images, documents)",
       {
-        workspace: workspaceParam,
+        description: "List files/assets uploaded to the workspace (images, documents)",
+        inputSchema: {
+          workspace: workspaceParam,
+        },
       },
       async ({ workspace }, extra) => {
         const userId = extra.authInfo!.extra!.userId as string;
@@ -278,11 +315,89 @@ const handler = createMcpHandler(
       }
     );
 
-    server.tool(
-      "get_board_state",
-      "Get the current project board: all tasks grouped by status",
+    server.registerTool(
+      "add_link",
       {
-        workspace: workspaceParam,
+        description:
+          "Save an important URL to the workspace Links tab so the whole team can find it (docs, Figma, staging sites, etc.)",
+        inputSchema: {
+          title: z.string().min(1).max(120).describe("Short label for the link"),
+          url: z.string().min(1).describe("URL (http/https; scheme optional)"),
+          description: z
+            .string()
+            .max(500)
+            .optional()
+            .describe("Optional note about what the link is for"),
+          pinned: z
+            .boolean()
+            .optional()
+            .describe("Pin to the top of the links list (defaults to false)"),
+          workspace: workspaceParam,
+        },
+      },
+      async ({ title, url, description, pinned, workspace }, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const ctx = await resolveUserWorkspaceContext(userId, workspace);
+          const link = await createWorkspaceLink({
+            workspaceId: ctx.workspaceId,
+            userId,
+            title,
+            url,
+            description,
+            pinned,
+          });
+          return text(
+            `Added link "${link.title}"${link.pinned ? " (pinned)" : ""} to workspace "${ctx.workspaceName}": ${link.url}` +
+              (link.description ? `\nNote: ${link.description}` : "")
+          );
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "list_links",
+      {
+        description:
+          "List important URLs saved in the workspace Links tab (pinned links first)",
+        inputSchema: {
+          workspace: workspaceParam,
+        },
+      },
+      async ({ workspace }, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const ctx = await resolveUserWorkspaceContext(userId, workspace);
+          const links = await listWorkspaceLinks(ctx.workspaceId, userId);
+          if (links.length === 0) {
+            return text(`No links saved in workspace "${ctx.workspaceName}" yet.`);
+          }
+          return text(
+            `Links in "${ctx.workspaceName}" (${links.length}):\n` +
+              links
+                .map(
+                  (link) =>
+                    `- ${link.pinned ? "[pinned] " : ""}${link.title}\n  ${link.url}` +
+                    (link.description ? `\n  note: ${link.description}` : "") +
+                    `\n  by @${displayUser(link.createdBy)}`
+                )
+                .join("\n")
+          );
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "get_board_state",
+      {
+        description: "Get the current project board: all tasks grouped by status",
+        inputSchema: {
+          workspace: workspaceParam,
+        },
       },
       async ({ workspace }, extra) => {
         const userId = extra.authInfo!.extra!.userId as string;

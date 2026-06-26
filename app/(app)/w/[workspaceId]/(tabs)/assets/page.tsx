@@ -1,8 +1,6 @@
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
-import { listAssets, ServiceError } from "@/lib/services/project";
-import { getWorkspaceMembers } from "@/lib/services/workspace";
-import { prisma } from "@/lib/prisma";
+import { getAssetsView, ServiceError } from "@/lib/services/project";
 import { AssetCard, type AssetItem } from "@/components/asset-card";
 import { AssetUploadForm } from "@/components/asset-upload-form";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
@@ -11,6 +9,7 @@ import {
   getWhatsAppBotNumber,
 } from "@/lib/whatsapp-bot";
 import { displayUser } from "@/lib/username";
+import { Role } from "@/lib/generated/prisma/client";
 
 export default async function AssetsPage({
   params,
@@ -20,25 +19,17 @@ export default async function AssetsPage({
   const { workspaceId } = await params;
   const user = await requireUser();
 
-  let assets;
-  let memberData;
-  let workspace;
+  let data;
   try {
-    [assets, memberData, workspace] = await Promise.all([
-      listAssets(workspaceId, user.id),
-      getWorkspaceMembers(workspaceId, user.id),
-      prisma.workspace.findUniqueOrThrow({
-        where: { id: workspaceId },
-        select: { id: true, name: true },
-      }),
-    ]);
+    data = await getAssetsView(workspaceId, user.id);
   } catch (err) {
     if (err instanceof ServiceError) notFound();
     throw err;
   }
 
-  const { selfRole, members } = memberData;
-  const canInvite = selfRole === "LEADER" || selfRole === "SUB_LEADER";
+  const { workspace, assets, selfRole } = data;
+  const canInvite =
+    selfRole === Role.LEADER || selfRole === Role.SUB_LEADER;
   const whatsAppBotNumber = getWhatsAppBotNumber();
   const whatsAppBotLabel = whatsAppBotNumber
     ? formatWhatsAppBotNumber(whatsAppBotNumber)
@@ -60,10 +51,7 @@ export default async function AssetsPage({
         workspaceName={workspace.name}
         activeTab="assets"
         breadcrumbLeaf="Assets"
-        members={members.map((m) => ({
-          id: m.user.id,
-          label: displayUser(m.user),
-        }))}
+        members={[]}
         canInvite={canInvite}
       />
 

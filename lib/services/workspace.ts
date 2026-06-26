@@ -57,6 +57,17 @@ export async function findOrCreateWorkspaceByName(userId: string, name: string) 
   return { workspace, created: true as const };
 }
 
+/** Sidebar nav only needs workspace id + name; open-task badges come separately. */
+export const listSidebarWorkspaces = cache(async function listSidebarWorkspaces(
+  userId: string
+) {
+  return prisma.workspaceMembership.findMany({
+    where: { userId },
+    select: { workspace: { select: { id: true, name: true } } },
+    orderBy: { joinedAt: "desc" },
+  });
+});
+
 /** Per-request memo only — always hits the DB (no cross-request cache). */
 export const listUserWorkspaces = cache(async function listUserWorkspaces(
   userId: string

@@ -106,6 +106,16 @@ export function AppRealtimeSync({
               filter: wsScopedFilter,
             },
             refreshDebounced
+          )
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table: "WorkspaceLink",
+              filter: wsScopedFilter,
+            },
+            refreshDebounced
           );
       }
 

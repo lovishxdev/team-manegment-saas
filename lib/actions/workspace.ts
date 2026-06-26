@@ -24,6 +24,7 @@ import {
   createInvite,
   createWorkspace,
   deleteWorkspace,
+  getWorkspaceMembers,
   leaveWorkspace,
   removeMember,
   renameWorkspace,
@@ -31,6 +32,12 @@ import {
   saveExcalidrawState,
   updateMemberRole,
 } from "@/lib/services/workspace";
+import {
+  createWorkspaceLink,
+  deleteWorkspaceLink,
+  toggleWorkspaceLinkPin,
+} from "@/lib/services/links";
+import { displayUser } from "@/lib/username";
 
 export type ActionState = { error?: string; workspaceId?: string };
 
@@ -246,6 +253,59 @@ export async function deleteAssetAction(
   return {};
 }
 
+export async function createLinkAction(
+  workspaceId: string,
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const user = await requireUser();
+  const title = String(formData.get("title") ?? "").trim();
+  const url = String(formData.get("url") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim();
+
+  try {
+    await createWorkspaceLink({
+      workspaceId,
+      userId: user.id,
+      title,
+      url,
+      description: description || null,
+    });
+  } catch (err) {
+    return { error: errorMessage(err) };
+  }
+  revalidatePath(`/w/${workspaceId}/links`);
+  return {};
+}
+
+export async function deleteLinkAction(
+  workspaceId: string,
+  linkId: string
+): Promise<ActionState> {
+  const user = await requireUser();
+  try {
+    await deleteWorkspaceLink({ workspaceId, linkId, userId: user.id });
+  } catch (err) {
+    return { error: errorMessage(err) };
+  }
+  revalidatePath(`/w/${workspaceId}/links`);
+  return {};
+}
+
+export async function toggleLinkPinAction(
+  workspaceId: string,
+  linkId: string
+): Promise<ActionState> {
+  const user = await requireUser();
+  try {
+    await toggleWorkspaceLinkPin({ workspaceId, linkId, userId: user.id });
+  } catch (err) {
+    return { error: errorMessage(err) };
+  }
+  revalidatePath(`/w/${workspaceId}/links`);
+  return {};
+}
+
 export async function saveWhiteboardAction(
   workspaceId: string,
   serialized: string
@@ -349,4 +409,14 @@ export async function acceptInviteAction(inviteId: string): Promise<ActionState>
   }
   refreshUserWorkspaces(user.id, workspaceId);
   redirect(`/w/${workspaceId}`);
+}
+
+/** Loaded on demand when opening board filters or a task — not on initial page load. */
+export async function fetchWorkspaceMemberLabelsAction(workspaceId: string) {
+  const user = await requireUser();
+  const { members } = await getWorkspaceMembers(workspaceId, user.id);
+  return members.map((m) => ({
+    id: m.user.id,
+    label: displayUser(m.user),
+  }));
 }

@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { signOutAction } from "@/lib/actions/auth";
 import { requireUser } from "@/lib/auth";
-import { listUserWorkspaces } from "@/lib/services/workspace";
+import { listSidebarWorkspaces } from "@/lib/services/workspace";
 import { prisma } from "@/lib/prisma";
 import { Avatar } from "@/components/ui";
 import { SidebarNav } from "@/components/sidebar-nav";
@@ -37,34 +37,19 @@ export async function AppShell({
   // the row the page already loaded (no extra query) and gives us `phone`
   // without a second user lookup.
   const currentUser = await requireUser();
-  const memberships = await listUserWorkspaces(userId);
+  const memberships = await listSidebarWorkspaces(userId);
   const workspaceIds = memberships.map((m) => m.workspace.id);
 
-  // Sidebar badges in two grouped queries instead of 2 counts per workspace
-  // (was an N+1 that re-ran on every navigation). Backed by the
-  // Task(workspaceId,status) and Asset(workspaceId) indexes.
-  const [openTaskGroups, assetGroups] = await Promise.all([
-    workspaceIds.length
-      ? prisma.task.groupBy({
-          by: ["workspaceId"],
-          where: { workspaceId: { in: workspaceIds }, status: { not: "DONE" } },
-          _count: { _all: true },
-        })
-      : [],
-    workspaceIds.length
-      ? prisma.asset.groupBy({
-          by: ["workspaceId"],
-          where: { workspaceId: { in: workspaceIds } },
-          _count: { _all: true },
-        })
-      : [],
-  ]);
+  const openTaskGroups = workspaceIds.length
+    ? await prisma.task.groupBy({
+        by: ["workspaceId"],
+        where: { workspaceId: { in: workspaceIds }, status: { not: "DONE" } },
+        _count: { _all: true },
+      })
+    : [];
 
   const openByWorkspace = new Map(
     openTaskGroups.map((g) => [g.workspaceId, g._count._all])
-  );
-  const assetsByWorkspace = new Map(
-    assetGroups.map((g) => [g.workspaceId, g._count._all])
   );
 
   const whatsAppBotNumber = getWhatsAppBotNumber();
@@ -79,8 +64,6 @@ export async function AppShell({
     id: workspace.id,
     name: workspace.name,
     openTasks: openByWorkspace.get(workspace.id) ?? 0,
-    memberCount: workspace._count.memberships,
-    assetCount: assetsByWorkspace.get(workspace.id) ?? 0,
   }));
 
   return (

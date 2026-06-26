@@ -5,12 +5,10 @@ import { BoardToolbar } from "@/components/board-toolbar";
 import { NewTaskForm } from "@/components/new-task-form";
 import {
   TaskBoard,
-  type BoardMember,
   type BoardSort,
   type BoardTask,
 } from "@/components/task-board";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
-import type { HeaderMember } from "@/components/workspace-header-actions";
 
 const SORT_LABELS: Record<BoardSort, string> = {
   default: "Sorting",
@@ -22,16 +20,12 @@ export function BoardPageShell({
   workspaceId,
   workspaceName,
   tasks,
-  members,
-  headerMembers,
   currentUserId,
   canInvite,
 }: {
   workspaceId: string;
   workspaceName: string;
   tasks: BoardTask[];
-  members: BoardMember[];
-  headerMembers: HeaderMember[];
   currentUserId: string;
   canInvite: boolean;
 }) {
@@ -65,7 +59,7 @@ export function BoardPageShell({
         workspaceName={workspaceName}
         activeTab="board"
         breadcrumbLeaf="Overview"
-        members={headerMembers}
+        members={[]}
         canInvite={canInvite}
         tabBarEnd={
           <BoardToolbar
@@ -91,7 +85,6 @@ export function BoardPageShell({
       <TaskBoard
         workspaceId={workspaceId}
         tasks={tasks}
-        members={members}
         currentUserId={currentUserId}
         filtersOpen={filtersOpen}
         scopeFilter={scopeFilter}

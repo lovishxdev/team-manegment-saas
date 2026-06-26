@@ -1,11 +1,11 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
 import {
   resolvePostAuthRedirect,
   storeOAuthReturn,
 } from "@/lib/oauth-return";
+import { getAppOrigin } from "@/lib/app-origin";
 import { prisma } from "@/lib/prisma";
 import { createSupabaseServer } from "@/lib/supabase-server";
 import { ServiceError } from "@/lib/services/project";
@@ -16,16 +16,6 @@ import {
 import { isUsernameTaken } from "@/lib/username-server";
 
 export type AuthFormState = { error?: string; message?: string };
-
-async function getOrigin() {
-  const headerList = await headers();
-  const host =
-    headerList.get("x-forwarded-host") ?? headerList.get("host") ?? "";
-  const proto =
-    headerList.get("x-forwarded-proto") ??
-    (host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https");
-  return `${proto}://${host}`;
-}
 
 /** Only allow same-site relative paths as post-auth destinations. */
 function safeNext(raw: unknown): string {
@@ -86,7 +76,7 @@ export async function signUpAction(
     password,
     options: {
       // Email-confirmation links flow through the callback and land on `next`
-      emailRedirectTo: `${await getOrigin()}/auth/callback?next=${encodeURIComponent(next)}`,
+      emailRedirectTo: `${await getAppOrigin()}/auth/callback?next=${encodeURIComponent(next)}`,
     },
   });
   if (error) return { error: error.message };
@@ -117,7 +107,7 @@ export async function signInWithOAuthAction(
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider,
     options: {
-      redirectTo: `${await getOrigin()}/auth/callback?next=${encodeURIComponent(destination)}`,
+      redirectTo: `${await getAppOrigin()}/auth/callback?next=${encodeURIComponent(destination)}`,
     },
   });
   if (error || !data.url) {

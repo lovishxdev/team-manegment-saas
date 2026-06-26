@@ -14,7 +14,10 @@ import {
 } from "@dnd-kit/core";
 import { restrictToWindowEdges } from "@dnd-kit/modifiers";
 import { createSupabaseBrowser } from "@/lib/supabase-browser";
-import { updateTaskAction } from "@/lib/actions/workspace";
+import {
+  fetchWorkspaceMemberLabelsAction,
+  updateTaskAction,
+} from "@/lib/actions/workspace";
 import { formatTaskTitle } from "@/lib/format-task-title";
 import { TaskDetailModal } from "@/components/task-detail-modal";
 import { Select } from "@/components/select";
@@ -381,10 +384,22 @@ function Column({
   );
 }
 
+function seedMembersFromTasks(tasks: BoardTask[]): BoardMember[] {
+  const map = new Map<string, BoardMember>();
+  for (const task of tasks) {
+    if (task.assigneeId && !map.has(task.assigneeId)) {
+      map.set(task.assigneeId, {
+        id: task.assigneeId,
+        label: task.assigneeLabel,
+      });
+    }
+  }
+  return [...map.values()];
+}
+
 export function TaskBoard({
   workspaceId,
   tasks,
-  members,
   currentUserId,
   filtersOpen = true,
   scopeFilter,
@@ -397,7 +412,6 @@ export function TaskBoard({
 }: {
   workspaceId: string;
   tasks: BoardTask[];
-  members: BoardMember[];
   currentUserId: string;
   /** When false, filter controls are hidden (toggled from the header). */
   filtersOpen?: boolean;
@@ -418,10 +432,31 @@ export function TaskBoard({
     null
   );
   const [dragHeight, setDragHeight] = useState<number | null>(null);
+  const [members, setMembers] = useState<BoardMember[]>(() =>
+    seedMembersFromTasks(tasks)
+  );
+  const [membersLoaded, setMembersLoaded] = useState(false);
 
   // Local copy so drags update instantly; server state flows back via props.
   const [localTasks, setLocalTasks] = useState(tasks);
   useEffect(() => setLocalTasks(tasks), [tasks]);
+  useEffect(() => setMembers(seedMembersFromTasks(tasks)), [tasks]);
+
+  useEffect(() => {
+    if ((!filtersOpen && !openTask) || membersLoaded) return;
+
+    let cancelled = false;
+    fetchWorkspaceMemberLabelsAction(workspaceId).then((loaded) => {
+      if (!cancelled) {
+        setMembers(loaded);
+        setMembersLoaded(true);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceId, filtersOpen, openTask, membersLoaded]);
 
   // Distance threshold keeps plain clicks working (opens the modal).
   const sensors = useSensors(

@@ -8,19 +8,7 @@ import {
   WorkspaceHeaderActions,
   type HeaderMember,
 } from "@/components/workspace-header-actions";
-
-type TabItem = {
-  id: WorkspaceTab;
-  label: string;
-  path: string;
-};
-
-const TABS: TabItem[] = [
-  { id: "board", label: "Overview", path: "" },
-  { id: "assets", label: "Assets", path: "/assets" },
-  { id: "whiteboard", label: "Whiteboard", path: "/whiteboard" },
-  { id: "settings", label: "Settings", path: "/settings" },
-];
+import { WorkspaceTabs } from "@/components/workspace-tabs";
 
 function FolderIcon() {
   return (
@@ -36,41 +24,6 @@ function FolderIcon() {
         strokeLinejoin="round"
       />
     </svg>
-  );
-}
-
-export function WorkspaceTabs({
-  workspaceId,
-  activeTab,
-  className = "",
-}: {
-  workspaceId: string;
-  activeTab: WorkspaceTab;
-  className?: string;
-}) {
-  return (
-    <nav
-      aria-label="Workspace sections"
-      className={`flex flex-wrap items-center gap-1 ${className}`}
-    >
-      {TABS.map((tab) => {
-        const href = `/w/${workspaceId}${tab.path}`;
-        const active = tab.id === activeTab;
-        return (
-          <Link
-            key={tab.id}
-            href={href}
-            className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-              active
-                ? "bg-ink text-white shadow-sm"
-                : "text-ink-soft hover:bg-paper hover:text-ink"
-            }`}
-          >
-            {tab.label}
-          </Link>
-        );
-      })}
-    </nav>
   );
 }
 

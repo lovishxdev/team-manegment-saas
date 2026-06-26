@@ -93,6 +93,7 @@ alter table public."Workspace"           enable row level security;
 alter table public."WorkspaceMembership" enable row level security;
 alter table public."Task"                enable row level security;
 alter table public."Asset"               enable row level security;
+alter table public."WorkspaceLink"       enable row level security;
 alter table public."WorkspaceInvite"     enable row level security;
 
 drop policy if exists "members_read_tasks" on public."Task";
@@ -109,6 +110,10 @@ create policy "members_read_memberships" on public."WorkspaceMembership"
 
 drop policy if exists "members_read_assets" on public."Asset";
 create policy "members_read_assets" on public."Asset"
+  for select using (public.is_workspace_member("workspaceId"));
+
+drop policy if exists "members_read_links" on public."WorkspaceLink";
+create policy "members_read_links" on public."WorkspaceLink"
   for select using (public.is_workspace_member("workspaceId"));
 
 drop policy if exists "users_read_self" on public."User";
@@ -165,7 +170,7 @@ do $$
 declare
   t text;
 begin
-  foreach t in array array['Task', 'Workspace', 'WorkspaceMembership', 'Asset']
+  foreach t in array array['Task', 'Workspace', 'WorkspaceMembership', 'Asset', 'WorkspaceLink']
   loop
     if not exists (
       select 1 from pg_publication_tables
@@ -184,4 +189,5 @@ end $$;
 -- Filters on non-PK columns (e.g. workspaceId) need full row images for Realtime.
 alter table public."Task" replica identity full;
 alter table public."Asset" replica identity full;
+alter table public."WorkspaceLink" replica identity full;
 alter table public."Workspace" replica identity full;

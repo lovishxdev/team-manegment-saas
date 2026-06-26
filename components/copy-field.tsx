@@ -2,9 +2,16 @@
 
 import { useState } from "react";
 
-export function CopyField({ value }: { value: string }) {
+export function CopyField({
+  value,
+  secret = true,
+}: {
+  value: string;
+  /** When false, show the full value (e.g. public URLs). */
+  secret?: boolean;
+}) {
   const [copied, setCopied] = useState(false);
-  const [revealed, setRevealed] = useState(false);
+  const [revealed, setRevealed] = useState(!secret);
 
   async function copy() {
     await navigator.clipboard.writeText(value);
@@ -20,9 +27,11 @@ export function CopyField({ value }: { value: string }) {
       <code className="flex-1 truncate rounded-md border border-line bg-paper-deep px-3 py-2 font-mono text-xs text-ink-soft">
         {revealed ? value : "••••••••-••••-••••-••••-••••••••••••"}
       </code>
-      <button onClick={() => setRevealed((r) => !r)} className={btn}>
-        {revealed ? "Hide" : "Show"}
-      </button>
+      {secret && (
+        <button onClick={() => setRevealed((r) => !r)} className={btn}>
+          {revealed ? "Hide" : "Show"}
+        </button>
+      )}
       <button onClick={copy} className={btn}>
         {copied ? "Copied!" : "Copy"}
       </button>

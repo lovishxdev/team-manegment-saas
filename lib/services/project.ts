@@ -34,10 +34,8 @@ export class ServiceError extends Error {
 /**
  * The acting user's membership, memoized per request with React.cache.
  * Pages often hit several service functions that each re-check membership
- * (e.g. getBoardState + getWorkspaceMembers); within one render pass that
- * now costs a single query. In route handlers cache() is a transparent
- * passthrough. Only use this for the ACTOR's permission checks -- target
- * lookups around mutations must stay uncached.
+ * (e.g. getBoardView + fetchWorkspaceMemberLabelsAction); within one render
+ * pass that now costs a single membership query.
  */
 export const getActorMembership = cache(
   async (userId: string, workspaceId: string) =>
@@ -59,7 +57,7 @@ async function assertMembership(userId: string, workspaceId: string) {
 }
 
 /** Records the workspace a user last acted in (powers context resolution). */
-async function touchLastActiveWorkspace(userId: string, workspaceId: string) {
+export async function touchLastActiveWorkspace(userId: string, workspaceId: string) {
   // updateMany so the no-op case (already the active workspace, by far the
   // most common) skips the row write entirely.
   await prisma.user.updateMany({
@@ -627,6 +625,61 @@ export async function updateAssetTagsByRef(input: {
     userId,
     tags: next,
   });
+}
+
+/** Web board tab: tasks + workspace + caller role. No members/assets. */
+export async function getBoardView(workspaceId: string, userId: string) {
+  const membership = await assertMembership(userId, workspaceId);
+
+  const [workspace, tasks] = await Promise.all([
+    prisma.workspace.findUniqueOrThrow({
+      where: { id: workspaceId },
+      select: { id: true, name: true },
+    }),
+    prisma.task.findMany({
+      where: { workspaceId },
+      orderBy: { shortId: "asc" },
+      include: {
+        assignedTo: { select: { id: true, email: true, username: true } },
+        attachments: {
+          select: { id: true, url: true, fileType: true },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+    }),
+    touchLastActiveWorkspace(userId, workspaceId),
+  ]);
+
+  const grouped: Record<TaskStatus, typeof tasks> = {
+    TODO: [],
+    IN_PROGRESS: [],
+    DONE: [],
+  };
+  for (const task of tasks) grouped[task.status].push(task);
+
+  return { workspace, board: grouped, selfRole: membership.role };
+}
+
+/** Web assets tab: assets + workspace + caller role. No members/tasks. */
+export async function getAssetsView(workspaceId: string, userId: string) {
+  const membership = await assertMembership(userId, workspaceId);
+
+  const [workspace, assets] = await Promise.all([
+    prisma.workspace.findUniqueOrThrow({
+      where: { id: workspaceId },
+      select: { id: true, name: true },
+    }),
+    prisma.asset.findMany({
+      where: { workspaceId },
+      include: {
+        uploadedBy: { select: { id: true, email: true, username: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    touchLastActiveWorkspace(userId, workspaceId),
+  ]);
+
+  return { workspace, assets, selfRole: membership.role };
 }
 
 /** Full board snapshot: tasks grouped by status. Used by MCP + WhatsApp. */
