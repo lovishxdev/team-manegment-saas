@@ -62,6 +62,7 @@ model User {
   oauthCodes     OAuthCode[]
   oauthTokens    OAuthToken[]
   whatsappMessages WhatsAppMessage[]
+  whatsappPendingActions WhatsAppPendingAction[]
 }
 
 model Workspace {
@@ -201,6 +202,20 @@ model WhatsAppMessage {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
+}
+
+/// Short-lived pending confirmation (e.g. delete task) — one per phone.
+model WhatsAppPendingAction {
+  phone     String   @id
+  userId    String   @db.Uuid
+  action    String
+  payload   Json
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
 }
 
 /// OAuth 2.1 authorization server models -- lets MCP clients (claude.ai web

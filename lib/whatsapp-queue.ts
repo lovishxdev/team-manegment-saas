@@ -8,6 +8,7 @@ import {
 
 export type QueuedInboundPayload =
   | { kind: "text"; text: string }
+  | { kind: "interactive"; buttonId: string; title: string }
   | {
       kind: "media";
       mediaId: string;
@@ -44,6 +45,13 @@ function toPayload(message: InboundMessage): QueuedInboundPayload {
   if (message.kind === "text") {
     return { kind: "text", text: message.text };
   }
+  if (message.kind === "interactive") {
+    return {
+      kind: "interactive",
+      buttonId: message.buttonId,
+      title: message.title,
+    };
+  }
   return {
     kind: "media",
     mediaId: message.mediaId,
@@ -62,6 +70,15 @@ function toInboundMessage(
   const data = payload as QueuedInboundPayload;
   if (kind === "text" && data.kind === "text") {
     return { kind: "text", from: phone, messageId, text: data.text };
+  }
+  if (kind === "interactive" && data.kind === "interactive") {
+    return {
+      kind: "interactive",
+      from: phone,
+      messageId,
+      buttonId: data.buttonId,
+      title: data.title,
+    };
   }
   if (kind === "media" && data.kind === "media") {
     return {

@@ -1,31 +1,5 @@
 import crypto from "crypto";
-
-const GRAPH_API_VERSION = "v21.0";
-const GRAPH_FETCH_TIMEOUT_MS = 15_000;
-const GRAPH_FETCH_RETRIES = 2;
-
-async function graphFetch(
-  url: string,
-  init: RequestInit
-): Promise<Response | null> {
-  for (let attempt = 1; attempt <= GRAPH_FETCH_RETRIES; attempt++) {
-    try {
-      return await fetch(url, {
-        ...init,
-        signal: AbortSignal.timeout(GRAPH_FETCH_TIMEOUT_MS),
-      });
-    } catch (err) {
-      const retrying = attempt < GRAPH_FETCH_RETRIES;
-      console.error(
-        `WhatsApp Graph API fetch failed (attempt ${attempt}/${GRAPH_FETCH_RETRIES}):`,
-        err
-      );
-      if (!retrying) return null;
-      await new Promise((r) => setTimeout(r, 1000));
-    }
-  }
-  return null;
-}
+import { graphFetch, GRAPH_API_VERSION } from "@/lib/whatsapp-graph";
 
 /**
  * Verifies Meta's X-Hub-Signature-256 webhook signature against the raw
@@ -128,6 +102,13 @@ export async function markWhatsAppRead(messageId: string): Promise<void> {
 export type InboundMessage =
   | { kind: "text"; from: string; text: string; messageId: string }
   | {
+      kind: "interactive";
+      from: string;
+      buttonId: string;
+      title: string;
+      messageId: string;
+    }
+  | {
       kind: "media";
       from: string;
       mediaId: string;
@@ -152,6 +133,24 @@ export function extractInboundMessage(payload: unknown): InboundMessage | null {
 
     if (message.type === "text") {
       return { kind: "text", from, text: message.text.body as string, messageId };
+    }
+
+    if (message.type === "interactive") {
+      const interactive = message.interactive;
+      const reply =
+        interactive?.type === "button_reply"
+          ? interactive.button_reply
+          : interactive?.type === "list_reply"
+            ? interactive.list_reply
+            : null;
+      if (!reply?.id) return null;
+      return {
+        kind: "interactive",
+        from,
+        buttonId: reply.id as string,
+        title: (reply.title as string) ?? "",
+        messageId,
+      };
     }
 
     if (message.type === "image" || message.type === "document") {

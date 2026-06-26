@@ -16,6 +16,11 @@ import {
   createWorkspaceLink,
   listWorkspaceLinks,
 } from "@/lib/services/links";
+import {
+  formatBoardState,
+  formatTaskDeepLink,
+} from "@/lib/channel-formatters";
+import { workspaceUrl } from "@/lib/app-url";
 import { displayUser } from "@/lib/username";
 
 /**
@@ -403,36 +408,18 @@ const handler = createMcpHandler(
         const userId = extra.authInfo!.extra!.userId as string;
         try {
           const ctx = await resolveUserWorkspaceContext(userId, workspace);
-          const { board, totalTasks } = await getBoardState(
-            ctx.workspaceId,
-            userId
-          );
-
-          const section = (label: string, tasks: (typeof board)["TODO"]) =>
-            `${label} (${tasks.length})\n` +
-            (tasks.length
-              ? tasks
-                  .map(
-                    (t) =>
-                      `  #${t.shortId} ${t.title} [${t.scope}, ${t.priority}]` +
-                      (t.tags.length ? ` {${t.tags.join(", ")}}` : "") +
-                      (t.dueDate
-                        ? ` due ${t.dueDate.toISOString().slice(0, 10)}`
-                        : "") +
-                      (t.assignedTo
-                        ? ` -> @${displayUser(t.assignedTo)}`
-                        : "")
-                  )
-                  .join("\n")
-              : "  (empty)");
+          const state = await getBoardState(ctx.workspaceId, userId);
 
           return text(
-            `Board for "${ctx.workspaceName}" - ${totalTasks} task(s)\n\n` +
-              [
-                section("TODO", board.TODO),
-                section("IN PROGRESS", board.IN_PROGRESS),
-                section("DONE", board.DONE),
-              ].join("\n\n")
+            formatBoardState(
+              {
+                workspaceId: ctx.workspaceId,
+                workspaceName: ctx.workspaceName,
+                board: state.board,
+                totalTasks: state.totalTasks,
+              },
+              "mcp"
+            ) + `\n\nOpen: ${workspaceUrl(ctx.workspaceId)}`
           );
         } catch (err) {
           return toolError(err);

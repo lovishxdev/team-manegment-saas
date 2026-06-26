@@ -25,7 +25,6 @@ import {
 } from "@/lib/services/conversation";
 import { findOrCreateWorkspaceByName } from "@/lib/services/workspace";
 import { revalidateUserWorkspaces } from "@/lib/revalidate-nav";
-import { displayUser } from "@/lib/username";
 import {
   claimInboundMessage,
   pruneInboundDedup,
@@ -50,7 +49,31 @@ import {
   summarizeMetaPayload,
   waWebhookLog,
 } from "@/lib/whatsapp-webhook-log";
+import {
+  formatActionSummary,
+  formatBoardState,
+  formatTaskDeepLink,
+  formatTaskSummary,
+} from "@/lib/channel-formatters";
+import { workspaceUrl } from "@/lib/app-url";
 import { isWhatsAppGreeting } from "@/lib/whatsapp-bot";
+import {
+  BUTTON,
+  HELP_TEXT,
+  isBoardCommand,
+  isMenuCommand,
+  linkedGreetingBody,
+  parseButtonId,
+} from "@/lib/whatsapp-interactive";
+import {
+  sendWhatsAppButtons,
+  sendWhatsAppCtaUrl,
+} from "@/lib/whatsapp-messages";
+import {
+  clearPending,
+  getPendingDelete,
+  stageDeleteTask,
+} from "@/lib/whatsapp-pending";
 
 /**
  * WhatsApp bot interface (Meta Cloud API webhook).
@@ -68,10 +91,6 @@ const DENIED_MESSAGE =
 
 const UNLINKED_GREETING_REPLY =
   "Hey! I'm the Euclis bot. To get started, sign in to Euclis, add this WhatsApp number under Settings → WhatsApp, then send hi again. I'll help you manage tasks from here.";
-
-function linkedGreetingReply(workspaceName: string): string {
-  return `Hey! You're connected to Euclis (${workspaceName}). Ask me to add tasks, check your board, create a workspace, or send photos with captions to save assets. What would you like to do?`;
-}
 
 function buildSystemPrompt(): string {
   const today = new Date().toISOString().slice(0, 10);
@@ -341,7 +360,9 @@ export async function POST(req: NextRequest) {
     preview:
       message.kind === "text"
         ? message.text.slice(0, 80)
-        : message.fileName,
+        : message.kind === "interactive"
+          ? message.buttonId
+          : message.fileName,
   });
 
   // Meta retries slow webhooks; skip duplicate wamids so we don't create
@@ -421,6 +442,8 @@ async function processQueuedMessage(message: InboundMessage, queued: boolean) {
       );
       await progress.started(queued);
       await handleMessage(message.from, message.text, progress);
+    } else if (message.kind === "interactive") {
+      await handleInteractiveMessage(message);
     } else {
       if (queued) {
         await sendWhatsAppText(
@@ -495,27 +518,152 @@ async function handleMediaMessage(
 const MAX_TOOL_TURNS = 16;
 
 type WhatsAppSession = {
+  phone: string;
+  workspaceId: string | null;
   workspaceName: string | null;
   createdTaskShortIds: number[];
+  pendingDeleteShortId: number | null;
+  lastCreatedTask: { shortId: number; workspaceId: string } | null;
 };
 
-function buildDeterministicSummary(
-  actionResults: string[],
-  budgetExhausted: boolean
-): string {
-  if (actionResults.length === 0) {
-    return 'I can create tasks, tag uploaded photos/files, or show your board. Try: "add a task to fix the login bug" or "tag the last photo booth, marketing".';
+async function fetchBoardReply(
+  userId: string,
+  workspaceHint?: string
+): Promise<string> {
+  const ctx = await resolveUserWorkspaceContext(userId, workspaceHint);
+  const state = await getBoardState(ctx.workspaceId, userId);
+  const body = formatBoardState(
+    {
+      workspaceId: ctx.workspaceId,
+      workspaceName: ctx.workspaceName,
+      board: state.board,
+      totalTasks: state.totalTasks,
+    },
+    "whatsapp"
+  );
+  return `${body}\n\nOpen: ${workspaceUrl(ctx.workspaceId)}`;
+}
+
+async function sendGreetingWithButtons(
+  from: string,
+  userId: string,
+  workspaceName: string,
+  userText: string
+) {
+  const body = linkedGreetingBody(workspaceName);
+  const sent = await sendWhatsAppButtons(from, body, [
+    { id: BUTTON.menuBoard, title: "View board" },
+    { id: BUTTON.menuAdd, title: "Add task" },
+    { id: BUTTON.menuHelp, title: "Help" },
+  ]);
+  if (!sent) {
+    await sendWhatsAppText(from, `${body}\n\nSend *menu* for quick options.`);
+  }
+  await recordExchange(userId, userText, body).catch((err) =>
+    console.error("Failed to record conversation:", err)
+  );
+}
+
+async function handleInteractiveMessage(
+  message: Extract<InboundMessage, { kind: "interactive" }>
+) {
+  const { from, buttonId, title } = message;
+  const userId = await getUserIdByPhone(from);
+  if (!userId) {
+    await sendWhatsAppText(from, DENIED_MESSAGE);
+    return;
   }
 
-  const lines = actionResults.map((r, i) => `${i + 1}. ${r}`);
-  const header = budgetExhausted
-    ? "I ran out of action budget before finishing everything. Here's what actually happened:"
-    : "Done. Here's what happened:";
-  const footer = budgetExhausted
-    ? "\n\nSend any remaining steps as a new message and I'll continue."
-    : "";
+  await markWhatsAppChatInitiated(userId);
 
-  return `${header}\n\n${lines.join("\n")}${footer}`;
+  const action = parseButtonId(buttonId);
+  const userText = `[tapped: ${title || buttonId}]`;
+
+  if (!action) {
+    const reply = "I didn't recognize that option. Send *menu* for quick actions.";
+    await sendWhatsAppText(from, reply);
+    await recordExchange(userId, userText, reply).catch(() => {});
+    return;
+  }
+
+  try {
+    if (action.type === "menu_help") {
+      await sendWhatsAppText(from, HELP_TEXT);
+      await recordExchange(userId, userText, HELP_TEXT).catch(() => {});
+      return;
+    }
+
+    if (action.type === "menu_add") {
+      const reply =
+        'To add a task, message me something like:\n"add a task to fix the login bug"';
+      await sendWhatsAppText(from, reply);
+      await recordExchange(userId, userText, reply).catch(() => {});
+      return;
+    }
+
+    if (action.type === "menu_board") {
+      const reply = await fetchBoardReply(userId);
+      await sendWhatsAppText(from, reply);
+      await recordExchange(userId, userText, reply).catch(() => {});
+      return;
+    }
+
+    if (action.type === "delete_cancel") {
+      await clearPending(from);
+      const reply = "Delete cancelled.";
+      await sendWhatsAppText(from, reply);
+      await recordExchange(userId, userText, reply).catch(() => {});
+      return;
+    }
+
+    const ctx = await resolveUserWorkspaceContext(userId);
+
+    if (action.type === "delete_confirm") {
+      const pending = await getPendingDelete(from, userId);
+      if (!pending || pending.shortId !== action.shortId) {
+        const reply =
+          "That delete confirmation expired. Ask me to delete the task again.";
+        await sendWhatsAppText(from, reply);
+        await recordExchange(userId, userText, reply).catch(() => {});
+        return;
+      }
+
+      const task = await deleteTask({
+        workspaceId: pending.workspaceId,
+        shortId: pending.shortId,
+        userId,
+      });
+      await clearPending(from);
+      revalidateUserWorkspaces(userId, pending.workspaceId);
+      const reply = `Deleted #${task.shortId} "${task.title}" from ${pending.workspaceName}.`;
+      await sendWhatsAppText(from, reply);
+      await recordExchange(userId, userText, reply).catch(() => {});
+      return;
+    }
+
+    if (action.type === "task_start" || action.type === "task_done") {
+      const task = await updateTask({
+        workspaceId: ctx.workspaceId,
+        shortId: action.shortId,
+        userId,
+        status: action.type === "task_start" ? "IN_PROGRESS" : "DONE",
+      });
+      revalidateUserWorkspaces(userId, ctx.workspaceId);
+      const reply =
+        `Updated #${task.shortId} *${task.title}* → ${task.status.replace("_", " ")}.` +
+        formatTaskDeepLink(ctx.workspaceId, task.shortId, "whatsapp");
+      await sendWhatsAppText(from, reply);
+      await recordExchange(userId, userText, reply).catch(() => {});
+      return;
+    }
+  } catch (err) {
+    const reply =
+      err instanceof ServiceError
+        ? err.message
+        : "Something went wrong. Try again in a moment.";
+    await sendWhatsAppText(from, reply);
+    await recordExchange(userId, userText, reply).catch(() => {});
+  }
 }
 
 async function handleMessage(
@@ -542,7 +690,38 @@ async function handleMessage(
   if (isWhatsAppGreeting(text)) {
     try {
       const ctx = await resolveUserWorkspaceContext(userId);
-      const reply = linkedGreetingReply(ctx.workspaceName);
+      await sendGreetingWithButtons(from, userId, ctx.workspaceName, text);
+      return;
+    } catch (err) {
+      const msg =
+        err instanceof ServiceError
+          ? err.message
+          : "Something went wrong. Try again in a moment.";
+      await sendWhatsAppText(from, msg);
+      await recordExchange(userId, text, msg).catch(() => {});
+      return;
+    }
+  }
+
+  if (isMenuCommand(text)) {
+    try {
+      const ctx = await resolveUserWorkspaceContext(userId);
+      await sendGreetingWithButtons(from, userId, ctx.workspaceName, text);
+      return;
+    } catch (err) {
+      const msg =
+        err instanceof ServiceError
+          ? err.message
+          : "Something went wrong. Try again in a moment.";
+      await sendWhatsAppText(from, msg);
+      await recordExchange(userId, text, msg).catch(() => {});
+      return;
+    }
+  }
+
+  if (isBoardCommand(text)) {
+    try {
+      const reply = await fetchBoardReply(userId);
       await sendWhatsAppText(from, reply);
       await recordExchange(userId, text, reply).catch((err) =>
         console.error("Failed to record conversation:", err)
@@ -608,8 +787,12 @@ async function handleMessage(
   let reply: string | null = null;
   let budgetExhausted = true;
   const session: WhatsAppSession = {
+    phone: from,
+    workspaceId: null,
     workspaceName: null,
     createdTaskShortIds: [],
+    pendingDeleteShortId: null,
+    lastCreatedTask: null,
   };
 
   for (let turn = 0; turn < MAX_TOOL_TURNS; turn++) {
@@ -658,16 +841,42 @@ async function handleMessage(
   }
 
   if (actionResults.length > 0) {
-    reply = buildDeterministicSummary(actionResults, budgetExhausted);
+    reply = formatActionSummary(actionResults, budgetExhausted, "whatsapp");
   } else if (!reply) {
     reply =
-      'I can create tasks, update their status, tag uploaded files, or show your board. Try: "add a task to fix the login bug"';
+      'I can create tasks, update their status, tag uploaded files, or show your board. Try: "add a task to fix the login bug" or send *menu*.';
   }
 
   await sendWhatsAppText(from, reply);
   await recordExchange(userId, text, reply).catch((err) =>
     console.error("Failed to record conversation:", err)
   );
+
+  if (session.pendingDeleteShortId) {
+    const pending = await getPendingDelete(from, userId);
+    if (pending) {
+      await sendWhatsAppButtons(
+        from,
+        `Delete #${pending.shortId} "${pending.taskTitle}"? This cannot be undone.`,
+        [
+          { id: BUTTON.deleteConfirm(pending.shortId), title: "Delete" },
+          { id: BUTTON.deleteCancel, title: "Cancel" },
+        ]
+      ).catch(() => {});
+    }
+  } else if (session.lastCreatedTask) {
+    const { shortId, workspaceId } = session.lastCreatedTask;
+    await sendWhatsAppButtons(from, `Quick actions for #${shortId}:`, [
+      { id: BUTTON.taskStart(shortId), title: "In progress" },
+      { id: BUTTON.taskDone(shortId), title: "Mark done" },
+    ]).catch(() => {});
+    await sendWhatsAppCtaUrl(
+      from,
+      "Open your workspace on the web.",
+      "Open board",
+      workspaceUrl(workspaceId)
+    ).catch(() => {});
+  }
 }
 
 function parseInputDueDate(value: unknown): Date | null | undefined {
@@ -687,21 +896,6 @@ function resolveAssigneeInput(
   if (str === "") return null;
   if (str.toLowerCase() === "me") return senderUserId;
   return str;
-}
-
-function taskSummary(task: {
-  shortId: number;
-  title: string;
-  status: TaskStatus;
-  scope: TaskScope;
-  priority: TaskPriority;
-  dueDate: Date | null;
-  assignedTo: { email: string | null; username: string | null } | null;
-}): string {
-  const parts = [`${task.scope}`, `${task.priority}`];
-  if (task.dueDate) parts.push(`due ${task.dueDate.toISOString().slice(0, 10)}`);
-  if (task.assignedTo) parts.push(`-> @${displayUser(task.assignedTo)}`);
-  return `#${task.shortId} "${task.title}" (${parts.join(", ")})`;
 }
 
 async function executeAction(
@@ -726,6 +920,7 @@ async function executeAction(
         name
       );
       session.workspaceName = workspace.name;
+      session.workspaceId = workspace.id;
       revalidateUserWorkspaces(userId, workspace.id);
       return created
         ? `Created workspace "${workspace.name}". You're its leader and it's now your active workspace. New tasks will land here unless you name another workspace.`
@@ -734,6 +929,7 @@ async function executeAction(
 
     const ctx = await resolveUserWorkspaceContext(userId, workspaceHint);
     session.workspaceName = ctx.workspaceName;
+    session.workspaceId = ctx.workspaceId;
 
     switch (action) {
       case "create_task": {
@@ -758,6 +954,10 @@ async function executeAction(
             })
           : task;
         session.createdTaskShortIds.push(final.shortId);
+        session.lastCreatedTask = {
+          shortId: final.shortId,
+          workspaceId: ctx.workspaceId,
+        };
         const batchIndex = session.createdTaskShortIds.length;
         revalidateUserWorkspaces(userId, ctx.workspaceId);
         waWebhookLog("task created", {
@@ -765,7 +965,11 @@ async function executeAction(
           workspaceName: ctx.workspaceName,
           shortId: final.shortId,
         });
-        return `Done. Created task ${taskSummary(final)} in ${ctx.workspaceName} (batch task ${batchIndex}, shortId #${final.shortId}).`;
+        return (
+          `Done. Created ${formatTaskSummary(final, ctx.workspaceName, "whatsapp")}` +
+          formatTaskDeepLink(ctx.workspaceId, final.shortId, "whatsapp") +
+          ` (batch task ${batchIndex}).`
+        );
       }
 
       case "update_task": {
@@ -795,46 +999,43 @@ async function executeAction(
           assignee: resolveAssigneeInput(input.assignee, userId),
         });
         revalidateUserWorkspaces(userId, ctx.workspaceId);
-        return `Done. Task ${taskSummary(task)} is now ${task.status.replace("_", " ")} in ${ctx.workspaceName}.`;
+        return (
+          `Done. ${formatTaskSummary(task, ctx.workspaceName, "whatsapp")} is now ${task.status.replace("_", " ")}.` +
+          formatTaskDeepLink(ctx.workspaceId, task.shortId, "whatsapp")
+        );
       }
 
       case "delete_task": {
-        const task = await deleteTask({
+        const shortId = Number(input.shortId);
+        const { board } = await getBoardState(ctx.workspaceId, userId);
+        const all = [...board.TODO, ...board.IN_PROGRESS, ...board.DONE];
+        const existing = all.find((t) => t.shortId === shortId);
+        if (!existing) {
+          return `No task #${shortId} in ${ctx.workspaceName}.`;
+        }
+
+        await stageDeleteTask(session.phone, userId, {
           workspaceId: ctx.workspaceId,
-          shortId: Number(input.shortId),
-          userId,
+          workspaceName: ctx.workspaceName,
+          shortId,
+          taskTitle: existing.title,
         });
-        revalidateUserWorkspaces(userId, ctx.workspaceId);
-        return `Deleted task #${task.shortId} "${task.title}" from ${ctx.workspaceName}.`;
+        session.pendingDeleteShortId = shortId;
+        return `Ready to delete #${shortId} "${existing.title}". I'll send Confirm / Cancel buttons next.`;
       }
 
       case "get_board_state": {
-        const { board, totalTasks } = await getBoardState(ctx.workspaceId, userId);
-        if (totalTasks === 0) {
-          return `The board in ${ctx.workspaceName} is empty. Send me a task to get started.`;
-        }
-        const section = (label: string, tasks: (typeof board)["TODO"]) =>
-          tasks.length
-            ? `*${label}*\n${tasks
-                .map((t) => {
-                  let line = `#${t.shortId} ${t.title}`;
-                  if (t.priority === "HIGH") line += " ⚠";
-                  if (t.dueDate)
-                    line += ` (due ${t.dueDate.toISOString().slice(0, 10)})`;
-                  if (t.assignedTo)
-                    line += ` @${displayUser(t.assignedTo)}`;
-                  return line;
-                })
-                .join("\n")}`
-            : null;
-        return [
-          `Board for *${ctx.workspaceName}* (${totalTasks} tasks)`,
-          section("To Do", board.TODO),
-          section("In Progress", board.IN_PROGRESS),
-          section("Done", board.DONE),
-        ]
-          .filter(Boolean)
-          .join("\n\n");
+        const state = await getBoardState(ctx.workspaceId, userId);
+        const body = formatBoardState(
+          {
+            workspaceId: ctx.workspaceId,
+            workspaceName: ctx.workspaceName,
+            board: state.board,
+            totalTasks: state.totalTasks,
+          },
+          "whatsapp"
+        );
+        return `${body}\n\nOpen: ${workspaceUrl(ctx.workspaceId)}`;
       }
 
       case "update_asset_tags": {
