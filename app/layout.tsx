@@ -5,6 +5,7 @@ import {
   Instrument_Serif,
   JetBrains_Mono,
 } from "next/font/google";
+import { GoogleAnalytics } from "@/components/analytics/google-analytics";
 import "./globals.css";
 
 const hanken = Hanken_Grotesk({
@@ -49,6 +50,7 @@ export default function RootLayout({
       className={`${hanken.variable} ${jetbrains.variable} ${instrumentSerif.variable} ${caveat.variable}`}
     >
       <body className="min-h-screen app-shell-bg">
+        <GoogleAnalytics />
         <div className="app-root relative z-[2] min-h-screen">{children}</div>
       </body>
     </html>
