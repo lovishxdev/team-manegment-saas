@@ -6,7 +6,7 @@ import {
   clearOAuthReturnCookie,
 } from "@/lib/oauth-return";
 
-const PUBLIC_PATHS = ["/login", "/signup", "/auth", "/invite", "/.well-known"];
+const PUBLIC_PATHS = ["/login", "/signup", "/auth", "/invite", "/landing", "/.well-known"];
 
 /**
  * Refreshes the Supabase session cookie on every request and redirects
@@ -47,12 +47,13 @@ export async function proxy(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  // Browser metadata fetches must not bounce through /login — that causes
-  // visible flicker on auth pages (manifest request → login redirect loop).
+  // SEO + PWA metadata must stay public (no auth redirect).
   if (
     pathname === "/manifest.webmanifest" ||
     pathname === "/apple-icon.png" ||
-    pathname === "/icon.svg"
+    pathname === "/icon.svg" ||
+    pathname === "/sitemap.xml" ||
+    pathname === "/robots.txt"
   ) {
     return response;
   }
@@ -102,6 +103,6 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     // Everything except api routes, static files and assets
-    "/((?!api|_next/static|_next/image|favicon.ico|manifest.webmanifest|apple-icon.png|icon.svg|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|manifest.webmanifest|apple-icon.png|icon.svg|sitemap.xml|robots.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };
