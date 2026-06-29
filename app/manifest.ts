@@ -6,6 +6,12 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: "Euclis",
     icons: [
       {
+        src: "/favicon-96x96.png",
+        sizes: "96x96",
+        type: "image/png",
+        purpose: "any",
+      },
+      {
         src: "/web-app-manifest-192x192.png",
         sizes: "192x192",
         type: "image/png",
