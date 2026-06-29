@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { ShellBackgroundInteraction } from "@/components/layout/shell-background-interaction";
 import { ui } from "@/components/ui/ui";
 import { DashboardPreview } from "./dashboard-preview";
 import { LandingStyles } from "./landing-styles";
@@ -433,6 +434,7 @@ export function LandingContent() {
           </nav>
         </div>
       </footer>
+      <ShellBackgroundInteraction />
     </div>
   );
 }

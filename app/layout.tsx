@@ -5,7 +5,6 @@ import {
   Instrument_Serif,
   JetBrains_Mono,
 } from "next/font/google";
-import { ShellBackgroundInteraction } from "@/components/layout/shell-background-interaction";
 import "./globals.css";
 
 const hanken = Hanken_Grotesk({
@@ -50,10 +49,7 @@ export default function RootLayout({
       className={`${hanken.variable} ${jetbrains.variable} ${instrumentSerif.variable} ${caveat.variable}`}
     >
       <body className="min-h-screen app-shell-bg">
-        <div className="app-root relative z-[2] min-h-screen">
-          {children}
-          <ShellBackgroundInteraction />
-        </div>
+        <div className="app-root relative z-[2] min-h-screen">{children}</div>
       </body>
     </html>
   );

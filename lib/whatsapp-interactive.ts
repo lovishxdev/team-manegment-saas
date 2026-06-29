@@ -47,6 +47,7 @@ export const HELP_TEXT = `*What I can do*
 • List links — ask what links are saved in the workspace
 • Rename workspace — ask to rename the workspace (leader only)
 • Upload files — send a photo/document (caption = tags, #N = attach to task)
+• Attach uploads — ask to attach a previously uploaded photo to a task
 • Tag files — ask to tag or label an uploaded file
 • Choose workspace — ask which board to use, or tap *Choose workspace* in the menu
 

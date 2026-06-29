@@ -342,6 +342,32 @@ async function findTaskInWorkspace(
   return existing;
 }
 
+/**
+ * Resolves #N for update/delete in a compound request.
+ * If #N already exists on the board, use it literally.
+ * Otherwise treat N as a 1-based index into tasks created in this batch.
+ */
+export async function resolveBatchAwareTaskShortId(
+  workspaceId: string,
+  inputShortId: number,
+  createdInBatch: number[]
+): Promise<number> {
+  const onBoard = await prisma.task.findFirst({
+    where: { workspaceId, shortId: inputShortId },
+    select: { shortId: true },
+  });
+  if (onBoard) return inputShortId;
+
+  if (
+    Number.isInteger(inputShortId) &&
+    inputShortId >= 1 &&
+    inputShortId <= createdInBatch.length
+  ) {
+    return createdInBatch[inputShortId - 1];
+  }
+  return inputShortId;
+}
+
 export async function updateTask(input: UpdateTaskInput) {
   const { workspaceId, userId, taskId, shortId } = input;
   await assertMembership(userId, workspaceId);
@@ -587,6 +613,30 @@ export async function updateAssetTags(input: {
   });
   await touchLastActiveWorkspace(userId, workspaceId);
   return updated;
+}
+
+export async function attachAssetToTask(input: {
+  workspaceId: string;
+  userId: string;
+  taskShortId: number;
+  fileName?: string;
+  latest?: boolean;
+}) {
+  const { workspaceId, userId, taskShortId, fileName, latest } = input;
+  const task = await findTaskInWorkspace(workspaceId, undefined, taskShortId);
+  const asset = await resolveAssetForTagging({
+    workspaceId,
+    userId,
+    fileName,
+    latest: latest ?? !fileName,
+  });
+
+  const updated = await prisma.asset.update({
+    where: { id: asset.id },
+    data: { taskId: task.id },
+  });
+  await touchLastActiveWorkspace(userId, workspaceId);
+  return { asset: updated, task };
 }
 
 export type AssetTagMode = "set" | "add" | "remove";

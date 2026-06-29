@@ -8,12 +8,14 @@ import {
 import { getUserIdByPhone } from "@/lib/identity-cache";
 import {
   assetFileName,
+  attachAssetToTask,
   createTask,
   deleteTask,
   getBoardState,
   listAssets,
   resolveUserWorkspaceContext,
   ServiceError,
+  resolveBatchAwareTaskShortId,
   updateAssetTagsByRef,
   updateTask,
   uploadAsset,
@@ -60,7 +62,9 @@ import {
   formatLinkList,
   formatTaskDeepLink,
   formatTaskSummary,
+  type ActionOutcome,
 } from "@/lib/channel-formatters";
+import { classifyActionOutcome } from "@/lib/whatsapp-action-outcome";
 import { workspaceUrl } from "@/lib/app-url";
 import { getAppOrigin } from "@/lib/app-origin";
 import { isWhatsAppGreeting } from "@/lib/whatsapp-bot";
@@ -146,6 +150,7 @@ Convert the user's message into tool calls when they want to act on their board:
 - create_workspace: when they want to create/start a new workspace, project, or board (e.g. "create a workspace called Marketing")
 - rename_workspace: when they want to rename an existing workspace (leader only)
 - list_assets: when they ask about uploaded files, photos, or documents in the workspace
+- attach_asset_to_task: when they want to attach a previously uploaded file/photo to a task (e.g. "add the image I uploaded to task #1"). Use latest=true for "the image I uploaded" / "last photo". Call list_assets first if you need to confirm the file exists.
 - add_link: when they want to save, bookmark, or store a URL for the team (docs, Figma, staging sites, etc.). ALWAYS call this tool to save a link — never claim a link was saved without a tool result in this turn.
 - list_links: when they ask what links, bookmarks, or URLs are saved. Call only list_links — do not call add_link in the same turn unless they also asked to save a new link.
 - show_workspace_picker: when they want to choose or switch workspace, ask which workspace they're on, or pick a different board — but NOT when they already named a specific workspace to act on (use the workspace parameter on other tools instead). Sends an interactive picker to the chat.
@@ -156,8 +161,10 @@ Rules:
 - You CAN tag and label uploaded files via update_asset_tags. Never claim you lack that capability.
 - Conversation history is context only, never proof of completion. Every actionable request - even one identical to an earlier message - must be executed with fresh tool calls in THIS turn. Never claim something was created, updated, or deleted unless a tool result in this turn confirms it.
 - Compound requests need multiple tool calls: execute them one step at a time, using each result before the next call. E.g. "create a workspace and add 3 tasks" = create_workspace first, then create_task three times. Always pass the workspace name on every tool after create_workspace in the same request.
-- When the user says "task 1", "task 2", etc. in a batch they just asked you to create, they mean the 1st/2nd/... task you created in THIS request — use the #N shortId from each create_task tool result, NOT the literal number N.
+- When the user says "task 1", "task 2", etc. referring to tasks they just asked you to create in THIS message, they mean the 1st/2nd/... task created in this request — use the #N shortId from each create_task tool result, NOT the literal number N. But "previous task", "the other task", or a task named by title (e.g. "go to the gym") always means an EXISTING task from before the new creates — look up its #N via get_board_state or use the title match; never mark a newly created task done when they asked about a previous one.
+- "Previous task" / "the task before" / a task referenced by title is NEVER the task you just created in the same message unless they explicitly mean the new one.
 - After all actions are done, reply with ONE short summary of everything that happened (no markdown, plain WhatsApp text). Do not send multiple summaries. If a tool returned an error, say so — never claim success for failed steps.
+- Compound requests (multiple things in one message): call a tool for every actionable part. If you cannot do a part (missing info, no matching task, ambiguous target), do NOT skip silently — either let the tool fail with a clear error, or end your turn with a short note listing what could NOT be done and why (e.g. "Could not attach image: no task specified").
 - Infer scope from context (FRONTEND, BACKEND, DESIGN) only when clear; otherwise omit it.
 - Infer priority only when stated or strongly implied (e.g. "urgent" = HIGH); otherwise omit it.
 - Resolve relative due dates ("Friday", "tomorrow", "next week") to a concrete YYYY-MM-DD date using today's date above.
@@ -379,6 +386,34 @@ const TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: "object",
       properties: {},
+    },
+  },
+  {
+    name: "attach_asset_to_task",
+    description:
+      "Attach a previously uploaded file/photo to a task. Use when the user wants to add an existing upload to a task (not a new WhatsApp upload). Use latest=true for 'the image I uploaded' / 'last photo'.",
+    input_schema: {
+      type: "object",
+      properties: {
+        taskShortId: {
+          type: "integer",
+          description: "Task short ID (#N) to attach the file to",
+        },
+        latest: {
+          type: "boolean",
+          description:
+            "Target the most recently uploaded asset (default for 'previous upload')",
+        },
+        fileName: {
+          type: "string",
+          description: "Part of the file name when not using latest",
+        },
+        workspace: {
+          type: "string",
+          description: "Workspace name, only if the user explicitly mentioned one",
+        },
+      },
+      required: ["taskShortId"],
     },
   },
   {
@@ -965,8 +1000,9 @@ async function handleMessage(
 
   // Agentic loop: execute every tool call, feed results back, and let the
   // model keep chaining until the whole request is done (or we hit the cap).
-  const actionResults: string[] = [];
+  const actionResults: ActionOutcome[] = [];
   let reply: string | null = null;
+  let assistantNote: string | null = null;
   let budgetExhausted = true;
   const session: WhatsAppSession = {
     phone: from,
@@ -994,11 +1030,14 @@ async function handleMessage(
 
     if (toolUses.length === 0) {
       budgetExhausted = false;
+      const textBlock = response.content.find(
+        (block): block is Anthropic.TextBlock => block.type === "text"
+      );
+      const note = textBlock?.text.trim() || null;
       if (actionResults.length === 0) {
-        const textBlock = response.content.find(
-          (block): block is Anthropic.TextBlock => block.type === "text"
-        );
-        reply = textBlock?.text.trim() || null;
+        reply = note;
+      } else if (note) {
+        assistantNote = note;
       }
       break;
     }
@@ -1013,7 +1052,8 @@ async function handleMessage(
         toolUse.input as Record<string, unknown>,
         session
       );
-      actionResults.push(result);
+      const outcome = classifyActionOutcome(toolUse.name, result);
+      actionResults.push(outcome);
       await progress?.step(result);
       results.push({
         type: "tool_result",
@@ -1027,10 +1067,15 @@ async function handleMessage(
     progress?.finish();
   }
 
-  const textResults = actionResults.filter((r) => r.trim().length > 0);
+  const withMessage = actionResults.filter((o) => o.message.trim());
 
-  if (textResults.length > 0) {
-    reply = formatActionSummary(textResults, budgetExhausted, "whatsapp");
+  if (withMessage.length > 0) {
+    reply = formatActionSummary(
+      actionResults,
+      budgetExhausted,
+      "whatsapp",
+      assistantNote
+    );
   } else if (!reply && !session.workspacePickerSent) {
     reply =
       'I can create tasks, update their status, tag uploaded files, or show your board. Try: "add a task to fix the login bug" or send *menu*.';
@@ -1197,16 +1242,11 @@ async function executeAction(
       }
 
       case "update_task": {
-        let shortId = Number(input.shortId);
-        const ordinal = Number(input.shortId);
-        if (
-          Number.isInteger(ordinal) &&
-          ordinal >= 1 &&
-          ordinal <= session.createdTaskShortIds.length &&
-          !session.createdTaskShortIds.includes(ordinal)
-        ) {
-          shortId = session.createdTaskShortIds[ordinal - 1];
-        }
+        const shortId = await resolveBatchAwareTaskShortId(
+          ctx.workspaceId,
+          Number(input.shortId),
+          session.createdTaskShortIds
+        );
 
         const task = await updateTask({
           workspaceId: ctx.workspaceId,
@@ -1275,6 +1315,26 @@ async function executeAction(
       case "list_assets": {
         const assets = await listAssets(ctx.workspaceId, userId);
         return formatAssetList(ctx.workspaceName, assets, "whatsapp");
+      }
+
+      case "attach_asset_to_task": {
+        const taskShortId = Number(input.taskShortId);
+        if (!Number.isInteger(taskShortId) || taskShortId < 1) {
+          return "Which task should I attach the file to? Use #N.";
+        }
+        const latest = input.latest === true;
+        const fileName =
+          typeof input.fileName === "string" ? input.fileName : undefined;
+        const { asset, task } = await attachAssetToTask({
+          workspaceId: ctx.workspaceId,
+          userId,
+          taskShortId,
+          latest: latest || !fileName,
+          fileName,
+        });
+        revalidateUserWorkspaces(userId, ctx.workspaceId);
+        const name = assetFileName(asset.url);
+        return `Attached "${name}" to #${task.shortId} *${task.title}* in ${ctx.workspaceName}.`;
       }
 
       case "add_link": {

@@ -118,28 +118,77 @@ export function formatTaskDeepLink(
   return channel === "whatsapp" ? `\nOpen: ${url}` : `\nLink: ${url}`;
 }
 
+export type ActionOutcome = {
+  ok: boolean;
+  message: string;
+  action?: string;
+};
+
+function stripDonePrefix(message: string): string {
+  return message.replace(/^Done\.\s*/i, "").trim();
+}
+
 export function formatActionSummary(
-  actionResults: string[],
+  outcomes: ActionOutcome[],
   budgetExhausted: boolean,
-  channel: Channel
+  channel: Channel,
+  assistantNote?: string | null
 ): string {
-  if (actionResults.length === 0) {
+  const withMessage = outcomes.filter((o) => o.message.trim());
+  const successes = withMessage.filter((o) => o.ok);
+  const failures = withMessage.filter((o) => !o.ok);
+
+  if (withMessage.length === 0 && !assistantNote?.trim()) {
     return channel === "whatsapp"
       ? 'I can create tasks, save links, list files, tag uploads, or show your board. Try: "add a task to fix the login bug" or send *menu*.'
       : "No actions were taken.";
   }
 
-  const lines = actionResults.map((r, i) => `${i + 1}. ${r}`);
-  const header = budgetExhausted
-    ? "I ran out of action budget before finishing everything. Here's what actually happened:"
-    : channel === "whatsapp"
-      ? "✅ Done. Here's what happened:"
-      : "Done. Here's what happened:";
-  const footer = budgetExhausted
-    ? "\n\nSend any remaining steps as a new message and I'll continue."
-    : "";
+  let header: string;
+  if (failures.length === 0 && !budgetExhausted) {
+    header =
+      channel === "whatsapp"
+        ? "✅ Done. Here's what happened:"
+        : "Done. Here's what happened:";
+  } else if (successes.length === 0) {
+    header =
+      channel === "whatsapp"
+        ? "⚠️ I couldn't complete that:"
+        : "I couldn't complete that:";
+  } else {
+    header = budgetExhausted
+      ? "⚠️ Partially done (ran out of steps):"
+      : channel === "whatsapp"
+        ? "⚠️ Partially done — some steps couldn't be completed:"
+        : "Partially done — some steps couldn't be completed:";
+  }
 
-  return `${header}\n\n${lines.join("\n")}${footer}`;
+  const lines: string[] = [];
+  for (const o of successes) {
+    lines.push(`✅ ${stripDonePrefix(o.message)}`);
+  }
+  for (const o of failures) {
+    lines.push(`❌ ${o.message}`);
+  }
+
+  let body =
+    lines.length > 0 ? `${header}\n\n${lines.join("\n")}` : header;
+
+  if (budgetExhausted) {
+    body += "\n\nSend any remaining steps as a new message and I'll continue.";
+  } else if (failures.length > 0) {
+    body +=
+      channel === "whatsapp"
+        ? "\n\nFix the ❌ items and try again, or send one step at a time."
+        : "\n\nFix the failed items and try again.";
+  }
+
+  const note = assistantNote?.trim();
+  if (note) {
+    body += `\n\n${note}`;
+  }
+
+  return body;
 }
 
 export type AssetRow = {
