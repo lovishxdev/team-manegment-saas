@@ -5,6 +5,7 @@ import {
   Instrument_Serif,
   JetBrains_Mono,
 } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import { GoogleAnalytics } from "@/components/analytics/google-analytics";
 import "./globals.css";
 
@@ -64,6 +65,7 @@ export default function RootLayout({
     >
       <body className="min-h-screen app-shell-bg">
         <GoogleAnalytics />
+        <Analytics />
         <div className="app-root relative z-[2] min-h-screen">{children}</div>
       </body>
     </html>

@@ -29,6 +29,7 @@
     "@prisma/client": "^7.8.0",
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.108.1",
+    "@vercel/analytics": "^2.0.1",
     "lucide-react": "^1.21.0",
     "mcp-handler": "^1.1.0",
     "next": "^16.2.9",
