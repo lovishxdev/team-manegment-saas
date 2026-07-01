@@ -1,4 +1,3 @@
-import type { Metadata } from "next";
 import {
   Caveat,
   Hanken_Grotesk,
@@ -6,7 +5,9 @@ import {
   JetBrains_Mono,
 } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { GoogleAnalytics } from "@/components/analytics/google-analytics";
+import { rootMetadata } from "@/lib/seo/metadata";
 import "./globals.css";
 
 const hanken = Hanken_Grotesk({
@@ -31,22 +32,17 @@ const caveat = Caveat({
   weight: ["500", "600"],
 });
 
-export const metadata: Metadata = {
-  title: {
-    default: "Euclis | Where your team's work flows together",
-    template: "%s · Euclis",
-  },
-  description:
-    "One workspace, three doors: a web dashboard, a WhatsApp assistant, and a Claude connector. Euclis keeps your team's tasks in order wherever the conversation happens.",
+export const metadata = {
+  ...rootMetadata,
   icons: {
     icon: [
-      { url: "/favicon.ico", sizes: "48x48", type: "image/x-icon" },
-      { url: "/favicon-96x96.png", sizes: "96x96", type: "image/png" },
       {
         url: "/web-app-manifest-192x192.png",
         sizes: "192x192",
         type: "image/png",
       },
+      { url: "/favicon-96x96.png", sizes: "96x96", type: "image/png" },
+      { url: "/favicon.ico", sizes: "any", type: "image/x-icon" },
     ],
     apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
     shortcut: "/favicon.ico",
@@ -66,6 +62,7 @@ export default function RootLayout({
       <body className="min-h-screen app-shell-bg">
         <GoogleAnalytics />
         <Analytics />
+        <SpeedInsights />
         <div className="app-root relative z-[2] min-h-screen">{children}</div>
       </body>
     </html>

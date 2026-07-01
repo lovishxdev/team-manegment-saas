@@ -85,6 +85,7 @@ import {
   clearPending,
   consumeContinueMessage,
   getPendingDelete,
+  peekContinueMessage,
   stageContinueMessage,
   stageDeleteTask,
 } from "@/lib/whatsapp-pending";
@@ -95,6 +96,7 @@ import {
   parseWorkspacePickId,
   sendWorkspacePicker,
   shouldPromptWorkspacePick,
+  tryActivateWorkspaceFromText,
   userHasAnyWorkspace,
 } from "@/lib/whatsapp-workspace";
 
@@ -143,7 +145,7 @@ function buildSystemPrompt(activeWorkspaceName: string | null): string {
 ${workspaceContext}
 
 Convert the user's message into tool calls when they want to act on their board:
-- create_task: when they want to add/create a task
+- create_task: when they want to add/create a task. Use a SHORT title (a few words, under ~80 chars). Put bullet lists, long paragraphs, SEO keywords, and detailed requirements in description — never dump them all into title.
 - update_task: when they want to change a task - move/complete/start it, retitle it, set priority, due date, tags, or assign it (they usually reference it as #N)
 - delete_task: when they explicitly want to remove/delete a task (only when clearly intended)
 - get_board_state: when they ask what's on the board, task lists, or progress
@@ -183,10 +185,15 @@ const TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: "object",
       properties: {
-        title: { type: "string", description: "Task title" },
+        title: {
+          type: "string",
+          description:
+            "Short task title only (brief label, ideally under 80 characters)",
+        },
         description: {
           type: "string",
-          description: "Longer task details, only if the user gave any",
+          description:
+            "Longer details: bullet lists, paragraphs, requirements, keywords — put lengthy content here, not in title",
         },
         scope: {
           type: "string",
@@ -972,6 +979,36 @@ async function handleMessage(
   }
 
   if (hasWorkspace && (await shouldPromptWorkspacePick(userId))) {
+    const activated = await tryActivateWorkspaceFromText(userId, text);
+    if (activated) {
+      const pending = await consumeContinueMessage(from, userId);
+      const toRun = pending ?? text;
+      await recordExchange(
+        userId,
+        text,
+        `Using *${activated.workspaceName}*, continuing your request.`
+      ).catch(() => {});
+      await handleMessage(from, toRun, progress, queued);
+      return;
+    }
+
+    const pending = await peekContinueMessage(from, userId);
+    if (pending) {
+      const options = await listWorkspacePickerOptions(userId);
+      const names = options.map((m) => `• *${m.workspace.name.trim()}*`).join("\n");
+      await sendWhatsAppText(
+        from,
+        `Still waiting for a workspace pick.\n\nTap *Pick workspace* below, or reply with the exact name:\n${names}`
+      );
+      await sendWorkspacePicker(
+        from,
+        options.map((m) => m.workspace),
+        "Before I continue, which workspace should this apply to?"
+      );
+      await recordExchange(userId, text, "[workspace picker reshown]").catch(() => {});
+      return;
+    }
+
     const options = await listWorkspacePickerOptions(userId);
     await stageContinueMessage(from, userId, text);
     await sendWorkspacePicker(

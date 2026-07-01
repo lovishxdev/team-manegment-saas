@@ -5,7 +5,7 @@ import {
   TaskScope,
   TaskStatus,
 } from "@/lib/generated/prisma/client";
-import { formatTaskTitle } from "@/lib/format-task-title";
+import { formatTaskTitle, normalizeTaskTitleAndDescription } from "@/lib/format-task-title";
 import { prisma } from "@/lib/prisma";
 import { ASSETS_BUCKET, getSupabaseAdmin } from "@/lib/supabase";
 import { displayUser } from "@/lib/username";
@@ -239,6 +239,8 @@ export async function createTask(input: CreateTaskInput) {
   } = input;
   await assertMembership(userId, workspaceId);
 
+  const normalized = normalizeTaskTitleAndDescription(title, description);
+
   // shortId is allocated per workspace inside a transaction. The
   // @@unique([workspaceId, shortId]) constraint catches concurrent races,
   // which we retry a few times.
@@ -255,8 +257,8 @@ export async function createTask(input: CreateTaskInput) {
           data: {
             workspaceId,
             shortId: (last?.shortId ?? 0) + 1,
-            title: formatTaskTitle(title),
-            description: description ?? null,
+            title: formatTaskTitle(normalized.title),
+            description: normalized.description,
             scope: scope ?? TaskScope.GENERAL,
             priority: priority ?? TaskPriority.MEDIUM,
             dueDate: dueDate ?? null,

@@ -8,6 +8,8 @@ import { Reveal } from "./scroll-reveal";
 import { RotatingWords } from "./rotating-words";
 import { UseCaseMarquee } from "./use-case-marquee";
 import { WhatsAppDemo } from "./whatsapp-demo";
+import { FaqSection } from "@/components/seo/faq-section";
+import { HOME_FAQ } from "@/lib/seo/faq";
 
 const KANBAN = {
   todo: "#f43f5e", // rose-500
@@ -60,6 +62,9 @@ export function LandingContent() {
             </Link>
             <Link href="#whatsapp" className="lp-nav-link">
               WhatsApp
+            </Link>
+            <Link href="#faq" className="lp-nav-link hidden lg:inline-flex">
+              FAQ
             </Link>
           </nav>
 
@@ -345,6 +350,11 @@ export function LandingContent() {
       </section>
 
       {/* ============================================================
+          FAQ — extractable Q&A for SEO & GEO
+          ============================================================ */}
+      <FaqSection items={HOME_FAQ} />
+
+      {/* ============================================================
           FINAL CTA
           ============================================================ */}
       <section className="relative overflow-hidden border-t border-line">
@@ -421,6 +431,24 @@ export function LandingContent() {
           <nav className="flex flex-wrap items-center gap-4 text-[13px] text-ink-soft">
             <Link href="#whatsapp" className="hover:text-ink">
               WhatsApp
+            </Link>
+            <Link href="#faq" className="hover:text-ink">
+              FAQ
+            </Link>
+            <Link
+              href="/guides/manage-tasks-from-whatsapp"
+              className="hover:text-ink"
+            >
+              Guides
+            </Link>
+            <Link href="/compare/taskrio" className="hover:text-ink">
+              vs TaskRio
+            </Link>
+            <Link href="/compare/trello" className="hover:text-ink">
+              Compare
+            </Link>
+            <Link href="/privacy" className="hover:text-ink">
+              Privacy
             </Link>
             <Link href="/login" className="hover:text-ink">
               Sign in

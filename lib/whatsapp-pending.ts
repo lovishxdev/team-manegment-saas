@@ -62,6 +62,16 @@ export async function consumeContinueMessage(
   return (row.payload as ContinueMessagePending).text;
 }
 
+/** Read staged message without consuming (workspace picker flow). */
+export async function peekContinueMessage(
+  phone: string,
+  userId: string
+): Promise<string | null> {
+  const row = await loadPending(phone, userId, "continue_message");
+  if (!row) return null;
+  return (row.payload as ContinueMessagePending).text;
+}
+
 async function loadPending(phone: string, userId: string, action: string) {
   const row = await prisma.whatsAppPendingAction.findUnique({
     where: { phone },

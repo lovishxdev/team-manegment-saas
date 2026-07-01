@@ -6,7 +6,19 @@ import {
   clearOAuthReturnCookie,
 } from "@/lib/oauth-return";
 
-const PUBLIC_PATHS = ["/login", "/signup", "/auth", "/invite", "/landing", "/.well-known"];
+const PUBLIC_PATHS = [
+  "/login",
+  "/signup",
+  "/auth",
+  "/invite",
+  "/landing",
+  "/guides",
+  "/compare",
+  "/privacy",
+  "/terms",
+  "/llms.txt",
+  "/.well-known",
+];
 
 /**
  * Refreshes the Supabase session cookie on every request and redirects
@@ -53,7 +65,9 @@ export async function proxy(request: NextRequest) {
     pathname === "/apple-icon.png" ||
     pathname === "/icon.svg" ||
     pathname === "/sitemap.xml" ||
-    pathname === "/robots.txt"
+    pathname === "/robots.txt" ||
+    pathname === "/llms.txt" ||
+    pathname === "/opengraph-image"
   ) {
     return response;
   }
@@ -103,6 +117,6 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     // Everything except api routes, static files and assets
-    "/((?!api|_next/static|_next/image|favicon.ico|manifest.webmanifest|apple-icon.png|icon.svg|sitemap.xml|robots.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|manifest.webmanifest|apple-icon.png|icon.svg|sitemap.xml|robots.txt|llms.txt|opengraph-image|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

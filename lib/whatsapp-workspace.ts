@@ -133,6 +133,75 @@ export async function sendWorkspacePicker(
   return true;
 }
 
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Strip list-row description when user copies "Name\nUse this workspace". */
+export function normalizeWorkspacePickReply(text: string): string {
+  return text
+    .trim()
+    .split("\n")[0]
+    .replace(/\s*use this workspace\s*$/i, "")
+    .trim();
+}
+
+function matchWorkspaceByName(
+  workspaces: { id: string; name: string }[],
+  needle: string
+): { id: string; name: string } | null {
+  const n = needle.trim().toLowerCase();
+  if (!n) return null;
+
+  const exact = workspaces.filter(
+    (w) => w.name.trim().toLowerCase() === n
+  );
+  if (exact.length === 1) return exact[0];
+
+  const partial = workspaces.filter((w) => {
+    const name = w.name.trim().toLowerCase();
+    return name.includes(n) || n.includes(name);
+  });
+  if (partial.length === 1) return partial[0];
+
+  return null;
+}
+
+/**
+ * Activate a workspace from typed text — picker reply or "in Euclis" in a long message.
+ * Returns null when ambiguous or no match.
+ */
+export async function tryActivateWorkspaceFromText(
+  userId: string,
+  text: string
+): Promise<{ workspaceId: string; workspaceName: string } | null> {
+  const memberships = await listWorkspacePickerOptions(userId);
+  if (memberships.length <= 1) return null;
+
+  const workspaces = memberships.map((m) => m.workspace);
+  const pickReply = normalizeWorkspacePickReply(text);
+
+  if (pickReply.length > 0 && pickReply.length < 100) {
+    const direct = matchWorkspaceByName(workspaces, pickReply);
+    if (direct) return activateWorkspace(userId, direct.id);
+  }
+
+  const lower = text.toLowerCase();
+  const embedded = workspaces.filter((w) => {
+    const name = w.name.trim().toLowerCase();
+    if (name.length < 2) return false;
+    return (
+      new RegExp(`\\bin\\s+${escapeRegex(name)}\\b`, "i").test(lower) ||
+      new RegExp(`\\bfor\\s+${escapeRegex(name)}\\b`, "i").test(lower)
+    );
+  });
+  if (embedded.length === 1) {
+    return activateWorkspace(userId, embedded[0].id);
+  }
+
+  return null;
+}
+
 export async function activateWorkspace(
   userId: string,
   workspaceId: string

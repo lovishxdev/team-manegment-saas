@@ -1,6 +1,14 @@
-import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { JsonLd } from "@/components/seo/json-ld";
 import { createSupabaseServer } from "@/lib/supabase-server";
+import {
+  faqPageJsonLd,
+  organizationJsonLd,
+  softwareApplicationJsonLd,
+  websiteJsonLd,
+} from "@/lib/seo/json-ld";
+import { buildPageMetadata } from "@/lib/seo/metadata";
+import { HOME_DESCRIPTION, HOME_TITLE } from "@/lib/seo/site";
 import { LandingContent } from "./landing/_components/landing-content";
 
 /**
@@ -10,11 +18,12 @@ import { LandingContent } from "./landing/_components/landing-content";
  * the marketing surface. Everyone else gets the full landing experience
  * (the same body rendered at `/landing`).
  */
-export const metadata: Metadata = {
-  title: "Euclis | Run your team from anywhere, even WhatsApp",
-  description:
-    "A shared task board your team can reach from anywhere the conversation happens: the web dashboard, a WhatsApp message, or a chat with Claude. Built for hackathons, side projects, hostel fests, study groups and every small team in between.",
-};
+export const metadata = buildPageMetadata({
+  title: HOME_TITLE,
+  description: HOME_DESCRIPTION,
+  path: "/",
+  ogImageAlt: "Euclis — free team task board with WhatsApp and Claude MCP",
+});
 
 export default async function Home() {
   // Only attempt the Supabase auth check when credentials are configured.
@@ -31,5 +40,17 @@ export default async function Home() {
     if (user) redirect("/dashboard");
   }
 
-  return <LandingContent />;
+  return (
+    <>
+      <JsonLd
+        data={[
+          websiteJsonLd(),
+          organizationJsonLd(),
+          softwareApplicationJsonLd(),
+          faqPageJsonLd(),
+        ]}
+      />
+      <LandingContent />
+    </>
+  );
 }
