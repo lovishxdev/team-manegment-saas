@@ -91,22 +91,77 @@ const DONE: Card[] = [
   },
 ];
 
-const VIEW_MS = 9000;
+/** Demo reel board — same tasks as WhatsApp (#12) + Claude (#14–#16) scenes. */
+const RECORDING_TODO: Card[] = [
+  {
+    id: "12",
+    chip: "backend",
+    chipCls: "bg-orange-100 text-orange-700",
+    priority: "MEDIUM",
+    priorityCls: "bg-amber-50 text-amber-700",
+    title: "Fix login API",
+    assignee: { initial: "L", cls: "bg-blue-100 text-blue-700" },
+    due: "tonight · #12",
+  },
+  {
+    id: "15",
+    chip: "design",
+    chipCls: "bg-pink-100 text-pink-700",
+    priority: "MEDIUM",
+    priorityCls: "bg-amber-50 text-amber-700",
+    title: "Design landing hero",
+    assignee: { initial: "L", cls: "bg-blue-100 text-blue-700" },
+    due: "#15",
+  },
+  {
+    id: "16",
+    chip: "general",
+    chipCls: "bg-paper-deep text-ink-soft",
+    priority: "MEDIUM",
+    priorityCls: "bg-amber-50 text-amber-700",
+    title: "Record walkthrough video",
+    assignee: { initial: "Y", cls: "bg-teal-100 text-teal-700" },
+    due: "#16",
+  },
+];
 
-export function DashboardPreview() {
+const RECORDING_IN_PROGRESS: Card[] = [
+  {
+    id: "14",
+    chip: "backend",
+    chipCls: "bg-orange-100 text-orange-700",
+    priority: "MEDIUM",
+    priorityCls: "bg-amber-50 text-amber-700",
+    title: "Wire up auth API",
+    assignee: { initial: "A", cls: "bg-orange-100 text-orange-700" },
+    due: "#14",
+  },
+];
+
+const RECORDING_DONE: Card[] = [];
+
+const VIEW_MS = 9000;
+const RECORDING_VIEW_MS = 2800;
+
+export function DashboardPreview({ recordingMode = false }: { recordingMode?: boolean }) {
   const [view, setView] = useState<View>("board");
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
+    const intervalMs = recordingMode ? RECORDING_VIEW_MS : VIEW_MS;
     const id = window.setInterval(
       () => setView((v) => (v === "board" ? "whiteboard" : "board")),
-      VIEW_MS
+      intervalMs
     );
     return () => window.clearInterval(id);
-  }, []);
+  }, [recordingMode]);
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-line bg-shell shadow-[0_40px_120px_-40px_rgba(20,20,30,0.18)]">
+    <div
+      className={`overflow-hidden rounded-2xl border border-line bg-shell shadow-[0_40px_120px_-40px_rgba(20,20,30,0.18)] ${
+        recordingMode ? "mkt-dashboard-recording" : ""
+      }`}
+    >
       {/* Faux window chrome — grid keeps traffic-light dots circular on narrow screens */}
       <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1 border-b border-line bg-paper-deep/50 px-3 py-2.5 sm:grid-cols-[auto_1fr_auto] sm:gap-2 sm:px-4">
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
@@ -120,7 +175,7 @@ export function DashboardPreview() {
             <path d="M5 3V2.2A1.2 1.2 0 0 1 6.2 1h1.6A1.2 1.2 0 0 1 9 2.2V3" />
           </svg>
           <span className="truncate font-mono">
-            euclis.app / w / weekend-hack-2026
+            euclis.dev / w / weekend-hack-2026
             {view === "whiteboard" ? " / whiteboard" : ""}
           </span>
         </div>
@@ -172,7 +227,7 @@ export function DashboardPreview() {
             Workspaces
           </p>
           <div className="flex flex-col gap-0.5 text-[11.5px]">
-            <SidebarWorkspace name="weekend-hack-2026" tasks={5} active />
+            <SidebarWorkspace name="weekend-hack-2026" tasks={recordingMode ? 4 : 5} active />
             <SidebarWorkspace name="hostel fest crew" tasks={12} />
             <SidebarWorkspace name="side-project · v2" tasks={3} />
           </div>
@@ -181,18 +236,29 @@ export function DashboardPreview() {
         <div className="min-w-0 bg-shell px-3 py-4 sm:px-5 sm:py-5">
           <WorkspaceHeader
             view={view}
+            recordingMode={recordingMode}
             onOpenSidebar={() => setSidebarOpen(true)}
           />
 
-          <div className="lp-preview-stage max-h-[min(70vh,440px)] overflow-y-auto sm:max-h-none sm:overflow-visible">
-            <div className="relative sm:min-h-[288px]">
+          <div
+            className={`lp-preview-stage overflow-y-auto ${
+              recordingMode
+                ? "max-h-none overflow-visible"
+                : "max-h-[min(70vh,440px)] sm:max-h-none sm:overflow-visible"
+            }`}
+          >
+            <div
+              className={`relative ${
+                recordingMode ? "min-h-[min(52vh,520px)]" : "sm:min-h-[288px]"
+              }`}
+            >
               <div
                 className={`lp-preview-pane sm:absolute sm:inset-0 ${
                   view === "board" ? "" : "hidden sm:block is-hidden"
                 }`}
                 aria-hidden={view !== "board"}
               >
-                <BoardView />
+                <BoardView recordingMode={recordingMode} />
               </div>
               <div
                 className={`lp-preview-pane sm:absolute sm:inset-0 ${
@@ -200,7 +266,7 @@ export function DashboardPreview() {
                 }`}
                 aria-hidden={view !== "whiteboard"}
               >
-                <WhiteboardView />
+                <WhiteboardView recordingMode={recordingMode} />
               </div>
             </div>
           </div>
@@ -212,9 +278,11 @@ export function DashboardPreview() {
 
 function WorkspaceHeader({
   view,
+  recordingMode = false,
   onOpenSidebar,
 }: {
   view: View;
+  recordingMode?: boolean;
   onOpenSidebar: () => void;
 }) {
   return (
@@ -236,7 +304,9 @@ function WorkspaceHeader({
           </h3>
           <p className="mt-0.5 text-[10.5px] text-ink-soft">
             {view === "board"
-              ? "5 open · 4 members"
+              ? recordingMode
+                ? "4 open · 4 members"
+                : "5 open · 4 members"
               : "4 on canvas · excalidraw"}
           </p>
         </div>
@@ -267,22 +337,31 @@ function ViewTab({ active, label }: { active: boolean; label: string }) {
   );
 }
 
-function BoardView() {
+function BoardView({ recordingMode = false }: { recordingMode?: boolean }) {
+  const todo = recordingMode ? RECORDING_TODO : TODO;
+  const inProgress = recordingMode ? RECORDING_IN_PROGRESS : IN_PROGRESS;
+  const done = recordingMode ? RECORDING_DONE : DONE;
+  const highlightId = recordingMode ? "14" : "p2";
+
   return (
     <div className="-mx-0.5 overflow-x-auto pb-1 sm:overflow-visible">
-      <div className="flex w-max gap-2 sm:grid sm:w-full sm:grid-cols-3 sm:gap-3">
-        <KanbanColumn label="To Do" dot="bg-rose-500" tint="bg-rose-100/70" className="w-[9.5rem] shrink-0 sm:w-auto">
-          {TODO.map((c) => (
+      <div
+        className={`flex w-max gap-2 sm:grid sm:w-full sm:grid-cols-3 sm:gap-3 ${
+          recordingMode ? "min-h-[min(48vh,480px)]" : ""
+        }`}
+      >
+        <KanbanColumn label="To Do" dot="bg-rose-500" tint="bg-rose-100/70" className="w-[9.5rem] shrink-0 sm:w-auto" recordingMode={recordingMode}>
+          {todo.map((c) => (
             <KCard key={c.id} card={c} />
           ))}
         </KanbanColumn>
-        <KanbanColumn label="In Progress" dot="bg-orange-500" tint="bg-orange-100/70" className="w-[9.5rem] shrink-0 sm:w-auto">
-          {IN_PROGRESS.map((c) => (
-            <KCard key={c.id} card={c} highlight={c.id === "p2"} />
+        <KanbanColumn label="In Progress" dot="bg-orange-500" tint="bg-orange-100/70" className="w-[9.5rem] shrink-0 sm:w-auto" recordingMode={recordingMode}>
+          {inProgress.map((c) => (
+            <KCard key={c.id} card={c} highlight={c.id === highlightId} />
           ))}
         </KanbanColumn>
-        <KanbanColumn label="Done" dot="bg-violet-500" tint="bg-violet-100/70" className="w-[9.5rem] shrink-0 sm:w-auto">
-          {DONE.map((c) => (
+        <KanbanColumn label="Done" dot="bg-violet-500" tint="bg-violet-100/70" className="w-[9.5rem] shrink-0 sm:w-auto" recordingMode={recordingMode}>
+          {done.map((c) => (
             <KCard key={c.id} card={c} />
           ))}
         </KanbanColumn>
@@ -291,9 +370,13 @@ function BoardView() {
   );
 }
 
-function WhiteboardView() {
+function WhiteboardView({ recordingMode = false }: { recordingMode?: boolean }) {
   return (
-    <div className="flex h-full min-h-[268px] overflow-hidden rounded-xl border border-line bg-white shadow-sm sm:min-h-[288px]">
+    <div
+      className={`flex h-full overflow-hidden rounded-xl border border-line bg-white shadow-sm ${
+        recordingMode ? "min-h-[min(52vh,520px)]" : "min-h-[268px] sm:min-h-[288px]"
+      }`}
+    >
       {/* Excalidraw-style tool rail */}
       <div className="flex w-9 shrink-0 flex-col items-center gap-1 border-r border-line bg-paper py-2">
         <ToolBtn icon="hand" />
@@ -595,12 +678,14 @@ function KanbanColumn({
   dot,
   tint,
   className = "",
+  recordingMode = false,
   children,
 }: {
   label: string;
   dot: string;
   tint: string;
   className?: string;
+  recordingMode?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -611,7 +696,13 @@ function KanbanColumn({
           {label}
         </h4>
       </header>
-      <div className="flex flex-col gap-1.5 sm:gap-2">{children}</div>
+      <div
+        className={`flex flex-col gap-1.5 sm:gap-2 ${
+          recordingMode ? "min-h-[min(42vh,420px)]" : ""
+        }`}
+      >
+        {children}
+      </div>
     </section>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 /**
@@ -163,9 +164,13 @@ export function WhatsAppDemo() {
           <div className="flex h-[468px] flex-col overflow-hidden rounded-[1.55rem] bg-[#ECE5DD]">
             {/* WhatsApp header */}
             <div className="lp-wa-gradient flex shrink-0 items-center gap-2.5 px-3.5 pb-2.5 pt-8">
-              <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/20 text-xs font-semibold text-white">
-                E
-              </div>
+              <Image
+                src="/euclis-logo.png"
+                alt="Euclis"
+                width={32}
+                height={32}
+                className="h-8 w-8 shrink-0 rounded-full bg-white object-cover ring-1 ring-white/30"
+              />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[12.5px] font-semibold leading-tight text-white">
                   Euclis

@@ -59,6 +59,17 @@ export async function proxy(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
+  // Social recording demos — dev-only unless explicitly enabled in production.
+  if (pathname.startsWith("/marketing") || pathname.startsWith("/demo1")) {
+    const allowed =
+      process.env.NODE_ENV !== "production" ||
+      process.env.ENABLE_MARKETING_DEMOS === "true";
+    if (!allowed) {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
+    return response;
+  }
+
   // SEO + PWA metadata must stay public (no auth redirect).
   if (
     pathname === "/manifest.webmanifest" ||

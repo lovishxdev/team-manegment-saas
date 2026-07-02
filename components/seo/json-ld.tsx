@@ -4,11 +4,19 @@ type JsonLdProps = {
 
 /** Renders schema.org JSON-LD for crawlers and LLM extractors. */
 export function JsonLd({ data }: JsonLdProps) {
-  const payload = Array.isArray(data) ? data : [data];
+  const items = Array.isArray(data) ? data : [data];
+
+  // One object per script tag — top-level JSON arrays break consumers that
+  // expect r["@context"] on the parsed root (browser extensions, rich-result parsers).
   return (
-    <script
-      type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(payload) }}
-    />
+    <>
+      {items.map((item, index) => (
+        <script
+          key={`${String(item["@type"] ?? "schema")}-${index}`}
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(item) }}
+        />
+      ))}
+    </>
   );
 }

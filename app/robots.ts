@@ -16,6 +16,8 @@ export default function robots(): MetadataRoute.Robots {
         "/oauth/",
         "/api/",
         "/auth/",
+        "/marketing/",
+        "/demo1",
       ],
     },
     sitemap: `${base}/sitemap.xml`,
