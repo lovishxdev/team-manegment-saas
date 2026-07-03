@@ -351,8 +351,7 @@ const handler = createMcpHandler(
           const recentUpdates = await getRecentTaskUpdates(
             ctx.workspaceId,
             userId,
-            shortId,
-            10
+            shortId
           );
           return text(
             formatTaskDetail(
@@ -796,7 +795,7 @@ const handler = createMcpHandler(
       "ask_task",
       {
         description:
-          "Answer questions about a task: semantic task match + RAG over relevant updates. Best for status and 'what's wrong with X' questions.",
+          "Answer questions about a task: semantic task match + full update thread. Best for status and 'what's wrong with X' questions.",
         inputSchema: {
           query: z.string().min(1).describe("User question or topic"),
           shortId: z

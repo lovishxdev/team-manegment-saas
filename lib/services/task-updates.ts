@@ -119,18 +119,16 @@ export async function createTaskUpdate(input: {
   };
 }
 
-/** Recent updates for read_task / quick context (newest last). */
+/** All updates on a task for bot context (oldest first). */
 export async function getRecentTaskUpdates(
   workspaceId: string,
   userId: string,
-  shortId: number,
-  limit = 10
+  shortId: number
 ): Promise<TaskUpdateRow[]> {
   const task = await resolveTaskInWorkspace(workspaceId, userId, shortId);
-  const rows = await prisma.taskUpdate.findMany({
+  return prisma.taskUpdate.findMany({
     where: { taskId: task.id },
-    orderBy: { createdAt: "desc" },
-    take: limit,
+    orderBy: { createdAt: "asc" },
     select: {
       id: true,
       body: true,
@@ -138,5 +136,4 @@ export async function getRecentTaskUpdates(
       author: { select: authorSelect },
     },
   });
-  return rows.reverse();
 }

@@ -66,7 +66,7 @@ function formatSection(
   if (tasks.length === 0) return null;
 
   if (channel === "whatsapp") {
-    return `*${label}*\n${tasks.map((t) => formatTaskLine(t, channel)).join("\n")}`;
+    return `${label}:\n${tasks.map((t) => formatTaskLine(t, channel)).join("\n")}`;
   }
 
   return `${label} (${tasks.length})\n${tasks.map((t) => formatTaskLine(t, channel)).join("\n")}`;
@@ -285,23 +285,16 @@ export function formatTaskDetail(
 
   const updatesBlock = (() => {
     if (!recentUpdates || recentUpdates.length === 0) return "";
-    const preview = recentUpdates.slice(-5);
-    const lines = preview.map((u) => {
+    const lines = recentUpdates.map((u) => {
       const who = `@${displayUser(u.author)}`;
       const when = u.createdAt.toISOString().slice(0, 16).replace("T", " ");
       return channel === "whatsapp"
         ? `• ${when} · ${who}: ${u.body}`
         : `[${when}] ${who}: ${u.body}`;
     });
-    const more =
-      recentUpdates.length > preview.length
-        ? channel === "whatsapp"
-          ? `\n_…and ${recentUpdates.length - preview.length} more. Use list_task_updates for full history._`
-          : `\n…and ${recentUpdates.length - preview.length} more (use list_task_updates for full history).`
-        : "";
     return channel === "whatsapp"
-      ? `\nRecent updates (${recentUpdates.length}):\n${lines.join("\n")}${more}\n`
-      : `\nRecent updates (${recentUpdates.length}):\n${lines.join("\n")}${more}\n`;
+      ? `\nUpdates (${recentUpdates.length}):\n${lines.join("\n")}\n`
+      : `\nUpdates (${recentUpdates.length}):\n${lines.join("\n")}\n`;
   })();
 
   if (channel === "whatsapp") {
@@ -654,7 +647,7 @@ export type TaskContextSnapshot = {
   query: string;
 };
 
-/** Phase B context pack — task metadata + RAG-selected updates for the model. */
+/** Task metadata + full update thread for the model. */
 export function formatTaskContextPack(
   workspaceName: string,
   pack: TaskContextSnapshot,
@@ -696,8 +689,8 @@ export function formatTaskContextPack(
     });
     const header =
       channel === "whatsapp"
-        ? `Relevant updates (${pack.relevantUpdates.length}${t.totalUpdates > pack.relevantUpdates.length ? ` of ${t.totalUpdates}` : ""}):`
-        : `Relevant updates (${pack.relevantUpdates.length}):`;
+        ? `Updates (${pack.relevantUpdates.length}):`
+        : `Updates (${pack.relevantUpdates.length}):`;
     updatesBlock = `${header}\n${lines.join("\n\n")}`;
   }
 

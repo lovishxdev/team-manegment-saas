@@ -143,7 +143,7 @@ export async function runFindTask(
   return formatTaskRetrievalResults(ctx.workspaceName, hits, channel);
 }
 
-/** Phase B: resolve task + RAG over updates in one step. */
+/** Resolve task + full update thread in one step. */
 export async function runAskTask(
   ctx: BotWorkspaceCtx,
   userId: string,

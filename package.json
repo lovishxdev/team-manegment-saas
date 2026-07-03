@@ -12,6 +12,7 @@
     "prisma:migrate": "prisma migrate dev",
     "backfill:usernames": "tsx scripts/backfill-usernames.ts",
     "backfill:task-embeddings": "tsx scripts/backfill-task-embeddings.ts",
+    "seed:task-updates": "tsx scripts/seed-task-update-stress-test.ts",
     "vercel": "vercel",
     "vercel:login": "vercel login",
     "vercel:deploy": "vercel --prod",

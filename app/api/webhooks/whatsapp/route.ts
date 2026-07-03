@@ -73,6 +73,11 @@ import {
 } from "@/lib/whatsapp-inbound";
 import { WhatsAppProgress } from "@/lib/whatsapp-progress";
 import {
+  getClientToolUses,
+  runClientToolUses,
+} from "@/lib/whatsapp-tool-batch";
+import { buildWhatsAppHaikuTools } from "@/lib/whatsapp-tool-search";
+import {
   enqueueInboundMessage,
   ensureQueueProcessed,
   recoverStuckQueue,
@@ -102,6 +107,10 @@ import {
 } from "@/lib/channel-formatters";
 import { classifyActionOutcome } from "@/lib/whatsapp-action-outcome";
 import { formatWhatsAppUserReply } from "@/lib/whatsapp-voice";
+import {
+  isSonnetPolishEnabled,
+  polishWhatsAppReply,
+} from "@/lib/whatsapp-sonnet-polish";
 import { workspaceUrl } from "@/lib/app-url";
 import { getAppOrigin } from "@/lib/app-origin";
 import { isWhatsAppGreeting } from "@/lib/whatsapp-bot";
@@ -185,6 +194,8 @@ function buildSystemPrompt(activeWorkspaceName: string | null): string {
 
   return `You are Euclis on WhatsApp — a sharp, friendly teammate who helps manage tasks. Today is ${weekday}, ${today}. Sound human: short sentences, contractions, no corporate filler. Never say "Here's what happened", "I have successfully", or "Done." as a opener.
 
+WhatsApp formatting: bold = *single asterisks* only. Never use **markdown** or *Section:* headers — use plain "To do:" for board sections.
+
 Voice examples:
 - User: "mark login bug done" → you (after tools): "Marked #12 Login Bug as done."
 - User: "what's on the board" → brief summary, not a data dump.
@@ -196,8 +207,8 @@ ${workspaceContext}
 Convert the user's message into tool calls when they want to act on their board:
 - create_task: when they want to add/create a task. Use a SHORT title (a few words, under ~80 chars). Put bullet lists, long paragraphs, SEO keywords, and detailed requirements in description — never dump them all into title.
 - update_task: when they want to change a task - move/complete/start it, retitle it, set priority, due date, tags, or assign it (they usually reference it as #N)
-- ask_task: BEST for status / "what's going on" / "what's wrong with X" questions. One call: finds the task (semantic) + pulls relevant updates (RAG). Pass the user's full question as query. Use shortId only if they gave #N.
-- find_task: locate a task by description only (no update RAG). Prefer ask_task for status questions.
+- ask_task: BEST for status / "what's going on" / "what's wrong with X" questions. One call: finds the task (semantic) + includes the full update thread. Pass the user's full question as query. Use shortId only if they gave #N.
+- find_task: locate a task by description only (no updates). Prefer ask_task for status questions.
 - search_tasks: filter tasks by tag, category, status, assignee, or keywords (structured search).
 - list_task_updates: when they ask what's happening, what's pending, or recent activity on a task (#N). Prefer this over read_task for status questions.
 - read_task: full task metadata (status, assignees, tags, description). Skip if list_task_updates already answers their question.
@@ -722,7 +733,7 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "ask_task",
     description:
-      "Answer questions about a task: finds the task by description or #N, then retrieves relevant team updates (RAG). Use for 'what's going on', 'what's wrong with X flow', status questions.",
+      "Answer questions about a task: finds the task by description or #N, then includes the full update thread. Use for 'what's going on', 'what's wrong with X flow', status questions.",
     input_schema: {
       type: "object",
       properties: {
@@ -1185,7 +1196,7 @@ export async function POST(req: NextRequest) {
     ).catch(() => {});
   }
 
-  void markWhatsAppRead(message.messageId).catch(() => {});
+  void markWhatsAppRead(message.messageId, { typing: true }).catch(() => {});
   void pruneInboundDedup().catch(() => {});
 
   try {
@@ -1221,10 +1232,16 @@ export async function POST(req: NextRequest) {
 async function processQueuedMessage(message: InboundMessage, queued: boolean) {
   try {
     if (message.kind === "text") {
-      const progress = new WhatsAppProgress(message.from, () =>
+      const progress = new WhatsAppProgress(message.messageId, () =>
         touchProcessorLock(message.from)
       );
-      await handleMessage(message.from, message.text, progress, queued);
+      await handleMessage(
+        message.from,
+        message.text,
+        progress,
+        queued,
+        message.messageId
+      );
     } else if (message.kind === "interactive") {
       await handleInteractiveMessage(message);
     } else {
@@ -1642,7 +1659,8 @@ async function handleMessage(
   from: string,
   text: string,
   progress?: WhatsAppProgress,
-  queued = false
+  queued = false,
+  _inboundMessageId?: string
 ) {
   const userId = await getUserIdByPhone(from);
   if (!userId) {
@@ -1700,7 +1718,7 @@ async function handleMessage(
         text,
         `Using *${activated.workspaceName}* — on it.`
       ).catch(() => {});
-      await handleMessage(from, toRun, progress, queued);
+      await handleMessage(from, toRun, progress, queued, inboundMessageId);
       return;
     }
 
@@ -1773,15 +1791,19 @@ async function handleMessage(
       model: HAIKU_MODEL,
       max_tokens: 1024,
       system: buildSystemPrompt(activeCtx.workspaceName),
-      tools: TOOLS,
+      tools: buildWhatsAppHaikuTools(TOOLS),
       messages,
     });
 
-    const toolUses = response.content.filter(
-      (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
-    );
+    const toolUses = getClientToolUses(response.content);
 
     if (toolUses.length === 0) {
+      if (response.stop_reason === "tool_use") {
+        // Server-side tool search only — keep going without client tool_result rows.
+        messages.push({ role: "assistant", content: response.content });
+        continue;
+      }
+
       budgetExhausted = false;
       const textBlock = response.content.find(
         (block): block is Anthropic.TextBlock => block.type === "text"
@@ -1797,8 +1819,7 @@ async function handleMessage(
 
     messages.push({ role: "assistant", content: response.content });
 
-    const results: Anthropic.ToolResultBlockParam[] = [];
-    for (const toolUse of toolUses) {
+    const batchResults = await runClientToolUses(toolUses, async (toolUse) => {
       const result = await executeAction(
         userId,
         toolUse.name,
@@ -1808,12 +1829,21 @@ async function handleMessage(
       const outcome = classifyActionOutcome(toolUse.name, result);
       actionResults.push(outcome);
       await progress?.step(toolUse.name, result);
-      results.push({
+      return {
+        toolUseId: toolUse.id,
+        action: toolUse.name,
+        result,
+        outcome,
+      };
+    });
+
+    const results: Anthropic.ToolResultBlockParam[] = batchResults.map(
+      (row) => ({
         type: "tool_result",
-        tool_use_id: toolUse.id,
-        content: result,
-      });
-    }
+        tool_use_id: row.toolUseId,
+        content: row.result,
+      })
+    );
     messages.push({ role: "user", content: results });
   }
   } finally {
@@ -1821,6 +1851,8 @@ async function handleMessage(
   }
 
   const withMessage = actionResults.filter((o) => o.message.trim());
+  const staticFallback =
+    "Tell me what to add or change on your board — or send *menu*.";
 
   if (withMessage.length > 0) {
     reply = formatWhatsAppUserReply(
@@ -1829,7 +1861,30 @@ async function handleMessage(
       assistantNote
     );
   } else if (!reply && !session.workspacePickerSent) {
-    reply = "Tell me what to add or change on your board — or send *menu*.";
+    reply = staticFallback;
+  }
+
+  if (reply && isSonnetPolishEnabled() && reply !== staticFallback) {
+    try {
+      const polished = await polishWhatsAppReply({
+        userMessage: text,
+        draftReply: reply,
+        workspaceName: activeCtx.workspaceName,
+        actionResults,
+      });
+      if (process.env.WHATSAPP_WEBHOOK_DEBUG === "1") {
+        console.log("[whatsapp-webhook] sonnet polish", {
+          draft: reply.slice(0, 200),
+          polished: polished.slice(0, 200),
+        });
+      }
+      reply = polished;
+    } catch (err) {
+      console.error(
+        "[whatsapp-webhook] Sonnet polish failed, using draft:",
+        err
+      );
+    }
   }
 
   if (reply) {
@@ -2154,8 +2209,7 @@ async function executeAction(
         const recentUpdates = await getRecentTaskUpdates(
           ctx.workspaceId,
           userId,
-          shortId,
-          10
+          shortId
         );
         return formatTaskDetail(
           task,

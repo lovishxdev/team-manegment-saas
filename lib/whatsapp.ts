@@ -71,11 +71,23 @@ export async function sendWhatsAppText(to: string, body: string): Promise<boolea
   return true;
 }
 
-/** Blue-tick read receipt on the user's inbound message. */
-export async function markWhatsAppRead(messageId: string): Promise<void> {
+/** Blue-tick read receipt; optional typing indicator (Meta Cloud API, up to ~25s). */
+export async function markWhatsAppRead(
+  messageId: string,
+  opts?: { typing?: boolean }
+): Promise<void> {
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
   const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
   if (!phoneNumberId || !accessToken) return;
+
+  const payload: Record<string, unknown> = {
+    messaging_product: "whatsapp",
+    status: "read",
+    message_id: messageId,
+  };
+  if (opts?.typing) {
+    payload.typing_indicator = { type: "text" };
+  }
 
   const res = await graphFetch(
     `https://graph.facebook.com/${GRAPH_API_VERSION}/${phoneNumberId}/messages`,
@@ -85,11 +97,7 @@ export async function markWhatsAppRead(messageId: string): Promise<void> {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        status: "read",
-        message_id: messageId,
-      }),
+      body: JSON.stringify(payload),
     }
   );
 
@@ -97,6 +105,11 @@ export async function markWhatsAppRead(messageId: string): Promise<void> {
     const detail = res ? await res.text().catch(() => "") : "network error";
     console.error(`WhatsApp mark-read failed (${res?.status ?? "n/a"}): ${detail}`);
   }
+}
+
+/** Re-show typing during long work (dismissed when we send a reply). */
+export async function refreshWhatsAppTyping(messageId: string): Promise<void> {
+  await markWhatsAppRead(messageId, { typing: true });
 }
 
 export type InboundMessage =
