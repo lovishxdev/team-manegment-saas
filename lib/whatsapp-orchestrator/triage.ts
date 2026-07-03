@@ -35,7 +35,9 @@ Return ONLY valid JSON matching this schema:
 Rules:
 - simple: one clear action, unambiguous task, no compound requests
 - complex: multiple actions, vague task reference, admin flows, or needs reasoning across updates
-- post_update: user reports progress ("I started…", "blocked on…") OR confirms posting ("yes post that")
+- post_update: user reports progress ("I started…", "blocked on…") OR confirms posting ("yes post that") — NOT "I want to work on X"
+- read_task: user wants to focus/discuss a task ("work on seo", "switch to X") — acknowledge, do NOT post an update
+- ask_task: "what's going on", "what happened", status/history questions — needs update thread (always complex)
 - board_list: what's on the board / my tasks overview
 - update_task: mark done, start, change priority/due — NOT progress notes (those are post_update)
 - compound: "create X and assign Y", multiple tasks, workspace + tasks

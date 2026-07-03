@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { ConversationTurn } from "@/lib/services/conversation";
 import type { ActionOutcome } from "@/lib/channel-formatters";
 import { formatWhatsAppUserReply } from "@/lib/whatsapp-voice";
+import { classifyActionOutcome } from "@/lib/whatsapp-action-outcome";
 import { runWhatsAppAgentLoop } from "@/lib/whatsapp-agent-loop";
 import { buildOrchestratorContext } from "@/lib/whatsapp-orchestrator/context-pack";
 import { executeSimpleIntent } from "@/lib/whatsapp-orchestrator/execute-simple";
@@ -10,6 +11,7 @@ import {
   judgeWhatsAppReply,
 } from "@/lib/whatsapp-orchestrator/judge";
 import { triageWhatsAppMessage } from "@/lib/whatsapp-orchestrator/triage";
+import { refineTriageResult } from "@/lib/whatsapp-orchestrator/refine-triage";
 import {
   toolsForIntent,
   triageSystemAugment,
@@ -51,17 +53,22 @@ export type OrchestratorDeps = {
 };
 
 function pickRoute(triage: TriageResult): OrchestratorRoute {
-  if (
-    triage.clarifying_question &&
-    triage.confidence < 0.6
-  ) {
+  if (triage.clarifying_question && triage.confidence < 0.6) {
     return "clarify";
+  }
+  // RAG + task Q&A — always deterministic (no agent hallucination).
+  if (triage.intent === "ask_task") {
+    return "simple";
   }
   if (
     triage.complexity === "simple" &&
     SIMPLE_INTENTS.has(triage.intent) &&
     triage.confidence >= simpleExecuteMinConfidence()
   ) {
+    return "simple";
+  }
+  // read_task focus ack can run simple even below threshold.
+  if (triage.intent === "read_task" && triage.complexity === "simple") {
     return "simple";
   }
   return triage.complexity === "complex" ? "sonnet" : "haiku";
@@ -84,7 +91,10 @@ export async function runWhatsAppOrchestrator(
     lastDiscussedTaskShortId: deps.lastDiscussedTaskShortId,
   });
 
-  const triage = await triageWhatsAppMessage(pack);
+  const triage = refineTriageResult(
+    pack,
+    await triageWhatsAppMessage(pack)
+  );
   const route = pickRoute(triage);
 
   if (process.env.WHATSAPP_WEBHOOK_DEBUG === "1") {
@@ -192,6 +202,23 @@ async function runAgentPath(
     );
   } else if (loop.reply) {
     draftReply = loop.reply;
+  } else if (triage.intent === "ask_task") {
+    const { resolveUserWorkspaceContext } = await import(
+      "@/lib/services/project"
+    );
+    const { runAskTask } = await import("@/lib/bot/extended-tools");
+    const ctx = await resolveUserWorkspaceContext(deps.userId);
+    const query =
+      triage.slots?.query?.trim() || deps.userMessage.trim();
+    draftReply = await runAskTask(
+      ctx,
+      deps.userId,
+      { query },
+      "whatsapp"
+    );
+    loop.actionResults.push(
+      classifyActionOutcome("ask_task", draftReply)
+    );
   } else {
     draftReply = staticFallback;
   }

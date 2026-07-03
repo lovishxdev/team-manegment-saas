@@ -80,6 +80,8 @@ export const SIMPLE_INTENTS: ReadonlySet<WhatsAppIntent> = new Set([
   "create_task",
   "update_task",
   "post_update",
+  "ask_task",
+  "read_task",
   "menu",
 ]);
 

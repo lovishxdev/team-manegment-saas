@@ -3,10 +3,11 @@ import type { ActionOutcome } from "@/lib/channel-formatters";
 import {
   createTask,
   getBoardState,
+  getTask,
   resolveUserWorkspaceContext,
   updateTask,
 } from "@/lib/services/project";
-import { runAddTaskUpdate } from "@/lib/bot/extended-tools";
+import { runAddTaskUpdate, runAskTask } from "@/lib/bot/extended-tools";
 import {
   formatBoardState,
   mapBoardSnapshot,
@@ -14,6 +15,8 @@ import {
 import {
   resolveTaskUpdateBody,
 } from "@/lib/whatsapp-task-context";
+import { shouldPostTaskUpdate } from "@/lib/whatsapp-orchestrator/refine-triage";
+import { formatTaskRef } from "@/lib/whatsapp-task-ref";
 import { resolveWhatsAppTaskShortId } from "@/lib/whatsapp-tool-guard";
 import { classifyActionOutcome } from "@/lib/whatsapp-action-outcome";
 import { humanizeToolMessage } from "@/lib/whatsapp-voice";
@@ -105,6 +108,9 @@ export async function executeSimpleIntent(
       }
 
       case "post_update": {
+        if (!shouldPostTaskUpdate(userMessage, input.turns, slots)) {
+          return null;
+        }
         const body =
           slots.body?.trim() ||
           resolveTaskUpdateBody("", userMessage, input.turns);
@@ -133,6 +139,49 @@ export async function executeSimpleIntent(
           reply: humanizeToolMessage("add_task_update", raw),
           actionResults: outcomes,
         };
+      }
+
+      case "ask_task": {
+        const query = slots.query?.trim() || userMessage.trim();
+        if (!query) return null;
+        const raw = await runAskTask(
+          { workspaceId: ctx.workspaceId, workspaceName: ctx.workspaceName },
+          userId,
+          { query },
+          "whatsapp"
+        );
+        outcomes.push(classifyActionOutcome("ask_task", raw));
+        return { reply: raw, actionResults: outcomes };
+      }
+
+      case "read_task": {
+        const sessionWithRef = {
+          ...session,
+          userMessage: slots.task_ref?.trim() || userMessage,
+        };
+        const resolved = await resolveWhatsAppTaskShortId(
+          ctx.workspaceId,
+          undefined,
+          sessionWithRef
+        );
+        if (!resolved.ok) {
+          outcomes.push(classifyActionOutcome("read_task", resolved.message));
+          return {
+            reply: resolved.message,
+            actionResults: outcomes,
+          };
+        }
+        if (input.session) {
+          input.session.lastDiscussedTaskShortId = resolved.shortId;
+        }
+        const task = await getTask(
+          ctx.workspaceId,
+          userId,
+          resolved.shortId
+        );
+        const reply = `Got it — ${formatTaskRef(task.title)}. What do you want to post or change on it?`;
+        outcomes.push(classifyActionOutcome("read_task", reply));
+        return { reply, actionResults: outcomes };
       }
 
       case "update_task": {
