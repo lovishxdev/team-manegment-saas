@@ -75,6 +75,19 @@ export function refineTriageResult(
     };
   }
 
+  const switchWs = msg.match(
+    /switch\s+(?:workspace\s+)?to\s+(.+?)(?:\s+then\b|$)/i
+  );
+  if (switchWs) {
+    return {
+      ...triage,
+      intent: "workspace_admin",
+      complexity: "simple",
+      confidence: 0.9,
+      slots: { ...slots, query: switchWs[1].trim() },
+    };
+  }
+
   if (
     triage.intent === "post_update" &&
     !shouldPostTaskUpdate(msg, pack.recent_turns, slots)

@@ -10,6 +10,7 @@ import {
   applyJudgeVerdict,
   judgeWhatsAppReply,
 } from "@/lib/whatsapp-orchestrator/judge";
+import { summarizeAskTaskReply } from "@/lib/whatsapp-orchestrator/summarize-ask-task";
 import { triageWhatsAppMessage } from "@/lib/whatsapp-orchestrator/triage";
 import { refineTriageResult } from "@/lib/whatsapp-orchestrator/refine-triage";
 import {
@@ -18,6 +19,7 @@ import {
 } from "@/lib/whatsapp-orchestrator/tools-for-intent";
 import {
   complexAgentModel,
+  isAskTaskSummarizeEnabled,
   isJudgeEnabled,
   simpleAgentModel,
   simpleExecuteMinConfidence,
@@ -26,6 +28,8 @@ import {
   type OrchestratorRoute,
   type TriageResult,
 } from "@/lib/whatsapp-orchestrator/types";
+import { runAskTask } from "@/lib/bot/extended-tools";
+import { resolveUserWorkspaceContext } from "@/lib/services/project";
 
 export type OrchestratorDeps = {
   userId: string;
@@ -56,9 +60,9 @@ function pickRoute(triage: TriageResult): OrchestratorRoute {
   if (triage.clarifying_question && triage.confidence < 0.6) {
     return "clarify";
   }
-  // RAG + task Q&A — always deterministic (no agent hallucination).
+  // ask_task: deterministic RAG → Sonnet summary (not full tool agent).
   if (triage.intent === "ask_task") {
-    return "simple";
+    return "sonnet";
   }
   if (
     triage.complexity === "simple" &&
@@ -67,7 +71,6 @@ function pickRoute(triage: TriageResult): OrchestratorRoute {
   ) {
     return "simple";
   }
-  // read_task focus ack can run simple even below threshold.
   if (triage.intent === "read_task" && triage.complexity === "simple") {
     return "simple";
   }
@@ -107,6 +110,10 @@ export async function runWhatsAppOrchestrator(
       route: "clarify",
       triage,
     };
+  }
+
+  if (triage.intent === "ask_task") {
+    return runAskTaskWithSummary(deps, pack, triage);
   }
 
   let actionResults: ActionOutcome[] = [];
@@ -203,22 +210,7 @@ async function runAgentPath(
   } else if (loop.reply) {
     draftReply = loop.reply;
   } else if (triage.intent === "ask_task") {
-    const { resolveUserWorkspaceContext } = await import(
-      "@/lib/services/project"
-    );
-    const { runAskTask } = await import("@/lib/bot/extended-tools");
-    const ctx = await resolveUserWorkspaceContext(deps.userId);
-    const query =
-      triage.slots?.query?.trim() || deps.userMessage.trim();
-    draftReply = await runAskTask(
-      ctx,
-      deps.userId,
-      { query },
-      "whatsapp"
-    );
-    loop.actionResults.push(
-      classifyActionOutcome("ask_task", draftReply)
-    );
+    return runAskTaskWithSummary(deps, pack, triage);
   } else {
     draftReply = staticFallback;
   }
@@ -250,9 +242,57 @@ async function runAgentPath(
   return { reply: finalReply, route: agentRoute, triage };
 }
 
+/** RAG fetch (code) → Sonnet summary (compression). Facts never from Sonnet alone. */
+async function runAskTaskWithSummary(
+  deps: OrchestratorDeps,
+  pack: Awaited<ReturnType<typeof buildOrchestratorContext>>,
+  triage: TriageResult
+): Promise<OrchestratorResult> {
+  const query =
+    triage.slots?.query?.trim() || deps.userMessage.trim();
+  const ctx = await resolveUserWorkspaceContext(deps.userId);
+
+  const raw = await runAskTask(
+    { workspaceId: ctx.workspaceId, workspaceName: ctx.workspaceName },
+    deps.userId,
+    { query },
+    "whatsapp"
+  );
+
+  const actionResults: ActionOutcome[] = [
+    classifyActionOutcome("ask_task", raw),
+  ];
+
+  let reply = raw;
+  if (isAskTaskSummarizeEnabled() && actionResults[0]?.ok) {
+    reply = await summarizeAskTaskReply({
+      userQuestion: query,
+      taskContextPack: raw,
+      workspaceName: ctx.workspaceName,
+    });
+  }
+
+  const toolOnlyFallback = raw;
+
+  if (isJudgeEnabled() && reply) {
+    const judge = await judgeWhatsAppReply({
+      pack,
+      triage,
+      draftReply: reply,
+      actionResults,
+      toolOnlyFallback,
+    });
+    reply = applyJudgeVerdict(reply, toolOnlyFallback, judge);
+    return { reply, route: "sonnet", triage, judge };
+  }
+
+  return { reply, route: "sonnet", triage };
+}
+
 export {
   isOrchestratorEnabled,
   isJudgeEnabled,
+  isAskTaskSummarizeEnabled,
   type TriageResult,
   type OrchestratorResult,
 } from "@/lib/whatsapp-orchestrator/types";

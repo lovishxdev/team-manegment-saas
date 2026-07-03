@@ -7,7 +7,7 @@ import {
   resolveUserWorkspaceContext,
   updateTask,
 } from "@/lib/services/project";
-import { runAddTaskUpdate, runAskTask } from "@/lib/bot/extended-tools";
+import { runAddTaskUpdate } from "@/lib/bot/extended-tools";
 import {
   formatBoardState,
   mapBoardSnapshot,
@@ -17,7 +17,7 @@ import {
 } from "@/lib/whatsapp-task-context";
 import { shouldPostTaskUpdate } from "@/lib/whatsapp-orchestrator/refine-triage";
 import { formatTaskRef } from "@/lib/whatsapp-task-ref";
-import { resolveWhatsAppTaskShortId } from "@/lib/whatsapp-tool-guard";
+import { resolveWhatsAppTaskByTitle, resolveWhatsAppTaskShortId } from "@/lib/whatsapp-tool-guard";
 import { classifyActionOutcome } from "@/lib/whatsapp-action-outcome";
 import { humanizeToolMessage } from "@/lib/whatsapp-voice";
 import type { TriageResult } from "@/lib/whatsapp-orchestrator/types";
@@ -142,28 +142,29 @@ export async function executeSimpleIntent(
       }
 
       case "ask_task": {
-        const query = slots.query?.trim() || userMessage.trim();
-        if (!query) return null;
-        const raw = await runAskTask(
-          { workspaceId: ctx.workspaceId, workspaceName: ctx.workspaceName },
-          userId,
-          { query },
-          "whatsapp"
-        );
-        outcomes.push(classifyActionOutcome("ask_task", raw));
-        return { reply: raw, actionResults: outcomes };
+        // Handled by runAskTaskWithSummary in orchestrator index (RAG + Sonnet).
+        return null;
       }
 
       case "read_task": {
-        const sessionWithRef = {
-          ...session,
-          userMessage: slots.task_ref?.trim() || userMessage,
-        };
-        const resolved = await resolveWhatsAppTaskShortId(
-          ctx.workspaceId,
-          undefined,
-          sessionWithRef
-        );
+        // When the user names a task in THIS message, match by title.
+        // Otherwise fall back to workspace conversation context (last discussed task).
+        const titleQuery =
+          slots.task_ref?.trim() ||
+          userMessage
+            .replace(
+              /.*(?:work on|focus on|switch to|start (?:working )?on)\s+/i,
+              ""
+            )
+            .trim();
+
+        const resolved = titleQuery
+          ? await resolveWhatsAppTaskByTitle(ctx.workspaceId, titleQuery)
+          : await resolveWhatsAppTaskShortId(
+              ctx.workspaceId,
+              undefined,
+              session
+            );
         if (!resolved.ok) {
           outcomes.push(classifyActionOutcome("read_task", resolved.message));
           return {

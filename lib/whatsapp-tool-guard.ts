@@ -318,6 +318,52 @@ export async function resolveWhatsAppTaskShortId(
   return { ok: true, shortId };
 }
 
+/** Match by title only — used when the user names a task in this message (e.g. "work on SEO queries"). Chat history is still used for vague follow-ups ("post that", "I started…"). */
+export async function resolveWhatsAppTaskByTitle(
+  workspaceId: string,
+  titleQuery: string
+): Promise<ResolvedTaskShortId> {
+  const q = titleQuery.trim();
+  if (q.length < 2) {
+    return { ok: false, message: "Which task did you mean?" };
+  }
+
+  const board = await loadBoardTasks(workspaceId);
+  if (board.length === 0) {
+    return { ok: false, message: "You don't have any tasks on the board yet." };
+  }
+
+  const ranked = rankTasksByTitleQuery(q, board, 0.38);
+  if (ranked.length === 0) {
+    return {
+      ok: false,
+      message: formatTaskPickPrompt(
+        board.map((t) => ({ title: t.title })),
+        "I couldn't find that task."
+      ),
+    };
+  }
+
+  if (ranked.length >= 2) {
+    const top = scoreTaskTitleQuery(q, ranked[0].title, ranked[0].description);
+    const runner = scoreTaskTitleQuery(
+      q,
+      ranked[1].title,
+      ranked[1].description
+    );
+    if (Math.abs(top - runner) < 0.12) {
+      return {
+        ok: false,
+        message: formatAmbiguousTaskPick(
+          ranked.slice(0, 3).map((t) => ({ title: t.title }))
+        ),
+      };
+    }
+  }
+
+  return { ok: true, shortId: ranked[0].shortId };
+}
+
 /** Map server errors to safe WhatsApp copy — never leak stack traces or 500s. */
 export function formatToolExecutionError(err: unknown): string {
   if (err instanceof ServiceError) {

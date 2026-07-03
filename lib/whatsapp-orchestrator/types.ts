@@ -80,7 +80,6 @@ export const SIMPLE_INTENTS: ReadonlySet<WhatsAppIntent> = new Set([
   "create_task",
   "update_task",
   "post_update",
-  "ask_task",
   "read_task",
   "menu",
 ]);
@@ -108,6 +107,12 @@ export function complexAgentModel(): string {
 export function isOrchestratorEnabled(): boolean {
   const flag = process.env.WHATSAPP_ORCHESTRATOR?.trim().toLowerCase();
   return flag === "1" || flag === "true" || flag === "yes";
+}
+
+export function isAskTaskSummarizeEnabled(): boolean {
+  const flag = process.env.WHATSAPP_ASK_TASK_SUMMARIZE?.trim().toLowerCase();
+  if (flag === "0" || flag === "false" || flag === "no") return false;
+  return isOrchestratorEnabled();
 }
 
 export function isJudgeEnabled(): boolean {

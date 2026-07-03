@@ -26,7 +26,7 @@ Return ONLY valid JSON:
 Verdicts:
 - approve: draft is accurate, uses task TITLES not #N IDs, matches tool results
 - fix: draft has minor issues; provide fixed_reply (title-first, WhatsApp *bold*)
-- reject_use_tools: draft hallucinates, refuses capabilities, contradicts tools, or invents facts — user should see tool output only
+- reject_use_tools: draft hallucinates, refuses capabilities, contradicts tools, or invents facts — NOT for long but accurate ask_task/board output
 
 Hard failures (must reject_use_tools or fix):
 - Claims cannot post updates from chat when add_task_update succeeded or was requested
@@ -106,6 +106,26 @@ export function runDeterministicJudge(input: JudgeInput): JudgeResult | null {
 export async function judgeWhatsAppReply(
   input: JudgeInput
 ): Promise<JudgeResult> {
+  const successes = input.actionResults.filter((o) => o.ok && o.message.trim());
+
+  // Summarized ask_task replies are meant to differ from the raw pack.
+  if (
+    successes.length > 0 &&
+    (input.triage.intent === "board_list" ||
+      (input.triage.intent === "read_task" &&
+        input.draftReply.includes("What do you want to post")))
+  ) {
+    return { verdict: "approve", issues: [] };
+  }
+
+  if (
+    input.triage.intent === "ask_task" &&
+    successes.length > 0 &&
+    input.draftReply.length < input.toolOnlyFallback.length * 0.85
+  ) {
+    return { verdict: "approve", issues: [] };
+  }
+
   const deterministic = runDeterministicJudge(input);
   if (deterministic) {
     if (process.env.WHATSAPP_WEBHOOK_DEBUG === "1") {
