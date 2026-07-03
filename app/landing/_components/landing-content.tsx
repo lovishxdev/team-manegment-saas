@@ -8,6 +8,7 @@ import { RotatingWords } from "./rotating-words";
 import { UseCaseMarquee } from "./use-case-marquee";
 import { WhatsAppDemo } from "./whatsapp-demo";
 import { FaqSection } from "@/components/seo/faq-section";
+import { MarketingFonts } from "@/components/fonts/marketing-fonts";
 import { HOME_FAQ } from "@/lib/seo/faq";
 
 const KANBAN = {
@@ -31,6 +32,7 @@ const ROTATING = [
  */
 export function LandingContent() {
   return (
+    <MarketingFonts>
     <div className="relative">
       <LandingStyles />
 
@@ -462,6 +464,7 @@ export function LandingContent() {
         </div>
       </footer>
     </div>
+    </MarketingFonts>
   );
 }
 

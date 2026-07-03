@@ -92,18 +92,16 @@ import {
   waWebhookLog,
 } from "@/lib/whatsapp-webhook-log";
 import {
-  formatActionSummary,
   formatAssetList,
   formatBoardState,
   formatLinkList,
-  formatTaskDeepLink,
   formatTaskDetail,
-  formatTaskSummary,
   formatWorkspaceMemberList,
   mapBoardSnapshot,
   type ActionOutcome,
 } from "@/lib/channel-formatters";
 import { classifyActionOutcome } from "@/lib/whatsapp-action-outcome";
+import { formatWhatsAppUserReply } from "@/lib/whatsapp-voice";
 import { workspaceUrl } from "@/lib/app-url";
 import { getAppOrigin } from "@/lib/app-origin";
 import { isWhatsAppGreeting } from "@/lib/whatsapp-bot";
@@ -157,13 +155,13 @@ import {
 const HAIKU_MODEL = "claude-haiku-4-5";
 
 const DENIED_MESSAGE =
-  "This WhatsApp number isn't linked to an account. If you want to use the bot, sign in to the web app and add this number under Settings → WhatsApp. The web dashboard works without it.";
+  "This number isn't linked yet. Sign in at Euclis → Settings → WhatsApp, add your phone, then message me again.";
 
 const UNLINKED_GREETING_REPLY =
-  "Hey! I'm the Euclis bot. To get started, sign in to Euclis, add this WhatsApp number under Settings → WhatsApp, then send hi again. I'll help you manage tasks from here.";
+  "Hey! Link this number in Euclis (Settings → WhatsApp), then send *hi* and we'll get going.";
 
 const NEW_USER_GREETING =
-  "Hey! You're linked to Euclis but don't have a workspace yet.\n\nSay something like:\n*create a workspace called My Team*\n\nThen you can add tasks, upload files, and manage your board from here.";
+  "Hey! You're in Euclis but don't have a workspace yet.\n\nTry: *create a workspace called My Team*";
 
 async function sendNoWorkspaceHint(
   from: string,
@@ -185,7 +183,13 @@ function buildSystemPrompt(activeWorkspaceName: string | null): string {
     ? `The user's active workspace is "${activeWorkspaceName}". Omit the workspace parameter on all tools unless they explicitly name a different workspace.`
     : `The user has NO workspace yet. If they want to get started, call create_workspace (e.g. "create a workspace called Marketing"). Do not use task, board, asset, or link tools until a workspace exists.`;
 
-  return `You are the WhatsApp assistant for a project management tool. Today is ${weekday}, ${today}.
+  return `You are Euclis on WhatsApp — a sharp, friendly teammate who helps manage tasks. Today is ${weekday}, ${today}. Sound human: short sentences, contractions, no corporate filler. Never say "Here's what happened", "I have successfully", or "Done." as a opener.
+
+Voice examples:
+- User: "mark login bug done" → you (after tools): "Marked #12 Login Bug as done."
+- User: "what's on the board" → brief summary, not a data dump.
+- Bad: "✅ Done. Created #2 Task (GENERAL, MEDIUM) · My Workspace"
+- Good: "Added *Return From Gym* as #2."
 
 ${workspaceContext}
 
@@ -237,7 +241,7 @@ Rules:
 - Compound requests need multiple tool calls: execute them one step at a time, using each result before the next call. E.g. "create a workspace and add 3 tasks" = create_workspace first, then create_task three times. Always pass the workspace name on every tool after create_workspace in the same request.
 - When the user says "task 1", "task 2", etc. referring to tasks they just asked you to create in THIS message, they mean the 1st/2nd/... task created in this request — use the #N shortId from each create_task tool result, NOT the literal number N. But "previous task", "the other task", or a task named by title (e.g. "go to the gym") always means an EXISTING task from before the new creates — look up its #N via get_board_state or use the title match; never mark a newly created task done when they asked about a previous one.
 - "Previous task" / "the task before" / a task referenced by title is NEVER the task you just created in the same message unless they explicitly mean the new one.
-- After all actions are done, reply with ONE short summary of everything that happened (no markdown, plain WhatsApp text). Do not send multiple summaries. If a tool returned an error, say so — never claim success for failed steps.
+- After all actions are done, reply with ONE short natural message (1–3 sentences). Never paste raw tool output — summarize what matters in plain language.
 - Compound requests (multiple things in one message): call a tool for every actionable part. If you cannot do a part (missing info, no matching task, ambiguous target), do NOT skip silently — either let the tool fail with a clear error, or end your turn with a short note listing what could NOT be done and why (e.g. "Could not attach image: no task specified").
 - Infer category from context (e.g. marketing, ops, frontend) only when clear; otherwise omit it.
 - Infer priority only when stated or strongly implied (e.g. "urgent" = HIGH); otherwise omit it.
@@ -245,11 +249,11 @@ Rules:
 - "assign to me" means assignee "me"; multiple people can be assigned via the assignees array (e.g. ["me", "aarav"]).
 - Use the conversation history to resolve references: "that task" / "it" usually means the task #N mentioned in your most recent reply.
 - If the user names a specific workspace/project that is NOT "${activeWorkspaceName}", pass it as the workspace parameter; otherwise always omit workspace.
-- If the message is NOT an actionable board request (greetings, questions, chit-chat), do not call a tool. Reply with one short, friendly sentence telling them what you can do.
+- If the message is NOT an actionable board request (greetings, questions, chit-chat), do not call a tool. Reply with one warm, brief sentence — not a feature list.
 - Task description = stable requirements/spec. Task updates = chronological team notes.
 - Named task without #N: ask_task with their full question (preferred) OR find_task then list_task_updates.
 - Status / "what's going on" questions: ask_task ONLY — do not also call find_task, list_task_updates, or read_task.
-- After tools run, reply in 2–4 short plain sentences. Never paste raw tool output — summarize what matters.
+- After tools run, your final text (if any) should sound like a teammate texting back — 2–4 short sentences max. Never paste labeled fields (Status:, Category:, etc.).
 - After read_task, answer only the part the user asked for unless they wanted full details.
 - Never invent task IDs or titles.`;
 }
@@ -1613,9 +1617,13 @@ async function handleInteractiveMessage(
         status: action.type === "task_start" ? "IN_PROGRESS" : "DONE",
       });
       revalidateUserWorkspaces(userId, ctx.workspaceId);
-      const reply =
-        `Updated #${task.shortId} *${task.title}* → ${task.status.replace("_", " ")}.` +
-        formatTaskDeepLink(ctx.workspaceId, task.shortId, "whatsapp");
+      const statusLabel =
+        task.status === "DONE"
+          ? "done"
+          : task.status === "IN_PROGRESS"
+            ? "in progress"
+            : "to do";
+      const reply = `Updated #${task.shortId} *${task.title}* → ${statusLabel}.`;
       await sendWhatsAppText(from, reply);
       await recordExchange(userId, userText, reply).catch(() => {});
       return;
@@ -1690,7 +1698,7 @@ async function handleMessage(
       await recordExchange(
         userId,
         text,
-        `Using *${activated.workspaceName}*, continuing your request.`
+        `Using *${activated.workspaceName}* — on it.`
       ).catch(() => {});
       await handleMessage(from, toRun, progress, queued);
       return;
@@ -1815,15 +1823,13 @@ async function handleMessage(
   const withMessage = actionResults.filter((o) => o.message.trim());
 
   if (withMessage.length > 0) {
-    reply = formatActionSummary(
+    reply = formatWhatsAppUserReply(
       actionResults,
       budgetExhausted,
-      "whatsapp",
       assistantNote
     );
   } else if (!reply && !session.workspacePickerSent) {
-    reply =
-      'I can create tasks, update their status, tag uploaded files, or show your board. Try: "add a task to fix the login bug" or send *menu*.';
+    reply = "Tell me what to add or change on your board — or send *menu*.";
   }
 
   if (reply) {
@@ -2084,7 +2090,6 @@ async function executeAction(
           shortId: task.shortId,
           workspaceId: ctx.workspaceId,
         };
-        const batchIndex = session.createdTaskShortIds.length;
         revalidateUserWorkspaces(userId, ctx.workspaceId);
         waWebhookLog("task created", {
           workspaceId: ctx.workspaceId,
@@ -2092,9 +2097,11 @@ async function executeAction(
           shortId: task.shortId,
         });
         return (
-          `Done. Created ${formatTaskSummary(task, ctx.workspaceName, "whatsapp")}` +
-          formatTaskDeepLink(ctx.workspaceId, task.shortId, "whatsapp") +
-          ` (batch task ${batchIndex}).`
+          `Created #${task.shortId} *${task.title}*` +
+          (task.priority === "HIGH" ? " · high" : "") +
+          (task.dueDate
+            ? ` · due ${task.dueDate.toISOString().slice(0, 10)}`
+            : "")
         );
       }
 
@@ -2128,10 +2135,13 @@ async function executeAction(
             assigneeUpdate === undefined ? undefined : assigneeUpdate,
         });
         revalidateUserWorkspaces(userId, ctx.workspaceId);
-        return (
-          `Done. ${formatTaskSummary(task, ctx.workspaceName, "whatsapp")} is now ${task.status.replace("_", " ")}.` +
-          formatTaskDeepLink(ctx.workspaceId, task.shortId, "whatsapp")
-        );
+        const statusLabel =
+          task.status === "DONE"
+            ? "done"
+            : task.status === "IN_PROGRESS"
+              ? "in progress"
+              : "to do";
+        return `Updated #${task.shortId} *${task.title}* → ${statusLabel}.`;
       }
 
       case "read_task": {
@@ -2222,7 +2232,7 @@ async function executeAction(
           },
           "whatsapp"
         );
-        return `${body}\n\nOpen: ${workspaceUrl(ctx.workspaceId)}`;
+        return `${body}`;
       }
 
       case "rename_workspace": {

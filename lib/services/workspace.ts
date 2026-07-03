@@ -91,6 +91,27 @@ export type WorkspaceDashboardStats = {
   assignedToYou: number;
 };
 
+/** Per-request memo — shared by sidebar badges and dashboard cards. */
+export const getOpenTaskCountsByWorkspace = cache(
+  async function getOpenTaskCountsByWorkspace(workspaceIds: string[]) {
+    const counts = new Map<string, number>(
+      workspaceIds.map((id) => [id, 0])
+    );
+    if (workspaceIds.length === 0) return counts;
+
+    const openGroups = await prisma.task.groupBy({
+      by: ["workspaceId"],
+      where: { workspaceId: { in: workspaceIds }, status: { not: "DONE" } },
+      _count: { _all: true },
+    });
+
+    for (const g of openGroups) {
+      counts.set(g.workspaceId, g._count._all);
+    }
+    return counts;
+  }
+);
+
 /** Open + assigned-to-me task counts per workspace for the dashboard cards. */
 export async function getWorkspaceDashboardStats(
   userId: string,
@@ -101,12 +122,8 @@ export async function getWorkspaceDashboardStats(
   );
   if (workspaceIds.length === 0) return stats;
 
-  const [openGroups, assignedRows] = await Promise.all([
-    prisma.task.groupBy({
-      by: ["workspaceId"],
-      where: { workspaceId: { in: workspaceIds }, status: { not: "DONE" } },
-      _count: { _all: true },
-    }),
+  const [openByWorkspace, assignedRows] = await Promise.all([
+    getOpenTaskCountsByWorkspace(workspaceIds),
     prisma.taskAssignee.findMany({
       where: {
         userId,
@@ -119,8 +136,8 @@ export async function getWorkspaceDashboardStats(
     }),
   ]);
 
-  for (const g of openGroups) {
-    stats.get(g.workspaceId)!.openTasks = g._count._all;
+  for (const [workspaceId, openTasks] of openByWorkspace) {
+    stats.get(workspaceId)!.openTasks = openTasks;
   }
   for (const row of assignedRows) {
     stats.get(row.task.workspaceId)!.assignedToYou++;

@@ -15,7 +15,12 @@ export default async function AppLayout({
   const user = await requireUser();
 
   return (
-    <AppShell userId={user.id} userLabel={displayUser(user)}>
+    <AppShell
+      userId={user.id}
+      userLabel={displayUser(user)}
+      userPhone={user.phone}
+      whatsappChatCached={Boolean(user.whatsappChatInitiatedAt)}
+    >
       {children}
     </AppShell>
   );

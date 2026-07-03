@@ -50,10 +50,9 @@ export function formatNoWorkspaceWhatsAppReply(dashboardUrl: string): string {
   return [
     "You don't have a workspace yet.",
     "",
-    'Say something like: *create a workspace called My Team*',
+    'Say: *create a workspace called My Team*',
     "",
-    "Or create one in the dashboard:",
-    url,
+    `Or set one up in the app: ${url}`,
   ].join("\n");
 }
 

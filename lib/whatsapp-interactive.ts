@@ -81,42 +81,16 @@ export function parseButtonId(id: string):
   return null;
 }
 
-export const HELP_TEXT = `*What I can do*
+export const HELP_TEXT = `*Quick guide*
 
-• Add tasks — describe what you need in plain language
-• Update tasks — move, complete, retitle, assign, or tag tasks by #N
-• Task details — ask about a task's tags, assignees, due date, or full info (#N)
-• Show board — ask what's on the board or task progress
-• List files — ask what photos or documents are uploaded
-• Save links — share a URL with a label to bookmark for the team
-• List links — ask what links are saved in the workspace
-• Rename workspace — ask to rename the workspace (leader only)
-• Upload files — send a photo/document (caption = tags, #N = attach to task)
-• Attach uploads — ask to attach a previously uploaded photo to a task
-• Tag files — ask to tag or label an uploaded file
-• Choose workspace — ask which board to use, or tap *Choose workspace* in the menu
-• Invite teammates — invite by username, email, or phone (up to 8 at once)
-• Create invite link — get a shareable link for anyone to join
-• Promote / demote members — change roles (leader only; demotion needs confirmation)
-• My tasks / search — find tasks assigned to you or filter by tag, status, etc.
-• Workspace list / switch — see workspaces or change active board
-• Workspace summary — quick stats (open tasks, members)
-• File details / delete — read or remove uploads (delete needs confirmation)
-• Edit links — update, pin, or delete saved URLs
-• Remove member — kick someone (leader only; needs confirmation)
-• Categories — list or create task categories
-• Leave workspace — leave the team (only leader guard applies)
-• Bulk update — change many tasks at once (status, category, etc.)
-• Unassign task — clear all assignees from #N
-• Ask about a task — "what's going on with…" (finds task + relevant updates)
-• Find a task by description — semantic match without #N
-• Task updates — add or read notes on a specific #N
-• Whiteboard screenshots — send up to 5 images of the team whiteboard
+• Plain English — "add a task to fix login", "mark #3 done", "what's on the board?"
+• Photos/docs upload on send (caption = tags, #N = attach)
+• Tap *menu* for shortcuts
 
-Message me naturally — I'll figure out the right action.`;
+No workspace yet? *create a workspace called My Team*`;
 
 export function linkedGreetingBody(workspaceName: string): string {
-  return `You're connected to *${workspaceName}*. Pick an action below — tasks sync to your dashboard instantly.`;
+  return `Hey — you're on *${workspaceName}*. What should we tackle?`;
 }
 
 export const GREETING_MENU_ROWS = [

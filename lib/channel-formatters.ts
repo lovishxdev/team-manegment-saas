@@ -23,6 +23,14 @@ export type BoardSnapshot = {
 
 export type Channel = "whatsapp" | "mcp";
 
+function formatChatDate(date: Date): string {
+  return date.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
 const STATUS_LABEL: Record<TaskStatus, string> = {
   TODO: "To Do",
   IN_PROGRESS: "In Progress",
@@ -31,12 +39,12 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
 
 function formatTaskLine(task: BoardTask, channel: Channel): string {
   if (channel === "whatsapp") {
-    let line = `#${task.shortId} ${task.title}`;
-    if (task.priority === "HIGH") line += " ⚠";
-    if (task.tags?.length) line += ` [${task.tags.join(", ")}]`;
-    if (task.dueDate) line += ` (due ${task.dueDate.toISOString().slice(0, 10)})`;
+    let line = `#${task.shortId} *${task.title}*`;
+    if (task.priority === "HIGH") line += " · high";
+    if (task.tags?.length) line += ` · ${task.tags.slice(0, 3).join(", ")}`;
+    if (task.dueDate) line += ` · due ${formatChatDate(task.dueDate)}`;
     if (task.assignees.length) {
-      line += ` ${task.assignees.map((u) => `@${displayUser(u)}`).join(", ")}`;
+      line += ` · ${task.assignees.map((u) => `@${displayUser(u)}`).join(", ")}`;
     }
     return line;
   }
@@ -111,13 +119,13 @@ export function formatBoardState(snapshot: BoardSnapshot, channel: Channel): str
 
   if (totalTasks === 0) {
     return channel === "whatsapp"
-      ? `📋 *${workspaceName}* is empty. Send me a task to get started.`
+      ? `*${workspaceName}* is empty — tell me a task to add.`
       : `Board for "${workspaceName}" is empty.`;
   }
 
   const header =
     channel === "whatsapp"
-      ? `📋 Board · *${workspaceName}* (${totalTasks} tasks)`
+      ? `Here's your board · *${workspaceName}* (${totalTasks})`
       : `Board for "${workspaceName}" - ${totalTasks} task(s)`;
 
   const sections = [
@@ -162,7 +170,13 @@ export function formatTaskSummary(
   }
 
   if (channel === "whatsapp") {
-    return `#${task.shortId} *${task.title}* (${parts.join(", ")}) · ${workspaceName}`;
+    let line = `#${task.shortId} *${task.title}*`;
+    if (task.priority === "HIGH") line += " · high";
+    if (task.dueDate) line += ` · due ${formatChatDate(task.dueDate)}`;
+    if (assigneeUsers.length) {
+      line += ` · ${assigneeUsers.map((u) => `@${displayUser(u)}`).join(", ")}`;
+    }
+    return line;
   }
 
   return `#${task.shortId} "${task.title}" (${parts.join(", ")}) in ${workspaceName}`;
@@ -391,7 +405,7 @@ export function formatActionSummary(
 
   if (withMessage.length === 0 && !note) {
     return channel === "whatsapp"
-      ? 'I can create tasks, save links, list files, tag uploads, or show your board. Try: "add a task to fix the login bug" or send *menu*.'
+      ? "Tell me what to add or change — or send *menu*."
       : "No actions were taken.";
   }
 
@@ -399,27 +413,27 @@ export function formatActionSummary(
   if (failures.length === 0 && !budgetExhausted) {
     header =
       channel === "whatsapp"
-        ? "✅ Done. Here's what happened:"
+        ? "All set:"
         : "Done. Here's what happened:";
   } else if (successes.length === 0) {
     header =
       channel === "whatsapp"
-        ? "⚠️ I couldn't complete that:"
+        ? "Couldn't do that:"
         : "I couldn't complete that:";
   } else {
     header = budgetExhausted
-      ? "⚠️ Partially done (ran out of steps):"
+      ? "Got part of it (ran out of steps):"
       : channel === "whatsapp"
-        ? "⚠️ Partially done — some steps couldn't be completed:"
+        ? "Partially done:"
         : "Partially done — some steps couldn't be completed:";
   }
 
   const lines: string[] = [];
   for (const o of successes) {
-    lines.push(`✅ ${stripDonePrefix(o.message)}`);
+    lines.push(channel === "whatsapp" ? `✓ ${stripDonePrefix(o.message)}` : `✅ ${stripDonePrefix(o.message)}`);
   }
   for (const o of failures) {
-    lines.push(`❌ ${o.message}`);
+    lines.push(channel === "whatsapp" ? `✗ ${o.message}` : `❌ ${o.message}`);
   }
 
   let body =
@@ -430,7 +444,7 @@ export function formatActionSummary(
   } else if (failures.length > 0) {
     body +=
       channel === "whatsapp"
-        ? "\n\nFix the ❌ items and try again, or send one step at a time."
+        ? "\n\nFix the ✗ lines and try again."
         : "\n\nFix the failed items and try again.";
   }
 
@@ -455,13 +469,13 @@ export function formatAssetList(
 ): string {
   if (assets.length === 0) {
     return channel === "whatsapp"
-      ? `📎 No files in *${workspaceName}* yet. Send a photo or document to upload.`
+      ? `No uploads in *${workspaceName}* yet — send a photo or doc.`
       : `No assets in "${workspaceName}" yet.`;
   }
 
   const header =
     channel === "whatsapp"
-      ? `📎 Files · *${workspaceName}* (${assets.length})`
+      ? `Files in *${workspaceName}* (${assets.length})`
       : `Assets in "${workspaceName}" (${assets.length}):`;
 
   const lines = assets.map((a) => {

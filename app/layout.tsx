@@ -1,7 +1,5 @@
 import {
-  Caveat,
   Hanken_Grotesk,
-  Instrument_Serif,
   JetBrains_Mono,
 } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
@@ -13,23 +11,13 @@ import "./globals.css";
 const hanken = Hanken_Grotesk({
   subsets: ["latin"],
   variable: "--font-hanken",
+  display: "swap",
 });
 
 const jetbrains = JetBrains_Mono({
   subsets: ["latin"],
   variable: "--font-jetbrains",
-});
-
-const instrumentSerif = Instrument_Serif({
-  subsets: ["latin"],
-  variable: "--font-instruments-serif",
-  weight: "400",
-});
-
-const caveat = Caveat({
-  subsets: ["latin"],
-  variable: "--font-caveat",
-  weight: ["500", "600"],
+  display: "swap",
 });
 
 export const metadata = {
@@ -57,7 +45,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${hanken.variable} ${jetbrains.variable} ${instrumentSerif.variable} ${caveat.variable}`}
+      className={`${hanken.variable} ${jetbrains.variable}`}
     >
       <body className="min-h-screen app-shell-bg">
         <GoogleAnalytics />

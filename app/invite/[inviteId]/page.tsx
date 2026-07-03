@@ -16,9 +16,8 @@ export default async function InvitePage({
   if (!invite) notFound();
 
   const supabase = await createSupabaseServer();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data } = await supabase.auth.getClaims();
+  const user = data?.claims?.sub ? { id: data.claims.sub } : null;
 
   return (
     <main className="flex min-h-screen items-center justify-center px-4">

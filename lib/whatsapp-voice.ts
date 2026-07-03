@@ -1,0 +1,223 @@
+import type { ActionOutcome } from "@/lib/channel-formatters";
+
+/** Read-only tools — output can go to user as-is (after light cleanup). */
+export const INQUIRY_ACTIONS = new Set([
+  "read_task",
+  "list_task_updates",
+  "get_board_state",
+  "find_task",
+  "search_tasks",
+  "list_my_tasks",
+  "list_assets",
+  "read_asset",
+  "list_links",
+  "workspace_summary",
+  "list_workspace_members",
+  "list_categories",
+  "list_workspaces",
+  "ask_task",
+]);
+
+const STATUS_PHRASE: Record<string, string> = {
+  TODO: "to do",
+  IN_PROGRESS: "in progress",
+  DONE: "done",
+};
+
+/** Friendly short date for chat (e.g. "Fri 6 Jun"). */
+export function formatChatDate(date: Date): string {
+  return date.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function stripTechnicalNoise(raw: string, action?: string): string {
+  let msg = raw.trim();
+  if (!msg) return "";
+
+  msg = msg.replace(/^Done\.\s*/i, "");
+  msg = msg.replace(/\s*\(batch task \d+(?:, shortId #\d+)?\)\.?$/i, "");
+
+  const keepLink =
+    action && INQUIRY_ACTIONS.has(action) && action === "get_board_state";
+  if (!keepLink) {
+    msg = msg.replace(/\n*Open: https?:\/\/\S+/gi, "");
+  }
+
+  return msg.trim();
+}
+
+/** Turn internal tool strings into short, human WhatsApp lines. */
+export function humanizeToolMessage(action: string | undefined, raw: string): string {
+  const msg = stripTechnicalNoise(raw, action);
+  if (!msg) return "";
+
+  if (msg.startsWith("Ready to delete #")) {
+    return msg.replace(
+      "Ready to delete",
+      "I'll delete"
+    ).replace(
+      ". I'll send Confirm / Cancel buttons next.",
+      " — tap Confirm below."
+    );
+  }
+  if (msg.includes("Confirm / Cancel buttons")) {
+    return msg;
+  }
+
+  const created = msg.match(
+    /^Created\s+#(\d+)\s+\*([^*]+)\*(.*)$/i
+  ) ?? msg.match(/^#(\d+)\s+\*([^*]+)\*(.*)$/);
+  if (created && (action === "create_task" || msg.toLowerCase().startsWith("created"))) {
+    const [, id, title, rest] = created;
+    const hints = humanizeTaskHints(rest);
+    return `Added *${title.trim()}* as #${id}${hints}.`;
+  }
+
+  const updated = msg.match(
+    /^#(\d+)\s+\*([^*]+)\*.*\bis now\s+(\w+(?:\s+\w+)?)\.?$/i
+  );
+  if (updated && action === "update_task") {
+    const [, id, title, statusRaw] = updated;
+    const statusKey = statusRaw.toUpperCase().replace(" ", "_");
+    const status = STATUS_PHRASE[statusKey] ?? statusRaw.toLowerCase();
+    return `Updated #${id} *${title.trim()}* → ${status}.`;
+  }
+
+  if (msg.match(/^Updated #\d+/i) || msg.match(/^Marked #\d+/i)) {
+    return msg;
+  }
+
+  if (msg.startsWith("No task #")) {
+    const n = msg.match(/#(\d+)/)?.[1];
+    return n
+      ? `I couldn't find #${n} on your board.`
+      : "I couldn't find that task.";
+  }
+  if (msg.startsWith("No matching tasks")) {
+    return "Nothing matched that — try #N or a clearer name.";
+  }
+  if (msg.startsWith("No asset") || msg.startsWith("No files")) {
+    return msg.replace(/^No files in \*([^*]+)\* yet\./, "No uploads in *$1* yet — send a photo or doc.");
+  }
+  if (msg.startsWith("I need ")) {
+    return msg;
+  }
+  if (msg.startsWith("Could not")) {
+    return msg;
+  }
+  if (msg.startsWith("Attached \"")) {
+    return msg.replace(/ in [^.]+\.$/, ".");
+  }
+  if (msg.startsWith("Saved link")) {
+    return msg.replace(/ in \*[^*]+\*/, "");
+  }
+  if (msg.startsWith("Renamed workspace")) {
+    return msg;
+  }
+
+  return msg;
+}
+
+function humanizeTaskHints(rest: string): string {
+  const hints: string[] = [];
+  const lower = rest.toLowerCase();
+  if (lower.includes("high")) hints.push("high priority");
+  const due = rest.match(/due\s+(\d{4}-\d{2}-\d{2})/i);
+  if (due) {
+    const d = new Date(due[1] + "T12:00:00");
+    if (!isNaN(d.getTime())) hints.push(`due ${formatChatDate(d)}`);
+  }
+  return hints.length ? ` (${hints.join(", ")})` : "";
+}
+
+/**
+ * User-facing WhatsApp reply — conversational, not receipt-style.
+ */
+export function formatWhatsAppUserReply(
+  outcomes: ActionOutcome[],
+  budgetExhausted: boolean,
+  assistantNote?: string | null
+): string {
+  const note = assistantNote?.trim();
+  const withMessage = outcomes.filter((o) => o.message.trim());
+  const successes = withMessage.filter((o) => o.ok);
+  const failures = withMessage.filter((o) => !o.ok);
+
+  const inquiryOnly =
+    successes.length > 0 &&
+    failures.length === 0 &&
+    successes.every((o) => o.action && INQUIRY_ACTIONS.has(o.action));
+
+  if (inquiryOnly && note) return note;
+
+  if (inquiryOnly && successes.length === 1 && !budgetExhausted) {
+    return humanizeToolMessage(successes[0].action, successes[0].message);
+  }
+
+  if (
+    successes.length === 1 &&
+    failures.length === 0 &&
+    !budgetExhausted &&
+    note
+  ) {
+    return note;
+  }
+
+  if (successes.length === 1 && failures.length === 0 && !budgetExhausted) {
+    return humanizeToolMessage(successes[0].action, successes[0].message);
+  }
+
+  if (withMessage.length === 0 && note) return note;
+
+  if (withMessage.length === 0) {
+    return "Tell me what to add or change on your board — or send *menu*.";
+  }
+
+  const lines: string[] = [];
+
+  if (failures.length === 0 && !budgetExhausted && successes.length > 1) {
+    for (const o of successes) {
+      lines.push(`• ${humanizeToolMessage(o.action, o.message)}`);
+    }
+    let body = lines.join("\n");
+    if (note) body += `\n\n${note}`;
+    return body;
+  }
+
+  if (failures.length > 0 && successes.length === 0) {
+    let body = failures
+      .map((o) => humanizeToolMessage(o.action, o.message))
+      .join("\n");
+    if (budgetExhausted) {
+      body += "\n\nI ran out of steps — send the rest in a new message.";
+    }
+    return body;
+  }
+
+  if (failures.length > 0 && successes.length > 0) {
+    for (const o of successes) {
+      lines.push(`✓ ${humanizeToolMessage(o.action, o.message)}`);
+    }
+    for (const o of failures) {
+      lines.push(`✗ ${humanizeToolMessage(o.action, o.message)}`);
+    }
+    let body = lines.join("\n");
+    body += "\n\nFix the ✗ lines and try again.";
+    if (note) body += `\n\n${note}`;
+    return body;
+  }
+
+  if (budgetExhausted && successes.length > 0 && failures.length === 0) {
+    const lines = successes.map(
+      (o) => `• ${humanizeToolMessage(o.action, o.message)}`
+    );
+    return `${lines.join("\n")}\n\nSend any remaining steps in a new message.`;
+  }
+
+  return successes
+    .map((o) => humanizeToolMessage(o.action, o.message))
+    .join("\n");
+}
