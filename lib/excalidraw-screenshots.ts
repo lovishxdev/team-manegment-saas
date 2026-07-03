@@ -7,6 +7,14 @@ import { ServiceError } from "@/lib/services/project";
 
 export const MAX_WHITEBOARD_SCREENSHOTS = 5;
 
+/** Shown to users — never include internal paths or stack traces. */
+export const WHITEBOARD_EXPORT_USER_ERROR =
+  "Could not export the whiteboard right now. Please try again in a moment.";
+
+const CHROMIUM_PACK_URL =
+  process.env.CHROMIUM_REMOTE_EXEC_PATH ??
+  "https://github.com/Sparticuz/chromium/releases/download/v149.0.0/chromium-v149.0.0-pack.x64.tar";
+
 export type ExcalidrawPersistedState = {
   elements?: unknown[];
   appState?: Record<string, unknown>;
@@ -22,19 +30,27 @@ async function launchBrowser(): Promise<Browser> {
   const isVercel = process.env.VERCEL === "1";
 
   if (isVercel) {
-    const chromium = (await import("@sparticuz/chromium")).default;
+    const chromium = (await import("@sparticuz/chromium-min")).default;
     const puppeteer = await import("puppeteer-core");
-    const chromiumAny = chromium as unknown as {
-      args: string[];
-      defaultViewport: { width: number; height: number };
-      executablePath: () => Promise<string>;
-      headless: boolean | "shell";
+    chromium.setGraphicsMode = false;
+
+    const viewport = {
+      deviceScaleFactor: 1,
+      hasTouch: false,
+      height: 1080,
+      isLandscape: true,
+      isMobile: false,
+      width: 1920,
     };
+
     return puppeteer.default.launch({
-      args: chromiumAny.args,
-      defaultViewport: chromiumAny.defaultViewport,
-      executablePath: await chromiumAny.executablePath(),
-      headless: chromiumAny.headless,
+      args: await puppeteer.defaultArgs({
+        args: chromium.args,
+        headless: "shell",
+      }),
+      defaultViewport: viewport,
+      executablePath: await chromium.executablePath(CHROMIUM_PACK_URL),
+      headless: "shell",
     });
   }
 
@@ -112,12 +128,11 @@ export async function renderWhiteboardScreenshots(
 
     return { images, empty: false };
   } catch (err) {
-    const message =
-      err instanceof Error ? err.message : "Whiteboard render failed";
-    throw new ServiceError(
-      `Could not render whiteboard screenshots: ${message}`,
-      "INVALID_INPUT"
+    console.error(
+      "[whiteboard] render failed:",
+      err instanceof Error ? err.message : err
     );
+    throw new ServiceError(WHITEBOARD_EXPORT_USER_ERROR, "INVALID_INPUT");
   } finally {
     await browser?.close().catch(() => {});
   }
@@ -141,10 +156,8 @@ export async function uploadWhiteboardImages(
         upsert: true,
       });
     if (error) {
-      throw new ServiceError(
-        `Failed to upload whiteboard image: ${error.message}`,
-        "UPLOAD_FAILED"
-      );
+      console.error("[whiteboard] upload failed:", error.message);
+      throw new ServiceError(WHITEBOARD_EXPORT_USER_ERROR, "UPLOAD_FAILED");
     }
     const { data } = supabase.storage.from(ASSETS_BUCKET).getPublicUrl(path);
     urls.push(data.publicUrl);

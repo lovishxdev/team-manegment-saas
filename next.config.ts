@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   devIndicators:false,
   serverExternalPackages: [
     "@prisma/client",
-    "@sparticuz/chromium",
+    "@sparticuz/chromium-min",
     "puppeteer-core",
   ],
   experimental: {

@@ -28,7 +28,7 @@
     "@napi-rs/canvas": "^1.0.2",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
-    "@sparticuz/chromium": "^149.0.0",
+    "@sparticuz/chromium-min": "^149.0.0",
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.108.1",
     "@vercel/analytics": "^2.0.1",

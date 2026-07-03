@@ -961,6 +961,9 @@ const TOOLS: Anthropic.Tool[] = [
   },
 ];
 
+/** Whiteboard export uses headless Chromium; cold starts may download a large pack. */
+export const maxDuration = 120;
+
 /** Meta webhook verification handshake. */
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;

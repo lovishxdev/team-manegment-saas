@@ -1230,4 +1230,6 @@ const authHandler = withMcpAuth(
   { required: true }
 );
 
+export const maxDuration = 120;
+
 export { authHandler as GET, authHandler as POST };
