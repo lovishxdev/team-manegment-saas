@@ -1,5 +1,8 @@
-2026-07-03 15:01:32.613 [info] [whatsapp-webhook] 2026-07-03T15:01:32.609Z POST received { bodyBytes: '570', phoneNumberIdEnv: '1288532941001543' }
-2026-07-03 15:01:32.618 [info] [whatsapp-webhook] 2026-07-03T15:01:32.617Z POST payload {
+2026-07-03 15:33:56.393 [info] [whatsapp-queue] processing wamid.HBgMOTE2MzY3MDc5NDQzFQIAEhggQUM5QUQ1MTQxNzc5RUJGNTY4MkUyMTFFNjdENEIzRUIA for 916367079443
+2026-07-03 15:34:05.116 [info] [orchestrator] judge approve []
+2026-07-03 15:34:05.116 [info] [whatsapp-webhook] orchestrator { route: 'sonnet', intent: 'ask_task', judge: 'approve' }
+2026-07-03 15:33:52.393 [info] [whatsapp-webhook] 2026-07-03T15:33:52.392Z POST received { bodyBytes: '588', phoneNumberIdEnv: '1288532941001543' }
+2026-07-03 15:33:52.394 [info] [whatsapp-webhook] 2026-07-03T15:33:52.393Z POST payload {
   object: 'whatsapp_business_account',
   field: 'messages',
   phoneNumberId: '1288532941001543',
@@ -8,35 +11,31 @@
   statusCount: 0,
   from: '916367079443',
   messageType: 'text',
-  messageId: 'wamid.HBgMOTE2MzY3MDc5NDQzFQIAEhggQUM1OUFERUU5RjA1RUE3OENBQjg2RUREQTlDNjA4OUEA',
-  textPreview: "What's on my board"
+  messageId: 'wamid.HBgMOTE2MzY3MDc5NDQzFQIAEhggQUM5QUQ1MTQxNzc5RUJGNTY4MkUyMTFFNjdENEIzRUIA',
+  textPreview: "What's going on with the stress test"
 }
-2026-07-03 15:01:32.618 [info] [whatsapp-webhook] 2026-07-03T15:01:32.618Z inbound message {
+2026-07-03 15:33:52.394 [info] [whatsapp-webhook] 2026-07-03T15:33:52.393Z inbound message {
   kind: 'text',
   from: '916367079443',
-  messageId: 'wamid.HBgMOTE2MzY3MDc5NDQzFQIAEhggQUM1OUFERUU5RjA1RUE3OENBQjg2RUREQTlDNjA4OUEA',
-  preview: "What's on my board"
+  messageId: 'wamid.HBgMOTE2MzY3MDc5NDQzFQIAEhggQUM5QUQ1MTQxNzc5RUJGNTY4MkUyMTFFNjdENEIzRUIA',
+  preview: "What's going on with the stress test"
 }
-2026-07-03 15:01:37.767 [info] [whatsapp-queue] processing wamid.HBgMOTE2MzY3MDc5NDQzFQIAEhggQUM1OUFERUU5RjA1RUE3OENBQjg2RUREQTlDNjA4OUEA for 916367079443
-2026-07-03 15:01:38.183 [info] [whatsapp-webhook] 2026-07-03T15:01:38.179Z user matched {
+2026-07-03 15:33:52.956 [info] [whatsapp-webhook] 2026-07-03T15:33:52.955Z queued { queueDepth: 1, queueMode: 'queued' }
+2026-07-03 15:33:56.797 [info] [whatsapp-webhook] 2026-07-03T15:33:56.797Z user matched {
   from: '916367079443',
   userId: 'd2af044b-5216-4838-b8c7-9c434fbbae98'
 }
-2026-07-03 15:01:43.694 [info] [orchestrator] judge approve []
-2026-07-03 15:01:43.694 [info] [whatsapp-webhook] orchestrator { route: 'simple', intent: 'board_list', judge: 'approve' }
-2026-07-03 15:01:34.296 [info] [whatsapp-webhook] 2026-07-03T15:01:34.295Z queued { queueDepth: 1, queueMode: 'queued' }
-2026-07-03 15:01:41.008 [info] [orchestrator] triage {
+2026-07-03 15:34:07.686 [info] [whatsapp-webhook] 2026-07-03T15:34:07.684Z POST ack { queueDepth: 1, queueMode: 'queued' }
+2026-07-03 15:33:59.636 [info] [orchestrator] triage {
   model: 'google/gemini-2.5-flash',
-  intent: 'board_list',
-  complexity: 'simple',
+  intent: 'ask_task',
+  complexity: 'complex',
   confidence: 1
 }
-2026-07-03 15:01:41.009 [info] [orchestrator] route simple board_list 1
-2026-07-03 15:01:46.237 [info] [whatsapp-webhook] 2026-07-03T15:01:46.236Z POST ack { queueDepth: 1, queueMode: 'queued' }
+2026-07-03 15:33:59.636 [info] [orchestrator] route sonnet ask_task 1
 
-
-2026-07-03 15:01:45.527 [info] [whatsapp-webhook] 2026-07-03T15:01:45.526Z POST received { bodyBytes: '607', phoneNumberIdEnv: '1288532941001543' }
-2026-07-03 15:01:45.528 [info] [whatsapp-webhook] 2026-07-03T15:01:45.527Z POST payload {
+2026-07-03 15:34:06.725 [info] [whatsapp-webhook] 2026-07-03T15:34:06.722Z POST received { bodyBytes: '607', phoneNumberIdEnv: '1288532941001543' }
+2026-07-03 15:34:06.726 [info] [whatsapp-webhook] 2026-07-03T15:34:06.722Z POST payload {
   object: 'whatsapp_business_account',
   field: 'messages',
   phoneNumberId: '1288532941001543',
@@ -48,11 +47,11 @@
   messageId: null,
   textPreview: null
 }
-2026-07-03 15:01:45.528 [info] [whatsapp-webhook] 2026-07-03T15:01:45.527Z POST ignored — no inbound user message (status update or unsupported type)
+2026-07-03 15:34:06.726 [info] [whatsapp-webhook] 2026-07-03T15:34:06.722Z POST ignored — no inbound user message (status update or unsupported type)
 
 
-2026-07-03 15:01:45.751 [info] [whatsapp-webhook] 2026-07-03T15:01:45.750Z POST received { bodyBytes: '607', phoneNumberIdEnv: '1288532941001543' }
-2026-07-03 15:01:45.751 [info] [whatsapp-webhook] 2026-07-03T15:01:45.751Z POST payload {
+2026-07-03 15:34:07.320 [info] [whatsapp-webhook] 2026-07-03T15:34:07.320Z POST received { bodyBytes: '607', phoneNumberIdEnv: '1288532941001543' }
+2026-07-03 15:34:07.321 [info] [whatsapp-webhook] 2026-07-03T15:34:07.320Z POST payload {
   object: 'whatsapp_business_account',
   field: 'messages',
   phoneNumberId: '1288532941001543',
@@ -64,4 +63,4 @@
   messageId: null,
   textPreview: null
 }
-2026-07-03 15:01:45.751 [info] [whatsapp-webhook] 2026-07-03T15:01:45.751Z POST ignored — no inbound user message (status update or unsupported type)
+2026-07-03 15:34:07.321 [info] [whatsapp-webhook] 2026-07-03T15:34:07.320Z POST ignored — no inbound user message (status update or unsupported type)

@@ -12,6 +12,7 @@ import {
   type JudgeResult,
   type TriageResult,
 } from "@/lib/whatsapp-orchestrator/types";
+import { looksLikeFullPack } from "@/lib/whatsapp-orchestrator/summarize-ask-task";
 
 const JUDGE_SYSTEM = `You are the quality gate for Euclis WhatsApp replies.
 
@@ -73,6 +74,17 @@ export function runDeterministicJudge(input: JudgeInput): JudgeResult | null {
   }
 
   if (
+    input.triage.intent === "ask_task" &&
+    looksLikeFullPack(draft)
+  ) {
+    return {
+      verdict: "fix",
+      issues: ["Full update dump — must summarize"],
+      fixed_reply: input.toolOnlyFallback,
+    };
+  }
+
+  if (
     successes.length > 0 &&
     draft &&
     !tools.some((o) => draft.includes(o.message.slice(0, 40)))
@@ -121,7 +133,7 @@ export async function judgeWhatsAppReply(
   if (
     input.triage.intent === "ask_task" &&
     successes.length > 0 &&
-    input.draftReply.length < input.toolOnlyFallback.length * 0.85
+    !looksLikeFullPack(input.draftReply)
   ) {
     return { verdict: "approve", issues: [] };
   }

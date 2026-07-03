@@ -264,15 +264,17 @@ async function runAskTaskWithSummary(
   ];
 
   let reply = raw;
-  if (isAskTaskSummarizeEnabled() && actionResults[0]?.ok) {
+  if (isAskTaskSummarizeEnabled()) {
     reply = await summarizeAskTaskReply({
       userQuestion: query,
       taskContextPack: raw,
       workspaceName: ctx.workspaceName,
     });
+  } else if (process.env.WHATSAPP_WEBHOOK_DEBUG === "1") {
+    console.log("[orchestrator] ask_task summarize disabled by env");
   }
 
-  const toolOnlyFallback = raw;
+  const toolOnlyFallback = reply;
 
   if (isJudgeEnabled() && reply) {
     const judge = await judgeWhatsAppReply({

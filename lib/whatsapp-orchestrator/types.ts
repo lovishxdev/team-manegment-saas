@@ -112,7 +112,7 @@ export function isOrchestratorEnabled(): boolean {
 export function isAskTaskSummarizeEnabled(): boolean {
   const flag = process.env.WHATSAPP_ASK_TASK_SUMMARIZE?.trim().toLowerCase();
   if (flag === "0" || flag === "false" || flag === "no") return false;
-  return isOrchestratorEnabled();
+  return true;
 }
 
 export function isJudgeEnabled(): boolean {
