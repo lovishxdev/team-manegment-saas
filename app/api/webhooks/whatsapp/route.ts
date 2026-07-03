@@ -1718,7 +1718,7 @@ async function handleMessage(
         text,
         `Using *${activated.workspaceName}* — on it.`
       ).catch(() => {});
-      await handleMessage(from, toRun, progress, queued, inboundMessageId);
+      await handleMessage(from, toRun, progress, queued, _inboundMessageId);
       return;
     }
 
