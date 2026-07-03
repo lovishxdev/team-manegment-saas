@@ -118,18 +118,12 @@ export function TaskUpdatesSection({
   return (
     <div>
       <label className={ui.label}>Updates</label>
-      <p className="mb-2 text-xs text-ink-faint">
-        Blockers, questions, and review notes for this task — separate from the
-        description.
-      </p>
 
       <div className="mb-3 max-h-48 space-y-2 overflow-y-auto rounded-lg border border-line bg-paper p-2.5">
         {loading ? (
           <p className="text-xs text-ink-faint">Loading…</p>
         ) : updates.length === 0 ? (
-          <p className="text-xs text-ink-faint">
-            No updates yet. Post a blocker or question for the team.
-          </p>
+          <p className="text-xs text-ink-faint">No messages yet.</p>
         ) : (
           updates.map((u) => (
             <div
@@ -153,7 +147,7 @@ export function TaskUpdatesSection({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           rows={2}
-          placeholder="e.g. Blocked on staging migration — need DB access"
+          placeholder="Write an update…"
           className={`${ui.input} resize-y text-sm`}
           onKeyDown={(e) => {
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {

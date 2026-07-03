@@ -37,6 +37,8 @@ import {
   resolveWorkspaceMember,
   switchWorkspace,
 } from "@/lib/services/workspace";
+import { buildTaskContextPack } from "@/lib/retrieval/task-context";
+import { retrieveTasksByQuery } from "@/lib/retrieval/task-retriever";
 import {
   createTaskUpdate,
   listTaskUpdates,
@@ -46,6 +48,9 @@ import {
   formatBulkTaskUpdateResult,
   formatCategoryList,
   formatTaskUpdates,
+  formatTaskContextFailure,
+  formatTaskContextPack,
+  formatTaskRetrievalResults,
   formatTaskSearchResults,
   formatWorkspaceList,
   formatWorkspaceSummary,
@@ -119,6 +124,53 @@ export async function runSearchTasks(
     channel,
     "Matching tasks"
   );
+}
+
+/** Semantic + keyword task lookup for natural-language references. */
+export async function runFindTask(
+  ctx: BotWorkspaceCtx,
+  userId: string,
+  query: string,
+  channel: Channel,
+  limit?: number
+): Promise<string> {
+  const hits = await retrieveTasksByQuery({
+    workspaceId: ctx.workspaceId,
+    userId,
+    query,
+    limit: limit ?? 3,
+  });
+  return formatTaskRetrievalResults(ctx.workspaceName, hits, channel);
+}
+
+/** Phase B: resolve task + RAG over updates in one step. */
+export async function runAskTask(
+  ctx: BotWorkspaceCtx,
+  userId: string,
+  input: { query: string; shortId?: number },
+  channel: Channel
+): Promise<string> {
+  const result = await buildTaskContextPack({
+    workspaceId: ctx.workspaceId,
+    userId,
+    query: input.query,
+    shortId: input.shortId,
+  });
+
+  if (!result.ok) {
+    return formatTaskContextFailure(
+      result.reason,
+      result.message,
+      (result.alternatives ?? []).map((a) => ({
+        shortId: a.shortId,
+        title: a.title,
+        score: a.score,
+      })),
+      channel
+    );
+  }
+
+  return formatTaskContextPack(ctx.workspaceName, result.pack, channel);
 }
 
 export async function runListWorkspaces(

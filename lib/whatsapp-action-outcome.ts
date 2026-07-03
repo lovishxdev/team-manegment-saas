@@ -3,6 +3,7 @@ import type { ActionOutcome } from "@/lib/channel-formatters";
 const FAIL_STARTS = [
   "Could not",
   "No task",
+  "No matching",
   "No asset",
   "I need ",
   "I didn't",

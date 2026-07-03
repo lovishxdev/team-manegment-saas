@@ -347,6 +347,24 @@ function stripDonePrefix(message: string): string {
   return message.replace(/^Done\.\s*/i, "").trim();
 }
 
+/** Read-only tools whose raw output should not be pasted to users when the model summarizes. */
+const INQUIRY_ACTIONS = new Set([
+  "read_task",
+  "list_task_updates",
+  "get_board_state",
+  "find_task",
+  "ask_task",
+  "search_tasks",
+  "list_my_tasks",
+  "list_assets",
+  "read_asset",
+  "list_links",
+  "workspace_summary",
+  "list_workspace_members",
+  "list_categories",
+  "list_workspaces",
+]);
+
 export function formatActionSummary(
   outcomes: ActionOutcome[],
   budgetExhausted: boolean,
@@ -356,8 +374,22 @@ export function formatActionSummary(
   const withMessage = outcomes.filter((o) => o.message.trim());
   const successes = withMessage.filter((o) => o.ok);
   const failures = withMessage.filter((o) => !o.ok);
+  const note = assistantNote?.trim();
 
-  if (withMessage.length === 0 && !assistantNote?.trim()) {
+  const inquiryOnly =
+    successes.length > 0 &&
+    failures.length === 0 &&
+    successes.every((o) => o.action && INQUIRY_ACTIONS.has(o.action));
+
+  if (inquiryOnly && note) {
+    return note;
+  }
+
+  if (inquiryOnly && successes.length === 1 && !budgetExhausted) {
+    return stripDonePrefix(successes[0].message);
+  }
+
+  if (withMessage.length === 0 && !note) {
     return channel === "whatsapp"
       ? 'I can create tasks, save links, list files, tag uploads, or show your board. Try: "add a task to fix the login bug" or send *menu*.'
       : "No actions were taken.";
@@ -402,7 +434,6 @@ export function formatActionSummary(
         : "\n\nFix the failed items and try again.";
   }
 
-  const note = assistantNote?.trim();
   if (note) {
     body += `\n\n${note}`;
   }
@@ -542,6 +573,159 @@ export function formatTaskSearchResults(
 
   const lines = tasks.map((t) => formatTaskLine(t, channel));
   return `${header}\n${lines.join("\n")}`;
+}
+
+export function formatTaskRetrievalResults(
+  workspaceName: string,
+  hits: {
+    shortId: number;
+    title: string;
+    score: number;
+    semanticScore: number | null;
+    status: string;
+  }[],
+  channel: Channel
+): string {
+  if (hits.length === 0) {
+    return channel === "whatsapp"
+      ? `I couldn't find a task matching that in *${workspaceName}*. Try the exact #N or send *show board*.`
+      : `No task matched that query in "${workspaceName}".`;
+  }
+
+  const pct = (n: number) => `${Math.round(n * 100)}%`;
+
+  if (channel === "whatsapp") {
+    const lines = hits.map((h) => {
+      const match = pct(h.score);
+      const status = h.status.replace("_", " ");
+      return `#${h.shortId} *${h.title}* (${status}) — ${match} match`;
+    });
+    const header =
+      hits.length === 1
+        ? `Best match in *${workspaceName}*:`
+        : `${hits.length} possible matches in *${workspaceName}*:`;
+    const hint =
+      hits.length > 1
+        ? "\n\nSay which #N you mean, or ask about the top one."
+        : `\n\nFollow up on #${hits[0].shortId} for details or updates.`;
+    return `${header}\n${lines.join("\n")}${hint}`;
+  }
+
+  const lines = hits.map(
+    (h) =>
+      `#${h.shortId} "${h.title}" (${Math.round(h.score * 100)}% match, ${h.status})`
+  );
+  return `Task matches in "${workspaceName}":\n${lines.join("\n")}`;
+}
+
+export type TaskContextSnapshot = {
+  task: {
+    shortId: number;
+    title: string;
+    status: string;
+    priority: string;
+    category: string;
+    assignees: string[];
+    description: string | null;
+    tags: string[];
+    totalUpdates: number;
+  };
+  matchScore: number | null;
+  relevantUpdates: {
+    body: string;
+    author: string;
+    createdAt: Date;
+    relevance: number;
+  }[];
+  query: string;
+};
+
+/** Phase B context pack — task metadata + RAG-selected updates for the model. */
+export function formatTaskContextPack(
+  workspaceName: string,
+  pack: TaskContextSnapshot,
+  channel: Channel
+): string {
+  const t = pack.task;
+  const status = t.status.replace("_", " ");
+  const assignees =
+    t.assignees.length > 0
+      ? t.assignees.map((a) => `@${a}`).join(", ")
+      : channel === "whatsapp"
+        ? "_Unassigned_"
+        : "Unassigned";
+
+  const matchLine =
+    pack.matchScore !== null
+      ? channel === "whatsapp"
+        ? `Match: ${Math.round(pack.matchScore * 100)}%\n`
+        : `Match confidence: ${Math.round(pack.matchScore * 100)}%\n`
+      : "";
+
+  const desc =
+    t.description?.trim() ||
+    (channel === "whatsapp" ? "_No description_" : "No description");
+
+  let updatesBlock: string;
+  if (pack.relevantUpdates.length === 0) {
+    updatesBlock =
+      channel === "whatsapp"
+        ? "_No updates on this task yet._"
+        : "No updates on this task yet.";
+  } else {
+    const lines = pack.relevantUpdates.map((u) => {
+      const when = u.createdAt.toISOString().slice(0, 16).replace("T", " ");
+      if (channel === "whatsapp") {
+        return `• ${when} · @${u.author}\n  ${u.body}`;
+      }
+      return `[${when}] @${u.author}: ${u.body}`;
+    });
+    const header =
+      channel === "whatsapp"
+        ? `Relevant updates (${pack.relevantUpdates.length}${t.totalUpdates > pack.relevantUpdates.length ? ` of ${t.totalUpdates}` : ""}):`
+        : `Relevant updates (${pack.relevantUpdates.length}):`;
+    updatesBlock = `${header}\n${lines.join("\n\n")}`;
+  }
+
+  if (channel === "whatsapp") {
+    return (
+      `*#${t.shortId} · ${t.title}* · ${workspaceName}\n` +
+      matchLine +
+      `Status: ${status} · ${t.category} · ${t.priority}\n` +
+      `Assignees: ${assignees}\n` +
+      `Description: ${desc}\n\n` +
+      updatesBlock
+    );
+  }
+
+  return (
+    `Task #${t.shortId} "${t.title}" in "${workspaceName}"\n` +
+    matchLine +
+    `Status: ${status}, Category: ${t.category}, Priority: ${t.priority}\n` +
+    `Assignees: ${assignees}\n` +
+    `Description: ${desc}\n\n` +
+    updatesBlock
+  );
+}
+
+export function formatTaskContextFailure(
+  reason: "not_found" | "ambiguous",
+  message: string,
+  alternatives: { shortId: number; title: string; score: number }[],
+  channel: Channel
+): string {
+  if (reason === "ambiguous" && alternatives.length > 0) {
+    const lines = alternatives.map((a) => {
+      const pct = Math.round(a.score * 100);
+      return channel === "whatsapp"
+        ? `#${a.shortId} *${a.title}* (${pct}%)`
+        : `#${a.shortId} "${a.title}" (${pct}%)`;
+    });
+    return channel === "whatsapp"
+      ? `${message}\n${lines.join("\n")}`
+      : `${message}\n${lines.join("\n")}`;
+  }
+  return message;
 }
 
 export function formatAssetDetail(

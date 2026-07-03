@@ -13,6 +13,8 @@ import {
   listWorkspaceCategories,
   resolveTaskCategoryId,
 } from "@/lib/services/categories";
+import { retrieveTasksByQuery } from "@/lib/retrieval/task-retriever";
+import { scheduleTaskEmbeddingIndex } from "@/lib/retrieval/task-index";
 
 /**
  * Core business logic shared by all three interfaces (Web, WhatsApp, MCP).
@@ -415,6 +417,8 @@ export async function createTask(input: CreateTaskInput) {
         assigneeUserIds
       );
 
+      scheduleTaskEmbeddingIndex(task.id);
+
       return task;
     } catch (err) {
       const isUniqueViolation =
@@ -576,6 +580,8 @@ export async function updateTask(input: UpdateTaskInput) {
       nextAssigneeIds
     );
   }
+
+  scheduleTaskEmbeddingIndex(task.id);
 
   return task;
 }
@@ -1015,6 +1021,11 @@ export type SearchTasksInput = {
 export async function searchTasks(input: SearchTasksInput) {
   await assertMembership(input.userId, input.workspaceId);
 
+  const limit = Math.min(
+    input.limit ?? DEFAULT_SEARCH_LIMIT,
+    MAX_SEARCH_LIMIT
+  );
+
   const where: Prisma.TaskWhereInput = { workspaceId: input.workspaceId };
 
   if (input.status) {
@@ -1054,14 +1065,6 @@ export async function searchTasks(input: SearchTasksInput) {
     where.priority = input.priority;
   }
 
-  if (input.query?.trim()) {
-    const q = input.query.trim();
-    where.OR = [
-      { title: { contains: q, mode: "insensitive" } },
-      { description: { contains: q, mode: "insensitive" } },
-    ];
-  }
-
   if (input.dueBefore || input.dueAfter) {
     const due: Prisma.DateTimeNullableFilter = {};
     if (input.dueBefore) {
@@ -1073,10 +1076,74 @@ export async function searchTasks(input: SearchTasksInput) {
     where.dueDate = due;
   }
 
-  const limit = Math.min(
-    input.limit ?? DEFAULT_SEARCH_LIMIT,
-    MAX_SEARCH_LIMIT
-  );
+  if (input.query?.trim()) {
+    const q = input.query.trim();
+    let categoryId: string | undefined;
+    if (input.category) {
+      const cat = await prisma.workspaceCategory.findFirst({
+        where: {
+          workspaceId: input.workspaceId,
+          name: { equals: input.category.trim(), mode: "insensitive" },
+        },
+      });
+      if (!cat) return [];
+      categoryId = cat.id;
+    }
+
+    let assigneeId: string | undefined;
+    if (input.assignee) {
+      assigneeId = await resolveAssignee(input.workspaceId, input.assignee);
+    }
+
+    const hits = await retrieveTasksByQuery({
+      workspaceId: input.workspaceId,
+      userId: input.userId,
+      query: q,
+      limit,
+      status: input.status,
+      tag: input.tag,
+      assignedToMe: input.assignedToMe,
+      priority: input.priority,
+      categoryId,
+    });
+
+    let filtered = hits;
+    if (assigneeId) {
+      filtered = hits.filter((h) =>
+        h.assignees.some((a) => a.user.id === assigneeId)
+      );
+    }
+
+    if (filtered.length === 0) {
+      await touchLastActiveWorkspace(input.userId, input.workspaceId);
+      return [];
+    }
+
+    const rows = await prisma.task.findMany({
+      where: { id: { in: filtered.map((h) => h.id) } },
+      include: taskAssigneesInclude,
+    });
+    const byId = new Map(rows.map((t) => [t.id, t]));
+    let ordered = filtered
+      .map((h) => byId.get(h.id))
+      .filter((t): t is NonNullable<typeof t> => Boolean(t));
+
+    if (input.dueBefore || input.dueAfter) {
+      ordered = ordered.filter((t) => {
+        if (!t.dueDate) return false;
+        if (input.dueBefore && t.dueDate > new Date(input.dueBefore)) {
+          return false;
+        }
+        if (input.dueAfter && t.dueDate < new Date(input.dueAfter)) {
+          return false;
+        }
+        return true;
+      });
+    }
+
+    await touchLastActiveWorkspace(input.userId, input.workspaceId);
+    return ordered;
+  }
 
   const tasks = await prisma.task.findMany({
     where,

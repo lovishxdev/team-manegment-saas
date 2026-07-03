@@ -40,6 +40,8 @@ import {
   runBulkUpdateTasks,
   runCreateCategory,
   runExportWhiteboard,
+  runAskTask,
+  runFindTask,
   runLeaveWorkspace,
   runListCategories,
   runListMyTasks,
@@ -783,6 +785,59 @@ const handler = createMcpHandler(
           const ctx = await resolveUserWorkspaceContext(userId, workspace);
           return text(
             await runListMyTasks(ctx, userId, { status }, "mcp")
+          );
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "ask_task",
+      {
+        description:
+          "Answer questions about a task: semantic task match + RAG over relevant updates. Best for status and 'what's wrong with X' questions.",
+        inputSchema: {
+          query: z.string().min(1).describe("User question or topic"),
+          shortId: z
+            .number()
+            .int()
+            .positive()
+            .optional()
+            .describe("Task #N if known"),
+          workspace: workspaceParam,
+        },
+      },
+      async ({ query, shortId, workspace }, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const ctx = await resolveUserWorkspaceContext(userId, workspace);
+          return text(
+            await runAskTask(ctx, userId, { query, shortId }, "mcp")
+          );
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "find_task",
+      {
+        description:
+          "Find a task by natural language (semantic + keyword). Use when the user describes a task without #N.",
+        inputSchema: {
+          query: z.string().min(1).describe("Feature, flow, or task topic"),
+          limit: z.number().int().positive().max(10).optional(),
+          workspace: workspaceParam,
+        },
+      },
+      async ({ query, limit, workspace }, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const ctx = await resolveUserWorkspaceContext(userId, workspace);
+          return text(
+            await runFindTask(ctx, userId, query, "mcp", limit)
           );
         } catch (err) {
           return toolError(err);

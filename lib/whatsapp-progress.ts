@@ -44,9 +44,28 @@ export class WhatsAppProgress {
     }
   }
 
-  /** Mid-request updates — only after the slow ping, and only for multi-step work. */
-  async step(result: string) {
+  /** Mid-request updates — only after the slow ping, and only for short mutating steps. */
+  async step(action: string, result: string) {
     if (!this.sentSlow) return;
+
+    const skipActions = new Set([
+      "read_task",
+      "list_task_updates",
+      "get_board_state",
+      "find_task",
+      "ask_task",
+      "search_tasks",
+      "list_my_tasks",
+      "list_assets",
+      "read_asset",
+      "list_links",
+      "workspace_summary",
+      "list_workspace_members",
+      "list_categories",
+      "list_workspaces",
+    ]);
+    if (skipActions.has(action)) return;
+    if (result.length > 220) return;
 
     this.stepCount++;
     this.ping();

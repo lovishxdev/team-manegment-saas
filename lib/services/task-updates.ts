@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getActorMembership, ServiceError } from "@/lib/services/project";
+import { scheduleTaskUpdateEmbeddingIndex } from "@/lib/retrieval/update-index";
 
 export const MAX_TASK_UPDATE_BODY = 8000;
 export const DEFAULT_TASK_UPDATES_LIMIT = 50;
@@ -108,6 +109,8 @@ export async function createTaskUpdate(input: {
       author: { select: authorSelect },
     },
   });
+
+  scheduleTaskUpdateEmbeddingIndex(update.id);
 
   return {
     ...update,

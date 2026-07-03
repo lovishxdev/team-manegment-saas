@@ -131,10 +131,26 @@ model Task {
   createdBy   User?     @relation("CreatedTasks", fields: [createdById], references: [id], onDelete: SetNull)
   attachments Asset[]
   updates     TaskUpdate[]
+  embedding   TaskEmbedding?
 
   @@unique([workspaceId, shortId])
   @@index([workspaceId, status])
   @@index([workspaceId, categoryId])
+}
+
+/// Semantic index for task retrieval (Phase A retrieval pipeline).
+model TaskEmbedding {
+  taskId      String   @id @db.Uuid
+  workspaceId String   @db.Uuid
+  /// SHA-256 of indexed document text — skip re-embed when unchanged.
+  contentHash String
+  /// OpenAI text-embedding-3-small vector (1536 dims) stored as JSON array.
+  embedding   Json
+  updatedAt   DateTime @updatedAt
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
 }
 
 /// Many-to-many: a task can have multiple assignees.
@@ -163,9 +179,25 @@ model TaskUpdate {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   task      Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
   author    User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  embedding TaskUpdateEmbedding?
 
   @@index([taskId, createdAt])
   @@index([workspaceId, createdAt])
+}
+
+/// Semantic index for task update RAG (Phase B).
+model TaskUpdateEmbedding {
+  taskUpdateId String   @id @db.Uuid
+  workspaceId  String   @db.Uuid
+  taskId       String   @db.Uuid
+  contentHash  String
+  embedding    Json
+  updatedAt    DateTime @updatedAt
+
+  taskUpdate TaskUpdate @relation(fields: [taskUpdateId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([workspaceId])
 }
 
 model Asset {

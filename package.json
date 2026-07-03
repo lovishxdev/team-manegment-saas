@@ -11,6 +11,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "backfill:usernames": "tsx scripts/backfill-usernames.ts",
+    "backfill:task-embeddings": "tsx scripts/backfill-task-embeddings.ts",
     "vercel": "vercel",
     "vercel:login": "vercel login",
     "vercel:deploy": "vercel --prod",

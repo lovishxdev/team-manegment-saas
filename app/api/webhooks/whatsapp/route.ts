@@ -43,10 +43,12 @@ import {
   prepareRemoveMember,
   runDeleteAssetConfirmed,
   runDeleteLink,
+  runAskTask,
   runAddTaskUpdate,
   runBulkUpdateTasks,
   runCreateCategory,
   runExportWhiteboard,
+  runFindTask,
   runLeaveWorkspace,
   runListCategories,
   runListMyTasks,
@@ -190,9 +192,12 @@ ${workspaceContext}
 Convert the user's message into tool calls when they want to act on their board:
 - create_task: when they want to add/create a task. Use a SHORT title (a few words, under ~80 chars). Put bullet lists, long paragraphs, SEO keywords, and detailed requirements in description — never dump them all into title.
 - update_task: when they want to change a task - move/complete/start it, retitle it, set priority, due date, tags, or assign it (they usually reference it as #N)
-- read_task: when they ask for details about a specific task (#N), or about one field on a task (tags, assignees, due date, status, description, priority, category, attachments, updates). Always call this tool — then answer only what they asked unless they wanted the full task.
-- add_task_update: when they report a blocker, question, status note, or review feedback on a specific task (#N). Use for live team communication on that task — not for editing the task description.
-- list_task_updates: when they ask what's happening on a task, what's pending, blockers, or the conversation history on #N. Use this for full update history; read_task includes only recent updates.
+- ask_task: BEST for status / "what's going on" / "what's wrong with X" questions. One call: finds the task (semantic) + pulls relevant updates (RAG). Pass the user's full question as query. Use shortId only if they gave #N.
+- find_task: locate a task by description only (no update RAG). Prefer ask_task for status questions.
+- search_tasks: filter tasks by tag, category, status, assignee, or keywords (structured search).
+- list_task_updates: when they ask what's happening, what's pending, or recent activity on a task (#N). Prefer this over read_task for status questions.
+- read_task: full task metadata (status, assignees, tags, description). Skip if list_task_updates already answers their question.
+- add_task_update: when they want to post a note on a specific task (#N). Not for editing the task description.
 - delete_task: when they explicitly want to remove/delete a task (only when clearly intended). This stages a Confirm/Cancel button flow — never claim the task is deleted until they confirm.
 - get_board_state: when they ask what's on the board, task lists, or progress
 - create_workspace: when they want to create/start a new workspace, project, or board (e.g. "create a workspace called Marketing")
@@ -209,7 +214,6 @@ Convert the user's message into tool calls when they want to act on their board:
 - promote_member: when they want to promote someone to sub-leader or leader (leader only)
 - demote_member: when they want to lower someone's role (leader only). Stages Confirm/Cancel buttons — never claim demotion happened until they confirm.
 - list_my_tasks: when they ask what's assigned to them or their open tasks
-- search_tasks: when they want to find tasks by tag, category, status, assignee, priority, due date, or title keywords
 - list_workspaces: when they ask which workspaces they're in
 - switch_workspace: when they want to change the active workspace by name
 - workspace_summary: when they want a quick overview (open tasks, members, counts)
@@ -242,8 +246,11 @@ Rules:
 - Use the conversation history to resolve references: "that task" / "it" usually means the task #N mentioned in your most recent reply.
 - If the user names a specific workspace/project that is NOT "${activeWorkspaceName}", pass it as the workspace parameter; otherwise always omit workspace.
 - If the message is NOT an actionable board request (greetings, questions, chit-chat), do not call a tool. Reply with one short, friendly sentence telling them what you can do.
-- Task description = stable requirements/spec. Task updates = chronological team notes (blockers, questions, review feedback).
-- After read_task, answer only the part the user asked for (e.g. just tags or just assignees) unless they asked for full details.
+- Task description = stable requirements/spec. Task updates = chronological team notes.
+- Named task without #N: ask_task with their full question (preferred) OR find_task then list_task_updates.
+- Status / "what's going on" questions: ask_task ONLY — do not also call find_task, list_task_updates, or read_task.
+- After tools run, reply in 2–4 short plain sentences. Never paste raw tool output — summarize what matters.
+- After read_task, answer only the part the user asked for unless they wanted full details.
 - Never invent task IDs or titles.`;
 }
 
@@ -706,6 +713,52 @@ const TOOLS: Anthropic.Tool[] = [
           description: "Workspace name, only if the user explicitly mentioned one",
         },
       },
+    },
+  },
+  {
+    name: "ask_task",
+    description:
+      "Answer questions about a task: finds the task by description or #N, then retrieves relevant team updates (RAG). Use for 'what's going on', 'what's wrong with X flow', status questions.",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "The user's question or topic (e.g. Sign up with Google flow)",
+        },
+        shortId: {
+          type: "integer",
+          description: "Task #N if the user gave a number",
+        },
+        workspace: {
+          type: "string",
+          description: "Workspace name, only if the user explicitly mentioned one",
+        },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "find_task",
+    description:
+      "Find a task by natural language (semantic + keyword). Use when the user describes a task without #N — e.g. product features, flows, or vague titles.",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "What the user said — feature name, flow, or task topic",
+        },
+        limit: {
+          type: "integer",
+          description: "Max matches to return (default 3)",
+        },
+        workspace: {
+          type: "string",
+          description: "Workspace name, only if the user explicitly mentioned one",
+        },
+      },
+      required: ["query"],
     },
   },
   {
@@ -1746,7 +1799,7 @@ async function handleMessage(
       );
       const outcome = classifyActionOutcome(toolUse.name, result);
       actionResults.push(outcome);
-      await progress?.step(result);
+      await progress?.step(toolUse.name, result);
       results.push({
         type: "tool_result",
         tool_use_id: toolUse.id,
@@ -2367,6 +2420,27 @@ async function executeAction(
 
       case "list_my_tasks":
         return runListMyTasks(ctx, userId, input, "whatsapp");
+
+      case "ask_task": {
+        const query = String(input.query ?? "").trim();
+        if (!query) return "What would you like to know about the task?";
+        const shortId =
+          input.shortId !== undefined ? Number(input.shortId) : undefined;
+        return runAskTask(
+          ctx,
+          userId,
+          { query, shortId },
+          "whatsapp"
+        );
+      }
+
+      case "find_task": {
+        const query = String(input.query ?? "").trim();
+        if (!query) return "What task should I look for?";
+        const limit =
+          input.limit !== undefined ? Number(input.limit) : undefined;
+        return runFindTask(ctx, userId, query, "whatsapp", limit);
+      }
 
       case "search_tasks":
         return runSearchTasks(ctx, userId, input, "whatsapp");
