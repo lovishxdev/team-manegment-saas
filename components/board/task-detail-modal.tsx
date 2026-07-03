@@ -9,10 +9,13 @@ import {
 } from "@/lib/actions/workspace";
 import type { BoardMember, BoardTask } from "@/components/board/task-board";
 import { Select } from "@/components/ui/select";
+import {
+  CategoryField,
+  type CategoryOption,
+} from "@/components/board/category-field";
 import { ui, tagColor } from "@/components/ui/ui";
 
 const STATUSES = ["TODO", "IN_PROGRESS", "DONE"] as const;
-const SCOPES = ["GENERAL", "FRONTEND", "BACKEND", "DESIGN"] as const;
 const PRIORITIES = ["LOW", "MEDIUM", "HIGH"] as const;
 
 const inputCls = ui.input;
@@ -22,11 +25,13 @@ export function TaskDetailModal({
   workspaceId,
   task,
   members,
+  categories,
   onClose,
 }: {
   workspaceId: string;
   task: BoardTask;
   members: BoardMember[];
+  categories: CategoryOption[];
   onClose: () => void;
 }) {
   const [pending, startTransition] = useTransition();
@@ -35,12 +40,15 @@ export function TaskDetailModal({
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description ?? "");
   const [status, setStatus] = useState(task.status);
-  const [scope, setScope] = useState(task.scope);
+  const [scope, setScope] = useState(task.categoryId);
+  const [newCategory, setNewCategory] = useState("");
   const [priority, setPriority] = useState(task.priority);
   const [dueDate, setDueDate] = useState(
     task.dueDate ? task.dueDate.slice(0, 10) : ""
   );
-  const [assigneeId, setAssigneeId] = useState(task.assigneeId ?? "");
+  const [assigneeIds, setAssigneeIds] = useState<string[]>(
+    task.assignees.map((a) => a.id)
+  );
   const [tags, setTags] = useState<string[]>(task.tags);
   const [tagInput, setTagInput] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -87,11 +95,12 @@ export function TaskDetailModal({
       title,
       description: description || null,
       status,
-      scope,
+      categoryId: scope,
+      newCategory: newCategory.trim() || undefined,
       priority,
       dueDate: dueDate || null,
       tags: finalTags,
-      assignee: assigneeId || null,
+      assigneeIds,
     };
     startTransition(async () => {
       const result = await updateTaskAction(workspaceId, task.id, edit);
@@ -167,11 +176,13 @@ export function TaskDetailModal({
               />
             </div>
             <div>
-              <label className={labelCls}>Scope</label>
-              <Select
+              <label className={labelCls}>Category</label>
+              <CategoryField
+                categories={categories}
                 value={scope}
-                onChange={(v) => setScope(v as BoardTask["scope"])}
-                options={SCOPES.map((s) => ({ value: s, label: s }))}
+                onChange={setScope}
+                onNewCategoryChange={setNewCategory}
+                allowCreate
               />
             </div>
             <div>
@@ -195,18 +206,36 @@ export function TaskDetailModal({
               />
             </div>
             <div>
-              <label className={labelCls}>Assignee</label>
-              <Select
-                value={assigneeId}
-                onChange={setAssigneeId}
-                options={[
-                  { value: "", label: "Unassigned" },
-                  ...members.map((m) => ({
-                    value: m.id,
-                    label: m.label ?? m.id.slice(0, 8),
-                  })),
-                ]}
-              />
+              <label className={labelCls}>Assignees</label>
+              <div className="max-h-40 space-y-1.5 overflow-y-auto rounded-lg border border-line bg-paper p-2.5">
+                {members.length === 0 ? (
+                  <p className="text-xs text-ink-faint">No members loaded</p>
+                ) : (
+                  members.map((member) => {
+                    const checked = assigneeIds.includes(member.id);
+                    return (
+                      <label
+                        key={member.id}
+                        className="flex cursor-pointer items-center gap-2 rounded-md px-1 py-1 text-sm text-ink-soft hover:bg-ink/[0.03]"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => {
+                            setAssigneeIds((current) =>
+                              checked
+                                ? current.filter((id) => id !== member.id)
+                                : [...current, member.id]
+                            );
+                          }}
+                          className="rounded border-line"
+                        />
+                        <span>{member.label ?? member.id.slice(0, 8)}</span>
+                      </label>
+                    );
+                  })
+                )}
+              </div>
             </div>
           </div>
 

@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
   TaskPriority,
-  TaskScope,
   TaskStatus,
 } from "@/lib/generated/prisma/client";
 import { requireUser } from "@/lib/auth";
@@ -38,6 +37,7 @@ import {
   toggleWorkspaceLinkPin,
 } from "@/lib/services/links";
 import { displayUser } from "@/lib/username";
+import { findOrCreateCategoryByName } from "@/lib/services/categories";
 
 export type ActionState = { error?: string; workspaceId?: string };
 
@@ -65,11 +65,27 @@ export async function createTaskAction(
 ): Promise<ActionState> {
   const user = await requireUser();
   const title = String(formData.get("title") ?? "").trim();
-  const scope = String(formData.get("scope") ?? "GENERAL") as TaskScope;
+  const categoryId = String(formData.get("categoryId") ?? "").trim();
+  const newCategory = String(formData.get("newCategory") ?? "").trim();
   if (!title) return { error: "Task title is required" };
 
   try {
-    await createTask({ workspaceId, title, scope, userId: user.id });
+    let resolvedCategoryId = categoryId || undefined;
+    let category: string | undefined;
+    if (newCategory) {
+      const created = await findOrCreateCategoryByName(workspaceId, newCategory);
+      resolvedCategoryId = created.id;
+    } else if (!resolvedCategoryId) {
+      category = "General";
+    }
+
+    await createTask({
+      workspaceId,
+      title,
+      categoryId: resolvedCategoryId,
+      category,
+      userId: user.id,
+    });
   } catch (err) {
     return { error: errorMessage(err) };
   }
@@ -81,13 +97,15 @@ export type TaskEdit = {
   title?: string;
   description?: string | null;
   status?: TaskStatus;
-  scope?: TaskScope;
+  categoryId?: string;
+  newCategory?: string;
   priority?: TaskPriority;
   /** ISO date string (yyyy-mm-dd) or null to clear */
   dueDate?: string | null;
   /** Full replacement list of free-form tags. */
   tags?: string[];
-  assignee?: string | null;
+  /** Full replacement list of assignee user ids. */
+  assigneeIds?: string[];
 };
 
 export async function updateTaskAction(
@@ -109,6 +127,16 @@ export async function updateTaskAction(
   }
 
   try {
+    let categoryId = edit.categoryId;
+    let category: string | undefined;
+    if (edit.newCategory?.trim()) {
+      const created = await findOrCreateCategoryByName(
+        workspaceId,
+        edit.newCategory.trim()
+      );
+      categoryId = created.id;
+    }
+
     await updateTask({
       workspaceId,
       taskId,
@@ -119,11 +147,12 @@ export async function updateTaskAction(
           ? undefined
           : edit.description?.trim() || null,
       status: edit.status,
-      scope: edit.scope,
+      categoryId,
+      category,
       priority: edit.priority,
       dueDate,
       tags: edit.tags,
-      assignee: edit.assignee,
+      assigneeIds: edit.assigneeIds,
     });
   } catch (err) {
     return { error: errorMessage(err) };

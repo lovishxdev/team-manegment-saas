@@ -9,6 +9,7 @@ import {
   listAssets,
   resolveUserWorkspaceContext,
   ServiceError,
+  taskAssigneeUsers,
   updateTask,
 } from "@/lib/services/project";
 import { createWorkspace, renameWorkspace } from "@/lib/services/workspace";
@@ -21,6 +22,7 @@ import {
   formatAssetList,
   formatLinkList,
   formatTaskDeepLink,
+  mapBoardSnapshot,
 } from "@/lib/channel-formatters";
 import { workspaceUrl } from "@/lib/app-url";
 import { displayUser } from "@/lib/username";
@@ -34,7 +36,6 @@ import { displayUser } from "@/lib/username";
  * the user's most recently active workspace.
  */
 
-const SCOPES = ["FRONTEND", "BACKEND", "DESIGN", "GENERAL"] as const;
 const STATUSES = ["TODO", "IN_PROGRESS", "DONE"] as const;
 const PRIORITIES = ["LOW", "MEDIUM", "HIGH"] as const;
 
@@ -55,7 +56,12 @@ const dueDateParam = z
 const assigneeParam = z
   .string()
   .optional()
-  .describe("Assignee: a workspace member's username or email (or part of it)");
+  .describe("Single assignee: username, email, or part of it");
+
+const assigneesParam = z
+  .array(z.string())
+  .optional()
+  .describe("Multiple assignees: usernames, emails, or member names");
 
 function parseDueDate(value: string | undefined): Date | null | undefined {
   if (value === undefined) return undefined;
@@ -131,10 +137,12 @@ const handler = createMcpHandler(
         inputSchema: {
           title: z.string().min(1).describe("Task title"),
           description: z.string().optional().describe("Longer task details"),
-          scope: z
-            .enum(SCOPES)
+          category: z
+            .string()
             .optional()
-            .describe("Area of the task (defaults to GENERAL)"),
+            .describe(
+              "Task category (e.g. Marketing, Ops). Creates a custom category if it does not exist. Defaults to General."
+            ),
           priority: z
             .enum(PRIORITIES)
             .optional()
@@ -145,11 +153,22 @@ const handler = createMcpHandler(
             .optional()
             .describe("Free-form labels, e.g. ['marketing', 'v2']"),
           assignee: assigneeParam,
+          assignees: assigneesParam,
           workspace: workspaceParam,
         },
       },
       async (
-        { title, description, scope, priority, dueDate, tags, assignee, workspace },
+        {
+          title,
+          description,
+          category,
+          priority,
+          dueDate,
+          tags,
+          assignee,
+          assignees,
+          workspace,
+        },
         extra
       ) => {
         const userId = extra.authInfo!.extra!.userId as string;
@@ -159,28 +178,23 @@ const handler = createMcpHandler(
             workspaceId: ctx.workspaceId,
             title,
             description,
-            scope,
+            category,
             priority,
             dueDate: parseDueDate(dueDate),
             tags,
+            assignee,
+            assignees,
             userId,
           });
-          const final = assignee
-            ? await updateTask({
-                workspaceId: ctx.workspaceId,
-                taskId: task.id,
-                userId,
-                assignee,
-              })
-            : task;
+          const assigneeNames = taskAssigneeUsers(task)
+            .map((u) => displayUser(u))
+            .join(", ");
           return text(
-            `Created task #${final.shortId} "${final.title}" (${final.scope}, ${final.priority}` +
-              (final.dueDate
-                ? `, due ${final.dueDate.toISOString().slice(0, 10)}`
+            `Created task #${task.shortId} "${task.title}" (${task.category.name}, ${task.priority}` +
+              (task.dueDate
+                ? `, due ${task.dueDate.toISOString().slice(0, 10)}`
                 : "") +
-              (final.assignedTo
-                ? `, assigned to ${displayUser(final.assignedTo)}`
-                : "") +
+              (assigneeNames ? `, assigned to ${assigneeNames}` : "") +
               `) in workspace "${ctx.workspaceName}".`
           );
         } catch (err) {
@@ -199,7 +213,10 @@ const handler = createMcpHandler(
           title: z.string().optional().describe("New title"),
           description: z.string().optional().describe("New description"),
           status: z.enum(STATUSES).optional().describe("New status"),
-          scope: z.enum(SCOPES).optional().describe("New scope"),
+          category: z
+            .string()
+            .optional()
+            .describe("New category name (creates it if missing)"),
           priority: z.enum(PRIORITIES).optional().describe("New priority"),
           dueDate: dueDateParam.describe(
             "Due date as YYYY-MM-DD, or empty string to clear it"
@@ -209,7 +226,10 @@ const handler = createMcpHandler(
             .optional()
             .describe("Full replacement list of free-form labels"),
           assignee: assigneeParam.describe(
-            "Assignee username or email, or empty string to unassign"
+            "Single assignee username or email, or empty string to unassign all"
+          ),
+          assignees: assigneesParam.describe(
+            "Full replacement list of assignees (usernames, emails, or ids)"
           ),
           workspace: workspaceParam,
         },
@@ -220,11 +240,12 @@ const handler = createMcpHandler(
           title,
           description,
           status,
-          scope,
+          category,
           priority,
           dueDate,
           tags,
           assignee,
+          assignees,
           workspace,
         },
         extra
@@ -239,19 +260,23 @@ const handler = createMcpHandler(
             title,
             description,
             status,
-            scope,
+            category,
             priority,
             dueDate: parseDueDate(dueDate),
             tags,
             assignee: assignee === "" ? null : assignee,
+            assignees,
           });
+          const assigneeNames = taskAssigneeUsers(task)
+            .map((u) => displayUser(u))
+            .join(", ");
           return text(
-            `Updated task #${task.shortId} "${task.title}": ${task.status}, ${task.scope}, ${task.priority}` +
+            `Updated task #${task.shortId} "${task.title}": ${task.status}, ${task.category.name}, ${task.priority}` +
               (task.dueDate
                 ? `, due ${task.dueDate.toISOString().slice(0, 10)}`
                 : "") +
-              (task.assignedTo
-                ? `, assigned to ${displayUser(task.assignedTo)}`
+              (assigneeNames
+                ? `, assigned to ${assigneeNames}`
                 : ", unassigned") +
               ` (workspace "${ctx.workspaceName}").`
           );
@@ -391,7 +416,7 @@ const handler = createMcpHandler(
               {
                 workspaceId: ctx.workspaceId,
                 workspaceName: ctx.workspaceName,
-                board: state.board,
+                board: mapBoardSnapshot(state.board),
                 totalTasks: state.totalTasks,
               },
               "mcp"

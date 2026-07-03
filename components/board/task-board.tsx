@@ -21,7 +21,8 @@ import {
 import { formatTaskTitle } from "@/lib/format-task-title";
 import { TaskDetailModal } from "@/components/board/task-detail-modal";
 import { Select } from "@/components/ui/select";
-import { Avatar, tagColor } from "@/components/ui/ui";
+import { tagColor } from "@/components/ui/ui";
+import { MemberAvatarStack } from "@/components/members/member-avatar-stack";
 
 export type TaskAttachment = {
   id: string;
@@ -35,14 +36,13 @@ export type BoardTask = {
   title: string;
   description: string | null;
   status: "TODO" | "IN_PROGRESS" | "DONE";
-  scope: "FRONTEND" | "BACKEND" | "DESIGN" | "GENERAL";
+  categoryId: string;
+  categoryName: string;
   priority: "LOW" | "MEDIUM" | "HIGH";
   /** ISO string or null */
   dueDate: string | null;
   tags: string[];
-  assigneeId: string | null;
-  /** Username (preferred) or email of the assignee. */
-  assigneeLabel: string | null;
+  assignees: { id: string; label: string | null }[];
   attachments: TaskAttachment[];
 };
 
@@ -50,6 +50,11 @@ export type BoardMember = {
   id: string;
   /** Username (preferred) or email. */
   label: string | null;
+};
+
+export type BoardCategory = {
+  id: string;
+  name: string;
 };
 
 export type BoardSort = "default" | "title" | "due";
@@ -91,13 +96,6 @@ const COLUMNS: {
     dropActive: "border-violet-400 bg-violet-200/60 text-violet-900",
   },
 ];
-
-const SCOPE_STYLES: Record<BoardTask["scope"], string> = {
-  FRONTEND: "bg-sky-50 text-sky-700",
-  BACKEND: "bg-violet-50 text-violet-700",
-  DESIGN: "bg-orange-50 text-orange-700",
-  GENERAL: "bg-paper-deep text-ink-soft",
-};
 
 const PRIORITY_STYLES: Record<BoardTask["priority"], string> = {
   HIGH: "bg-rose-50 text-rose-700",
@@ -161,8 +159,8 @@ function TaskCard({
     >
       {/* Chips row: scope + priority + free-form tags + add affordance */}
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className={`${chipCls} uppercase ${SCOPE_STYLES[task.scope]}`}>
-          {task.scope.toLowerCase()}
+        <span className={`${chipCls} ${tagColor(task.categoryName)}`}>
+          {task.categoryName}
         </span>
         {task.priority !== "MEDIUM" && (
           <span
@@ -234,14 +232,14 @@ function TaskCard({
       {/* Footer: assignee left, meta right */}
       <div className="mt-4 flex items-center justify-between">
         <div className="flex items-center">
-          {task.assigneeLabel ? (
-            <span className="rounded-full ring-2 ring-card">
-              <Avatar
-                seed={task.assigneeId ?? task.assigneeLabel}
-                label={task.assigneeLabel}
-                size="h-6 w-6 text-[10px]"
-              />
-            </span>
+          {task.assignees.length > 0 ? (
+            <MemberAvatarStack
+              members={task.assignees}
+              max={3}
+              size="h-6 w-6 text-[10px]"
+              ringClass="ring-card"
+              overlap={8}
+            />
           ) : (
             <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-dashed border-line-strong text-[11px] text-ink-faint">
               +
@@ -387,11 +385,10 @@ function Column({
 function seedMembersFromTasks(tasks: BoardTask[]): BoardMember[] {
   const map = new Map<string, BoardMember>();
   for (const task of tasks) {
-    if (task.assigneeId && !map.has(task.assigneeId)) {
-      map.set(task.assigneeId, {
-        id: task.assigneeId,
-        label: task.assigneeLabel,
-      });
+    for (const assignee of task.assignees) {
+      if (!map.has(assignee.id)) {
+        map.set(assignee.id, assignee);
+      }
     }
   }
   return [...map.values()];
@@ -400,10 +397,11 @@ function seedMembersFromTasks(tasks: BoardTask[]): BoardMember[] {
 export function TaskBoard({
   workspaceId,
   tasks,
+  categories,
   currentUserId,
   filtersOpen = true,
-  scopeFilter,
-  onScopeFilterChange,
+  categoryFilter,
+  onCategoryFilterChange,
   assigneeFilter,
   onAssigneeFilterChange,
   mineOnly,
@@ -412,11 +410,12 @@ export function TaskBoard({
 }: {
   workspaceId: string;
   tasks: BoardTask[];
+  categories: BoardCategory[];
   currentUserId: string;
   /** When false, filter controls are hidden (toggled from the header). */
   filtersOpen?: boolean;
-  scopeFilter: string;
-  onScopeFilterChange: (value: string) => void;
+  categoryFilter: string;
+  onCategoryFilterChange: (value: string) => void;
   assigneeFilter: string;
   onAssigneeFilterChange: (value: string) => void;
   mineOnly: boolean;
@@ -511,15 +510,15 @@ export function TaskBoard({
 
   const visibleTasks = useMemo(() => {
     const filtered = localTasks.filter((t) => {
-      if (scopeFilter && t.scope !== scopeFilter) return false;
-      if (assigneeFilter === "unassigned" && t.assigneeId) return false;
+      if (categoryFilter && t.categoryId !== categoryFilter) return false;
+      if (assigneeFilter === "unassigned" && t.assignees.length > 0) return false;
       if (
         assigneeFilter &&
         assigneeFilter !== "unassigned" &&
-        t.assigneeId !== assigneeFilter
+        !t.assignees.some((a) => a.id === assigneeFilter)
       )
         return false;
-      if (mineOnly && t.assigneeId !== currentUserId) return false;
+      if (mineOnly && !t.assignees.some((a) => a.id === currentUserId)) return false;
       return true;
     });
 
@@ -537,7 +536,7 @@ export function TaskBoard({
     return filtered;
   }, [
     localTasks,
-    scopeFilter,
+    categoryFilter,
     assigneeFilter,
     mineOnly,
     currentUserId,
@@ -583,12 +582,9 @@ export function TaskBoard({
     });
   }
 
-  const scopeOptions = [
-    { value: "", label: "All scopes" },
-    { value: "GENERAL", label: "General" },
-    { value: "FRONTEND", label: "Frontend" },
-    { value: "BACKEND", label: "Backend" },
-    { value: "DESIGN", label: "Design" },
+  const categoryOptions = [
+    { value: "", label: "All categories" },
+    ...categories.map((c) => ({ value: c.id, label: c.name })),
   ];
 
   const assigneeOptions = [
@@ -606,11 +602,11 @@ export function TaskBoard({
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <Select
           size="sm"
-          value={scopeFilter}
-          onChange={onScopeFilterChange}
-          options={scopeOptions}
-          className="w-[140px]"
-          aria-label="Filter by scope"
+          value={categoryFilter}
+          onChange={onCategoryFilterChange}
+          options={categoryOptions}
+          className="w-[160px]"
+          aria-label="Filter by category"
         />
         <Select
           size="sm"
@@ -630,10 +626,10 @@ export function TaskBoard({
         >
           My tasks
         </button>
-        {(scopeFilter || assigneeFilter || mineOnly) && (
+        {(categoryFilter || assigneeFilter || mineOnly) && (
           <button
             onClick={() => {
-              onScopeFilterChange("");
+              onCategoryFilterChange("");
               onAssigneeFilterChange("");
               onMineOnlyChange(false);
             }}
@@ -695,6 +691,7 @@ export function TaskBoard({
           workspaceId={workspaceId}
           task={openTask}
           members={members}
+          categories={categories}
           onClose={() => setOpenTask(null)}
         />
       )}

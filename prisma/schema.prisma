@@ -19,13 +19,6 @@ enum TaskStatus {
   DONE
 }
 
-enum TaskScope {
-  FRONTEND
-  BACKEND
-  DESIGN
-  GENERAL
-}
-
 enum TaskPriority {
   LOW
   MEDIUM
@@ -55,7 +48,7 @@ model User {
   lastActiveWorkspace   Workspace? @relation("LastActiveWorkspace", fields: [lastActiveWorkspaceId], references: [id], onDelete: SetNull)
 
   memberships    WorkspaceMembership[]
-  assignedTasks  Task[]                @relation("AssignedTasks")
+  taskAssignments TaskAssignee[]
   createdTasks   Task[]                @relation("CreatedTasks")
   uploadedAssets Asset[]
   createdLinks   WorkspaceLink[]
@@ -76,7 +69,24 @@ model Workspace {
   assets          Asset[]
   links           WorkspaceLink[]
   invites         WorkspaceInvite[]
+  categories      WorkspaceCategory[]
   lastActiveUsers User[]                @relation("LastActiveWorkspace")
+}
+
+/// Per-workspace task categories (defaults + custom labels).
+model WorkspaceCategory {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  name        String
+  slug        String
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  tasks     Task[]
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId])
 }
 
 model WorkspaceMembership {
@@ -102,26 +112,40 @@ model Task {
   title       String
   description String?
   status      TaskStatus   @default(TODO)
-  scope       TaskScope    @default(GENERAL)
+  categoryId  String       @db.Uuid
   priority    TaskPriority @default(MEDIUM)
   dueDate     DateTime?
   /// Free-form labels, editable from the task modal ("marketing", "v2", ...)
   tags        String[]     @default([])
 
-  assignedToId String? @db.Uuid
   createdById  String? @db.Uuid
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  assignedTo  User?     @relation("AssignedTasks", fields: [assignedToId], references: [id], onDelete: SetNull)
+  category    WorkspaceCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  assignees   TaskAssignee[]
   createdBy   User?     @relation("CreatedTasks", fields: [createdById], references: [id], onDelete: SetNull)
   attachments Asset[]
 
   @@unique([workspaceId, shortId])
   @@index([workspaceId, status])
-  @@index([assignedToId])
+  @@index([workspaceId, categoryId])
+}
+
+/// Many-to-many: a task can have multiple assignees.
+model TaskAssignee {
+  taskId     String   @db.Uuid
+  userId     String   @db.Uuid
+  assignedAt DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, userId])
+  @@index([userId])
+  @@index([taskId])
 }
 
 model Asset {

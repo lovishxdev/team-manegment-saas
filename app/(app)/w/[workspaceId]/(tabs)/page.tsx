@@ -22,7 +22,7 @@ async function BoardData({
     throw err;
   }
 
-  const { board } = boardData;
+  const { board, categories } = boardData;
 
   const tasks: BoardTask[] = Object.values(board)
     .flat()
@@ -32,12 +32,15 @@ async function BoardData({
       title: t.title,
       description: t.description,
       status: t.status,
-      scope: t.scope,
+      categoryId: t.category.id,
+      categoryName: t.category.name,
       priority: t.priority,
       dueDate: t.dueDate?.toISOString() ?? null,
       tags: t.tags,
-      assigneeId: t.assignedTo?.id ?? null,
-      assigneeLabel: t.assignedTo ? displayUser(t.assignedTo) : null,
+      assignees: t.assignees.map((a) => ({
+        id: a.user.id,
+        label: displayUser(a.user),
+      })),
       attachments: t.attachments,
     }));
 
@@ -45,6 +48,7 @@ async function BoardData({
     <BoardPageContent
       workspaceId={workspaceId}
       tasks={tasks}
+      categories={categories}
       currentUserId={user.id}
     />
   );

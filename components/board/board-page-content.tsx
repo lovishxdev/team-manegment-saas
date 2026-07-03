@@ -19,21 +19,23 @@ const SORT_LABELS: Record<BoardSort, string> = {
 export function BoardPageContent({
   workspaceId,
   tasks,
+  categories,
   currentUserId,
 }: {
   workspaceId: string;
   tasks: BoardTask[];
+  categories: { id: string; name: string }[];
   currentUserId: string;
 }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [scopeFilter, setScopeFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
   const [assigneeFilter, setAssigneeFilter] = useState("");
   const [mineOnly, setMineOnly] = useState(false);
   const [sortBy, setSortBy] = useState<BoardSort>("default");
   const [addTaskOpen, setAddTaskOpen] = useState(false);
   const addTaskRef = useRef<HTMLDivElement>(null);
 
-  const filtersApplied = Boolean(scopeFilter || assigneeFilter || mineOnly);
+  const filtersApplied = Boolean(categoryFilter || assigneeFilter || mineOnly);
 
   function cycleSort() {
     setSortBy((current) =>
@@ -66,17 +68,18 @@ export function BoardPageContent({
 
       {addTaskOpen && (
         <div ref={addTaskRef} className="mb-6 max-w-2xl">
-          <NewTaskForm workspaceId={workspaceId} />
+          <NewTaskForm workspaceId={workspaceId} categories={categories} />
         </div>
       )}
 
       <TaskBoard
         workspaceId={workspaceId}
         tasks={tasks}
+        categories={categories}
         currentUserId={currentUserId}
         filtersOpen={filtersOpen}
-        scopeFilter={scopeFilter}
-        onScopeFilterChange={setScopeFilter}
+        categoryFilter={categoryFilter}
+        onCategoryFilterChange={setCategoryFilter}
         assigneeFilter={assigneeFilter}
         onAssigneeFilterChange={setAssigneeFilter}
         mineOnly={mineOnly}

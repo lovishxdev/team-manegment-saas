@@ -10,6 +10,7 @@ import {
   displayUser,
 } from "@/lib/username";
 import { isUsernameTaken } from "@/lib/username-server";
+import { seedDefaultCategories } from "@/lib/services/categories";
 
 export async function createWorkspace(userId: string, name: string) {
   const workspace = await prisma.workspace.create({
@@ -20,6 +21,7 @@ export async function createWorkspace(userId: string, name: string) {
       },
     },
   });
+  await seedDefaultCategories(workspace.id);
   await prisma.user.update({
     where: { id: userId },
     data: { lastActiveWorkspaceId: workspace.id },
@@ -99,28 +101,29 @@ export async function getWorkspaceDashboardStats(
   );
   if (workspaceIds.length === 0) return stats;
 
-  const [openGroups, assignedGroups] = await Promise.all([
+  const [openGroups, assignedRows] = await Promise.all([
     prisma.task.groupBy({
       by: ["workspaceId"],
       where: { workspaceId: { in: workspaceIds }, status: { not: "DONE" } },
       _count: { _all: true },
     }),
-    prisma.task.groupBy({
-      by: ["workspaceId"],
+    prisma.taskAssignee.findMany({
       where: {
-        workspaceId: { in: workspaceIds },
-        assignedToId: userId,
-        status: { not: "DONE" },
+        userId,
+        task: {
+          workspaceId: { in: workspaceIds },
+          status: { not: "DONE" },
+        },
       },
-      _count: { _all: true },
+      select: { task: { select: { workspaceId: true } } },
     }),
   ]);
 
   for (const g of openGroups) {
     stats.get(g.workspaceId)!.openTasks = g._count._all;
   }
-  for (const g of assignedGroups) {
-    stats.get(g.workspaceId)!.assignedToYou = g._count._all;
+  for (const row of assignedRows) {
+    stats.get(row.task.workspaceId)!.assignedToYou++;
   }
 
   return stats;

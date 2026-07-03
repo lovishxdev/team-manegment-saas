@@ -2,7 +2,6 @@ import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
 import {
   TaskPriority,
-  TaskScope,
   TaskStatus,
 } from "@/lib/generated/prisma/client";
 import { getUserIdByPhone } from "@/lib/identity-cache";
@@ -62,6 +61,7 @@ import {
   formatLinkList,
   formatTaskDeepLink,
   formatTaskSummary,
+  mapBoardSnapshot,
   type ActionOutcome,
 } from "@/lib/channel-formatters";
 import { classifyActionOutcome } from "@/lib/whatsapp-action-outcome";
@@ -167,10 +167,10 @@ Rules:
 - "Previous task" / "the task before" / a task referenced by title is NEVER the task you just created in the same message unless they explicitly mean the new one.
 - After all actions are done, reply with ONE short summary of everything that happened (no markdown, plain WhatsApp text). Do not send multiple summaries. If a tool returned an error, say so — never claim success for failed steps.
 - Compound requests (multiple things in one message): call a tool for every actionable part. If you cannot do a part (missing info, no matching task, ambiguous target), do NOT skip silently — either let the tool fail with a clear error, or end your turn with a short note listing what could NOT be done and why (e.g. "Could not attach image: no task specified").
-- Infer scope from context (FRONTEND, BACKEND, DESIGN) only when clear; otherwise omit it.
+- Infer category from context (e.g. marketing, ops, frontend) only when clear; otherwise omit it.
 - Infer priority only when stated or strongly implied (e.g. "urgent" = HIGH); otherwise omit it.
 - Resolve relative due dates ("Friday", "tomorrow", "next week") to a concrete YYYY-MM-DD date using today's date above.
-- "assign to me" means assignee "me"; a named person means part of their email or name as the assignee parameter.
+- "assign to me" means assignee "me"; multiple people can be assigned via the assignees array (e.g. ["me", "aarav"]).
 - Use the conversation history to resolve references: "that task" / "it" usually means the task #N mentioned in your most recent reply.
 - If the user names a specific workspace/project that is NOT "${activeWorkspaceName}", pass it as the workspace parameter; otherwise always omit workspace.
 - If the message is NOT an actionable board request (greetings, questions, chit-chat), do not call a tool. Reply with one short, friendly sentence telling them what you can do.
@@ -195,10 +195,10 @@ const TOOLS: Anthropic.Tool[] = [
           description:
             "Longer details: bullet lists, paragraphs, requirements, keywords — put lengthy content here, not in title",
         },
-        scope: {
+        category: {
           type: "string",
-          enum: ["FRONTEND", "BACKEND", "DESIGN", "GENERAL"],
-          description: "Area of the task, only if clearly implied",
+          description:
+            "Task category (e.g. Marketing, Backend). Creates a custom category if needed. Only if clearly implied.",
         },
         priority: {
           type: "string",
@@ -217,7 +217,13 @@ const TOOLS: Anthropic.Tool[] = [
         assignee: {
           type: "string",
           description:
-            "Who to assign: 'me' for the sender, or part of a member's name/email",
+            "Single assignee: 'me' for the sender, or part of a member's name/email",
+        },
+        assignees: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Multiple assignees: 'me', usernames, or parts of member names/emails",
         },
         workspace: {
           type: "string",
@@ -242,10 +248,9 @@ const TOOLS: Anthropic.Tool[] = [
           enum: ["TODO", "IN_PROGRESS", "DONE"],
           description: "New status",
         },
-        scope: {
+        category: {
           type: "string",
-          enum: ["FRONTEND", "BACKEND", "DESIGN", "GENERAL"],
-          description: "New scope",
+          description: "New category name (creates it if missing)",
         },
         priority: {
           type: "string",
@@ -265,7 +270,12 @@ const TOOLS: Anthropic.Tool[] = [
         assignee: {
           type: "string",
           description:
-            "Who to assign: 'me' for the sender, part of a member's name/email, or empty string to unassign",
+            "Single assignee: 'me', a member name/email, or empty string to clear all assignees",
+        },
+        assignees: {
+          type: "array",
+          items: { type: "string" },
+          description: "Full replacement list of assignees",
         },
         workspace: {
           type: "string",
@@ -719,7 +729,7 @@ async function fetchBoardReply(
     {
       workspaceId: ctx.workspaceId,
       workspaceName: ctx.workspaceName,
-      board: state.board,
+      board: mapBoardSnapshot(state.board),
       totalTasks: state.totalTasks,
     },
     "whatsapp"
@@ -1188,6 +1198,49 @@ function resolveAssigneeInput(
   return str;
 }
 
+function resolveAssigneesHints(
+  assignees: unknown,
+  assignee: unknown,
+  senderUserId: string
+): string[] | undefined {
+  if (Array.isArray(assignees)) {
+    const hints: string[] = [];
+    for (const raw of assignees) {
+      const resolved = resolveAssigneeInput(raw, senderUserId);
+      if (resolved) hints.push(resolved);
+    }
+    return hints;
+  }
+  const single = resolveAssigneeInput(assignee, senderUserId);
+  if (single === undefined) return undefined;
+  if (single === null) return [];
+  return [single];
+}
+
+function resolveAssigneesUpdate(
+  assignees: unknown,
+  assignee: unknown,
+  senderUserId: string
+): string[] | null | undefined {
+  if (assignees !== undefined) {
+    if (!Array.isArray(assignees)) return undefined;
+    if (assignees.length === 0) return [];
+    const hints: string[] = [];
+    for (const raw of assignees) {
+      const resolved = resolveAssigneeInput(raw, senderUserId);
+      if (resolved) hints.push(resolved);
+    }
+    return hints;
+  }
+  if (assignee !== undefined) {
+    const single = resolveAssigneeInput(assignee, senderUserId);
+    if (single === null) return [];
+    if (single) return [single];
+    return [];
+  }
+  return undefined;
+}
+
 async function executeAction(
   userId: string,
   action: string,
@@ -1238,30 +1291,27 @@ async function executeAction(
 
     switch (action) {
       case "create_task": {
+        const assigneeHints = resolveAssigneesHints(
+          input.assignees,
+          input.assignee,
+          userId
+        );
         const task = await createTask({
           workspaceId: ctx.workspaceId,
           title: String(input.title),
           description: input.description
             ? String(input.description)
             : undefined,
-          scope: input.scope as TaskScope | undefined,
+          category: input.category ? String(input.category) : undefined,
           priority: input.priority as TaskPriority | undefined,
           dueDate: parseInputDueDate(input.dueDate),
           tags: parseTagsInput(input.tags),
+          assignees: assigneeHints,
           userId,
         });
-        const assignee = resolveAssigneeInput(input.assignee, userId);
-        const final = assignee
-          ? await updateTask({
-              workspaceId: ctx.workspaceId,
-              taskId: task.id,
-              userId,
-              assignee,
-            })
-          : task;
-        session.createdTaskShortIds.push(final.shortId);
+        session.createdTaskShortIds.push(task.shortId);
         session.lastCreatedTask = {
-          shortId: final.shortId,
+          shortId: task.shortId,
           workspaceId: ctx.workspaceId,
         };
         const batchIndex = session.createdTaskShortIds.length;
@@ -1269,11 +1319,11 @@ async function executeAction(
         waWebhookLog("task created", {
           workspaceId: ctx.workspaceId,
           workspaceName: ctx.workspaceName,
-          shortId: final.shortId,
+          shortId: task.shortId,
         });
         return (
-          `Done. Created ${formatTaskSummary(final, ctx.workspaceName, "whatsapp")}` +
-          formatTaskDeepLink(ctx.workspaceId, final.shortId, "whatsapp") +
+          `Done. Created ${formatTaskSummary(task, ctx.workspaceName, "whatsapp")}` +
+          formatTaskDeepLink(ctx.workspaceId, task.shortId, "whatsapp") +
           ` (batch task ${batchIndex}).`
         );
       }
@@ -1285,6 +1335,12 @@ async function executeAction(
           session.createdTaskShortIds
         );
 
+        const assigneeUpdate = resolveAssigneesUpdate(
+          input.assignees,
+          input.assignee,
+          userId
+        );
+
         const task = await updateTask({
           workspaceId: ctx.workspaceId,
           shortId,
@@ -1294,11 +1350,12 @@ async function executeAction(
             ? String(input.description)
             : undefined,
           status: input.status as TaskStatus | undefined,
-          scope: input.scope as TaskScope | undefined,
+          category: input.category ? String(input.category) : undefined,
           priority: input.priority as TaskPriority | undefined,
           dueDate: parseInputDueDate(input.dueDate),
           tags: parseTagsInput(input.tags),
-          assignee: resolveAssigneeInput(input.assignee, userId),
+          assignees:
+            assigneeUpdate === undefined ? undefined : assigneeUpdate,
         });
         revalidateUserWorkspaces(userId, ctx.workspaceId);
         return (
@@ -1332,7 +1389,7 @@ async function executeAction(
           {
             workspaceId: ctx.workspaceId,
             workspaceName: ctx.workspaceName,
-            board: state.board,
+            board: mapBoardSnapshot(state.board),
             totalTasks: state.totalTasks,
           },
           "whatsapp"

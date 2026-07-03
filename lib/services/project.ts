@@ -2,7 +2,6 @@ import { cache } from "react";
 import {
   Prisma,
   TaskPriority,
-  TaskScope,
   TaskStatus,
 } from "@/lib/generated/prisma/client";
 import { formatTaskTitle, normalizeTaskTitleAndDescription } from "@/lib/format-task-title";
@@ -10,6 +9,10 @@ import { prisma } from "@/lib/prisma";
 import { ASSETS_BUCKET, getSupabaseAdmin } from "@/lib/supabase";
 import { displayUser } from "@/lib/username";
 import { notifyTaskAssigned } from "@/lib/whatsapp-notify";
+import {
+  listWorkspaceCategories,
+  resolveTaskCategoryId,
+} from "@/lib/services/categories";
 
 /**
  * Core business logic shared by all three interfaces (Web, WhatsApp, MCP).
@@ -190,6 +193,113 @@ async function resolveAssignee(
   );
 }
 
+const assigneeUserSelect = {
+  id: true,
+  email: true,
+  username: true,
+} as const;
+
+export const taskAssigneesInclude = {
+  category: { select: { id: true, name: true, slug: true } },
+  assignees: {
+    include: { user: { select: assigneeUserSelect } },
+    orderBy: { assignedAt: "asc" as const },
+  },
+};
+
+export const taskBoardInclude = {
+  ...taskAssigneesInclude,
+  attachments: {
+    select: { id: true, url: true, fileType: true },
+    orderBy: { createdAt: "asc" as const },
+  },
+};
+
+export type TaskAssigneeUser = {
+  id: string;
+  email: string | null;
+  username: string;
+};
+
+export function taskAssigneeUsers(task: {
+  assignees: { user: TaskAssigneeUser }[];
+}): TaskAssigneeUser[] {
+  return task.assignees.map((a) => a.user);
+}
+
+async function resolveAssigneeList(
+  workspaceId: string,
+  assignees: string[]
+): Promise<string[]> {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of assignees) {
+    const id = await resolveAssignee(workspaceId, raw);
+    if (!seen.has(id)) {
+      seen.add(id);
+      ids.push(id);
+    }
+  }
+  return ids;
+}
+
+async function resolveAssigneeInput(
+  workspaceId: string,
+  input: {
+    assigneeIds?: string[];
+    assignees?: string[];
+    assignee?: string;
+    assignedToId?: string;
+  }
+): Promise<string[]> {
+  if (input.assigneeIds !== undefined) {
+    const ids = [...new Set(input.assigneeIds)];
+    for (const id of ids) {
+      await resolveAssignee(workspaceId, id);
+    }
+    return ids;
+  }
+  if (input.assignees?.length) {
+    return resolveAssigneeList(workspaceId, input.assignees);
+  }
+  if (input.assignedToId) {
+    await resolveAssignee(workspaceId, input.assignedToId);
+    return [input.assignedToId];
+  }
+  if (input.assignee) {
+    return [await resolveAssignee(workspaceId, input.assignee)];
+  }
+  return [];
+}
+
+async function notifyNewAssignees(
+  workspaceId: string,
+  actorUserId: string,
+  task: { shortId: number; title: string },
+  previousIds: Set<string>,
+  nextIds: string[]
+) {
+  const workspace = await prisma.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { name: true },
+  });
+  if (!workspace) return;
+
+  for (const assigneeUserId of nextIds) {
+    if (previousIds.has(assigneeUserId) || assigneeUserId === actorUserId) {
+      continue;
+    }
+    void notifyTaskAssigned({
+      assigneeUserId,
+      actorUserId,
+      workspaceId,
+      workspaceName: workspace.name,
+      taskShortId: task.shortId,
+      taskTitle: task.title,
+    }).catch((err) => console.error("WhatsApp assign notify failed:", err));
+  }
+}
+
 const MAX_TAGS = 12;
 const MAX_TAG_LENGTH = 24;
 
@@ -216,9 +326,17 @@ export interface CreateTaskInput {
   workspaceId: string;
   title: string;
   description?: string;
-  scope?: TaskScope;
+  categoryId?: string;
+  /** Category name or legacy scope label — resolved or created per workspace. */
+  category?: string;
   priority?: TaskPriority;
   dueDate?: Date | null;
+  assigneeIds?: string[];
+  /** One or more assignees by username, email, or id. */
+  assignees?: string[];
+  /** Single assignee shorthand (WhatsApp/MCP). */
+  assignee?: string;
+  /** @deprecated Use assigneeIds — kept for internal callers. */
   assignedToId?: string;
   tags?: string[];
   /** The acting user (becomes createdBy and gets membership-checked). */
@@ -230,9 +348,13 @@ export async function createTask(input: CreateTaskInput) {
     workspaceId,
     title,
     description,
-    scope,
+    categoryId,
+    category,
     priority,
     dueDate,
+    assigneeIds,
+    assignees,
+    assignee,
     assignedToId,
     tags,
     userId,
@@ -240,6 +362,16 @@ export async function createTask(input: CreateTaskInput) {
   await assertMembership(userId, workspaceId);
 
   const normalized = normalizeTaskTitleAndDescription(title, description);
+  const resolvedCategoryId = await resolveTaskCategoryId(workspaceId, {
+    categoryId,
+    category,
+  });
+  const assigneeUserIds = await resolveAssigneeInput(workspaceId, {
+    assigneeIds,
+    assignees,
+    assignee,
+    assignedToId,
+  });
 
   // shortId is allocated per workspace inside a transaction. The
   // @@unique([workspaceId, shortId]) constraint catches concurrent races,
@@ -259,34 +391,29 @@ export async function createTask(input: CreateTaskInput) {
             shortId: (last?.shortId ?? 0) + 1,
             title: formatTaskTitle(normalized.title),
             description: normalized.description,
-            scope: scope ?? TaskScope.GENERAL,
+            categoryId: resolvedCategoryId,
             priority: priority ?? TaskPriority.MEDIUM,
             dueDate: dueDate ?? null,
             tags: tags ? normalizeTags(tags) : [],
-            assignedToId: assignedToId ?? null,
             createdById: userId,
+            assignees: assigneeUserIds.length
+              ? {
+                  create: assigneeUserIds.map((uid) => ({ userId: uid })),
+                }
+              : undefined,
           },
-          include: { assignedTo: { select: { id: true, email: true, username: true } } },
+          include: taskAssigneesInclude,
         });
       });
       await touchLastActiveWorkspace(userId, workspaceId);
 
-      if (assignedToId && assignedToId !== userId) {
-        const workspace = await prisma.workspace.findUnique({
-          where: { id: workspaceId },
-          select: { name: true },
-        });
-        if (workspace) {
-          void notifyTaskAssigned({
-            assigneeUserId: assignedToId,
-            actorUserId: userId,
-            workspaceId,
-            workspaceName: workspace.name,
-            taskShortId: task.shortId,
-            taskTitle: task.title,
-          }).catch((err) => console.error("WhatsApp assign notify failed:", err));
-        }
-      }
+      await notifyNewAssignees(
+        workspaceId,
+        userId,
+        task,
+        new Set<string>(),
+        assigneeUserIds
+      );
 
       return task;
     } catch (err) {
@@ -308,12 +435,17 @@ export interface UpdateTaskInput {
   title?: string;
   description?: string | null;
   status?: TaskStatus;
-  scope?: TaskScope;
+  categoryId?: string;
+  category?: string;
   priority?: TaskPriority;
   dueDate?: Date | null;
   /** Full replacement list of free-form tags. */
   tags?: string[];
-  /** Member user id or email; null clears the assignment. */
+  /** Full replacement — member ids. */
+  assigneeIds?: string[];
+  /** Full replacement — usernames, emails, or ids. */
+  assignees?: string[] | null;
+  /** Single assignee shorthand; null clears all assignees. */
   assignee?: string | null;
 }
 
@@ -375,48 +507,74 @@ export async function updateTask(input: UpdateTaskInput) {
   await assertMembership(userId, workspaceId);
 
   const existing = await findTaskInWorkspace(workspaceId, taskId, shortId);
+  const existingAssignees = await prisma.taskAssignee.findMany({
+    where: { taskId: existing.id },
+    select: { userId: true },
+  });
+  const previousAssigneeIds = new Set(
+    existingAssignees.map((row) => row.userId)
+  );
 
   const data: Prisma.TaskUncheckedUpdateInput = {};
   if (input.title !== undefined) data.title = formatTaskTitle(input.title);
   if (input.description !== undefined) data.description = input.description;
   if (input.status !== undefined) data.status = input.status;
-  if (input.scope !== undefined) data.scope = input.scope;
+  if (input.categoryId !== undefined || input.category !== undefined) {
+    data.categoryId = await resolveTaskCategoryId(workspaceId, {
+      categoryId: input.categoryId,
+      category: input.category,
+    });
+  }
   if (input.priority !== undefined) data.priority = input.priority;
   if (input.dueDate !== undefined) data.dueDate = input.dueDate;
   if (input.tags !== undefined) data.tags = normalizeTags(input.tags);
-  if (input.assignee !== undefined) {
-    data.assignedToId =
+
+  let nextAssigneeIds: string[] | undefined;
+  if (input.assignees !== undefined) {
+    nextAssigneeIds =
+      input.assignees === null || input.assignees.length === 0
+        ? []
+        : await resolveAssigneeList(workspaceId, input.assignees);
+  } else if (input.assigneeIds !== undefined) {
+    nextAssigneeIds = await resolveAssigneeInput(workspaceId, {
+      assigneeIds: input.assigneeIds,
+    });
+  } else if (input.assignee !== undefined) {
+    nextAssigneeIds =
       input.assignee === null
-        ? null
-        : await resolveAssignee(workspaceId, input.assignee);
+        ? []
+        : [await resolveAssignee(workspaceId, input.assignee)];
   }
 
-  const task = await prisma.task.update({
-    where: { id: existing.id },
-    data,
-    include: { assignedTo: { select: { id: true, email: true, username: true } } },
+  const task = await prisma.$transaction(async (tx) => {
+    if (nextAssigneeIds !== undefined) {
+      await tx.taskAssignee.deleteMany({ where: { taskId: existing.id } });
+      if (nextAssigneeIds.length > 0) {
+        await tx.taskAssignee.createMany({
+          data: nextAssigneeIds.map((uid) => ({
+            taskId: existing.id,
+            userId: uid,
+          })),
+        });
+      }
+    }
+
+    return tx.task.update({
+      where: { id: existing.id },
+      data,
+      include: taskAssigneesInclude,
+    });
   });
   await touchLastActiveWorkspace(userId, workspaceId);
 
-  if (
-    input.assignee !== undefined &&
-    task.assignedToId &&
-    task.assignedToId !== existing.assignedToId
-  ) {
-    const workspace = await prisma.workspace.findUnique({
-      where: { id: workspaceId },
-      select: { name: true },
-    });
-    if (workspace) {
-      void notifyTaskAssigned({
-        assigneeUserId: task.assignedToId,
-        actorUserId: userId,
-        workspaceId,
-        workspaceName: workspace.name,
-        taskShortId: task.shortId,
-        taskTitle: task.title,
-      }).catch((err) => console.error("WhatsApp assign notify failed:", err));
-    }
+  if (nextAssigneeIds !== undefined) {
+    await notifyNewAssignees(
+      workspaceId,
+      userId,
+      task,
+      previousAssigneeIds,
+      nextAssigneeIds
+    );
   }
 
   return task;
@@ -720,11 +878,11 @@ export async function updateAssetTagsByRef(input: {
   });
 }
 
-/** Web board tab: tasks + workspace + caller role. No members/assets. */
+/** Web board tab: tasks + workspace + categories + caller role. No members/assets. */
 export async function getBoardView(workspaceId: string, userId: string) {
   const membership = await assertMembership(userId, workspaceId);
 
-  const [workspace, tasks] = await Promise.all([
+  const [workspace, tasks, categories] = await Promise.all([
     prisma.workspace.findUniqueOrThrow({
       where: { id: workspaceId },
       select: { id: true, name: true },
@@ -732,14 +890,9 @@ export async function getBoardView(workspaceId: string, userId: string) {
     prisma.task.findMany({
       where: { workspaceId },
       orderBy: { shortId: "asc" },
-      include: {
-        assignedTo: { select: { id: true, email: true, username: true } },
-        attachments: {
-          select: { id: true, url: true, fileType: true },
-          orderBy: { createdAt: "asc" },
-        },
-      },
+      include: taskBoardInclude,
     }),
+    listWorkspaceCategories(workspaceId),
     touchLastActiveWorkspace(userId, workspaceId),
   ]);
 
@@ -750,7 +903,7 @@ export async function getBoardView(workspaceId: string, userId: string) {
   };
   for (const task of tasks) grouped[task.status].push(task);
 
-  return { workspace, board: grouped, selfRole: membership.role };
+  return { workspace, board: grouped, categories, selfRole: membership.role };
 }
 
 /** Web assets tab: assets + workspace + caller role. No members/tasks. */
@@ -790,7 +943,7 @@ export async function getBoardState(workspaceId: string, userId: string) {
       where: { workspaceId },
       orderBy: { shortId: "asc" },
       include: {
-        assignedTo: { select: { id: true, email: true, username: true } },
+        ...taskAssigneesInclude,
         attachments: {
           select: { id: true, url: true, fileType: true },
           orderBy: { createdAt: "asc" },

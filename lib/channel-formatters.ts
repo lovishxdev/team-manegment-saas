@@ -1,4 +1,4 @@
-import type { TaskPriority, TaskScope, TaskStatus } from "@/lib/generated/prisma/client";
+import type { TaskPriority, TaskStatus } from "@/lib/generated/prisma/client";
 import { taskUrl } from "@/lib/app-url";
 import { assetFileName } from "@/lib/services/project";
 import { displayUser } from "@/lib/username";
@@ -7,11 +7,11 @@ export type BoardTask = {
   shortId: number;
   title: string;
   status: TaskStatus;
-  scope: TaskScope;
+  categoryName: string;
   priority: TaskPriority;
   dueDate: Date | null;
   tags: string[];
-  assignedTo: { email: string | null; username: string | null } | null;
+  assignees: { email: string | null; username: string | null }[];
 };
 
 export type BoardSnapshot = {
@@ -35,14 +35,18 @@ function formatTaskLine(task: BoardTask, channel: Channel): string {
     if (task.priority === "HIGH") line += " ⚠";
     if (task.tags?.length) line += ` [${task.tags.join(", ")}]`;
     if (task.dueDate) line += ` (due ${task.dueDate.toISOString().slice(0, 10)})`;
-    if (task.assignedTo) line += ` @${displayUser(task.assignedTo)}`;
+    if (task.assignees.length) {
+      line += ` ${task.assignees.map((u) => `@${displayUser(u)}`).join(", ")}`;
+    }
     return line;
   }
 
-  let line = `  #${task.shortId} ${task.title} [${task.scope}, ${task.priority}]`;
+  let line = `  #${task.shortId} ${task.title} [${task.categoryName}, ${task.priority}]`;
   if (task.tags.length) line += ` {${task.tags.join(", ")}}`;
   if (task.dueDate) line += ` due ${task.dueDate.toISOString().slice(0, 10)}`;
-  if (task.assignedTo) line += ` -> @${displayUser(task.assignedTo)}`;
+  if (task.assignees.length) {
+    line += ` -> ${task.assignees.map((u) => `@${displayUser(u)}`).join(", ")}`;
+  }
   return line;
 }
 
@@ -58,6 +62,48 @@ function formatSection(
   }
 
   return `${label} (${tasks.length})\n${tasks.map((t) => formatTaskLine(t, channel)).join("\n")}`;
+}
+
+export function toBoardTask(task: {
+  shortId: number;
+  title: string;
+  status: TaskStatus;
+  priority: TaskPriority;
+  dueDate: Date | null;
+  tags: string[];
+  assignees: { user: { email: string | null; username: string | null } }[];
+  category: { name: string };
+}): BoardTask {
+  return {
+    shortId: task.shortId,
+    title: task.title,
+    status: task.status,
+    categoryName: task.category.name,
+    priority: task.priority,
+    dueDate: task.dueDate,
+    tags: task.tags,
+    assignees: task.assignees.map((a) => a.user),
+  };
+}
+
+export function mapBoardSnapshot(board: Record<
+  "TODO" | "IN_PROGRESS" | "DONE",
+  Array<{
+    shortId: number;
+    title: string;
+    status: TaskStatus;
+    priority: TaskPriority;
+    dueDate: Date | null;
+    tags: string[];
+    assignees: { user: { email: string | null; username: string | null } }[];
+    category: { name: string };
+  }>
+>): Record<"TODO" | "IN_PROGRESS" | "DONE", BoardTask[]> {
+  return {
+    TODO: board.TODO.map(toBoardTask),
+    IN_PROGRESS: board.IN_PROGRESS.map(toBoardTask),
+    DONE: board.DONE.map(toBoardTask),
+  };
 }
 
 export function formatBoardState(snapshot: BoardSnapshot, channel: Channel): string {
@@ -88,19 +134,32 @@ export function formatTaskSummary(
     shortId: number;
     title: string;
     status: TaskStatus;
-    scope: TaskScope;
+    categoryName?: string;
+    category?: { name: string };
+    assignees?: Array<
+      | { email: string | null; username: string | null }
+      | { user: { email: string | null; username: string | null } }
+    >;
     priority: TaskPriority;
     dueDate: Date | null;
     tags?: string[];
-    assignedTo: { email: string | null; username: string | null } | null;
   },
   workspaceName: string,
   channel: Channel
 ): string {
-  const parts = [`${task.scope}`, `${task.priority}`];
+  const categoryName = task.categoryName ?? task.category?.name ?? "General";
+  const assigneeUsers = (
+    task.assignees?.map((row) => ("user" in row ? row.user : row)) ?? []
+  ).filter(
+    (u): u is { email: string | null; username: string | null } =>
+      u !== null && u !== undefined
+  );
+  const parts = [`${categoryName}`, `${task.priority}`];
   if (task.tags?.length) parts.push(`tags: ${task.tags.join(", ")}`);
   if (task.dueDate) parts.push(`due ${task.dueDate.toISOString().slice(0, 10)}`);
-  if (task.assignedTo) parts.push(`@${displayUser(task.assignedTo)}`);
+  if (assigneeUsers.length) {
+    parts.push(assigneeUsers.map((u) => `@${displayUser(u)}`).join(", "));
+  }
 
   if (channel === "whatsapp") {
     return `#${task.shortId} *${task.title}* (${parts.join(", ")}) · ${workspaceName}`;
