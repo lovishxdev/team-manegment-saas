@@ -51,7 +51,7 @@ export function UsernameForm({
         teammates on boards and member lists.
       </p>
       {state.error && <p className={ui.errorText}>{state.error}</p>}
-      {state.message && <p className="text-sm text-accent">{state.message}</p>}
+      {state.message && <p className={ui.successText}>{state.message}</p>}
     </form>
   );
 }

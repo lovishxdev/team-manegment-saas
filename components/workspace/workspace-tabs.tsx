@@ -38,7 +38,7 @@ export function WorkspaceTabs({
           <Link
             key={tab.id}
             href={href}
-            className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+            className={`cursor-pointer rounded-full px-4 py-2 text-sm font-medium transition ${
               active
                 ? "bg-ink text-white shadow-sm"
                 : "text-ink-soft hover:bg-paper hover:text-ink"

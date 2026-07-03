@@ -25,7 +25,7 @@ export function WorkspaceCard({
   return (
     <Link
       href={`/w/${id}`}
-      className="group flex flex-col rounded-xl border border-line/80 bg-shell p-5 transition hover:border-line-strong hover:bg-paper-deep/40"
+      className="group flex cursor-pointer flex-col rounded-xl border border-line/80 bg-shell p-5 transition hover:border-line-strong hover:bg-paper-deep/40 hover:shadow-sm"
     >
       <div className="flex items-start justify-between gap-3">
         <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-paper text-base font-semibold text-ink shadow-sm">
@@ -51,7 +51,7 @@ export function WorkspaceCard({
 
       {assignedToYou > 0 ? (
         <p className="mt-2">
-          <span className="inline-flex items-center rounded-full bg-accent-soft px-2.5 py-0.5 text-xs font-medium text-accent">
+          <span className="inline-flex items-center rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-800">
             {assignedToYou} assigned to you
           </span>
         </p>

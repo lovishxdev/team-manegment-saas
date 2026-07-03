@@ -23,14 +23,8 @@ async function DashboardWorkspaces() {
 
   if (workspaces.length === 0) {
     return (
-      <section className="mt-6 rounded-2xl bg-paper p-6 shadow-sm sm:p-8">
-        <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-base font-semibold text-ink">Your workspaces</h2>
-          <div className="w-full sm:max-w-md">
-            <CreateWorkspaceForm />
-          </div>
-        </div>
-        <div className="rounded-xl border border-dashed border-line-strong px-8 py-14 text-center">
+      <section className={ui.dashboardPanel}>
+        <div className="rounded-xl border border-dashed border-line/80 px-8 py-14 text-center">
           <p className="text-lg font-medium text-ink">
             A blank slate, full of potential.
           </p>
@@ -43,13 +37,7 @@ async function DashboardWorkspaces() {
   }
 
   return (
-    <section className="mt-6 rounded-2xl bg-paper p-6 shadow-sm sm:p-8">
-      <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-base font-semibold text-ink">Your workspaces</h2>
-        <div className="w-full sm:max-w-md">
-          <CreateWorkspaceForm />
-        </div>
-      </div>
+    <section className={ui.dashboardPanel}>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {workspaces.map(({ workspace, role }) => (
           <WorkspaceCard
@@ -75,8 +63,13 @@ async function DashboardWorkspaces() {
 export default function DashboardPage() {
   return (
     <main className="mx-auto w-full max-w-6xl">
-      <div className={SHELL_BRAND_ROW}>
-        <h1 className={ui.pageTitle}>Workspaces</h1>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className={SHELL_BRAND_ROW}>
+          <h1 className={ui.pageTitle}>Workspaces</h1>
+        </div>
+        <div className="w-full sm:max-w-md sm:shrink-0">
+          <CreateWorkspaceForm />
+        </div>
       </div>
 
       <Suspense fallback={<DashboardGridSkeleton />}>

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { formatTaskRef } from "@/lib/whatsapp-task-ref";
 import { taskUrl } from "@/lib/app-url";
 import { sendWhatsAppText } from "@/lib/whatsapp";
 
@@ -24,7 +25,7 @@ export async function notifyTaskAssigned(input: {
   if (!assignee?.phone) return;
 
   const body =
-    `You've been assigned #${input.taskShortId} *${input.taskTitle}* in *${input.workspaceName}*.\n` +
+    `You've been assigned ${formatTaskRef(input.taskTitle)} in *${input.workspaceName}*.\n` +
     `Open: ${taskUrl(input.workspaceId, input.taskShortId)}`;
 
   await sendWhatsAppText(assignee.phone, body);

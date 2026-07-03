@@ -490,6 +490,10 @@ export async function resolveBatchAwareTaskShortId(
   inputShortId: number,
   createdInBatch: number[]
 ): Promise<number> {
+  if (!Number.isInteger(inputShortId) || inputShortId < 1) {
+    return inputShortId;
+  }
+
   const onBoard = await prisma.task.findFirst({
     where: { workspaceId, shortId: inputShortId },
     select: { shortId: true },

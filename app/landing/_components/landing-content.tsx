@@ -567,7 +567,7 @@ function MiniClaude() {
       </div>
       <div className="space-y-1.5 px-2 py-2">
         <div className="rounded-md bg-paper-deep px-2 py-1.5 font-mono text-[9.5px] text-ink-soft">
-          → tools/list <span className="text-accent">✓ 3 tools</span>
+          → tools/list <span className="text-ink-soft">✓ 3 tools</span>
         </div>
         <div className="rounded-md border border-line bg-card px-2 py-1.5 text-[10px] text-ink">
           create_task · update_task · get_board_state
@@ -581,7 +581,7 @@ function Bullet({ children }: { children: React.ReactNode }) {
   return (
     <li className="flex gap-3">
       <span
-        className="mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-accent"
+        className="mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-ink/35"
         aria-hidden
       />
       <span className="text-ink-soft">{children}</span>

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
+  DragOverlay,
   PointerSensor,
   useDraggable,
   useDroppable,
@@ -13,6 +14,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { restrictToWindowEdges } from "@dnd-kit/modifiers";
+import { CSS } from "@dnd-kit/utilities";
 import { createSupabaseBrowser } from "@/lib/supabase-browser";
 import {
   fetchWorkspaceMemberLabelsAction,
@@ -62,7 +64,7 @@ export type BoardSort = "default" | "title" | "due";
 const COLUMNS: {
   status: BoardTask["status"];
   label: string;
-  tint: string;
+  columnClass: string;
   dot: string;
   countBg: string;
   dropRing: string;
@@ -71,7 +73,7 @@ const COLUMNS: {
   {
     status: "TODO",
     label: "To Do",
-    tint: "bg-rose-100",
+    columnClass: "kanban-column kanban-column--todo",
     dot: "bg-rose-500",
     countBg: "bg-white/70",
     dropRing: "ring-rose-400/55",
@@ -80,7 +82,7 @@ const COLUMNS: {
   {
     status: "IN_PROGRESS",
     label: "In Progress",
-    tint: "bg-orange-100",
+    columnClass: "kanban-column kanban-column--progress",
     dot: "bg-orange-500",
     countBg: "bg-white/70",
     dropRing: "ring-orange-400/55",
@@ -89,7 +91,7 @@ const COLUMNS: {
   {
     status: "DONE",
     label: "Done",
-    tint: "bg-violet-100",
+    columnClass: "kanban-column kanban-column--done",
     dot: "bg-violet-500",
     countBg: "bg-white/70",
     dropRing: "ring-violet-400/55",
@@ -120,16 +122,7 @@ function formatDue(iso: string): { label: string; overdue: boolean } {
   return { label, overdue };
 }
 
-function TaskCard({
-  task,
-  onOpen,
-}: {
-  task: BoardTask;
-  onOpen: (task: BoardTask) => void;
-}) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({ id: task.id });
-
+function TaskCardBody({ task }: { task: BoardTask }) {
   const due = task.dueDate ? formatDue(task.dueDate) : null;
   const isOverdue = due?.overdue && task.status !== "DONE";
 
@@ -140,23 +133,7 @@ function TaskCard({
   const cover = imageAttachments[0];
 
   return (
-    <article
-      ref={setNodeRef}
-      {...listeners}
-      {...attributes}
-      data-task-id={task.id}
-      onClick={() => onOpen(task)}
-      style={
-        transform
-          ? { transform: `translate(${transform.x}px, ${transform.y}px) rotate(2deg)` }
-          : undefined
-      }
-      className={`cursor-grab rounded-lg border bg-card p-4 ${
-        isDragging
-          ? "z-10 border-ink/35 shadow-md ring-1 ring-ink/10"
-          : "border-line transition-colors hover:border-line-strong"
-      }`}
-    >
+    <>
       {/* Chips row: scope + priority + free-form tags + add affordance */}
       <div className="flex flex-wrap items-center gap-1.5">
         <span className={`${chipCls} ${tagColor(task.categoryName)}`}>
@@ -197,7 +174,6 @@ function TaskCard({
         </span>
       </div>
 
-      {/* Image preview */}
       {cover && (
         <div className="relative mt-3 overflow-hidden rounded-md border border-line">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -229,7 +205,6 @@ function TaskCard({
         </p>
       )}
 
-      {/* Footer: assignee left, meta right */}
       <div className="mt-4 flex items-center justify-between">
         <div className="flex items-center">
           {task.assignees.length > 0 ? (
@@ -271,6 +246,55 @@ function TaskCard({
           )}
         </div>
       </div>
+    </>
+  );
+}
+
+const taskCardSurface =
+  "rounded-lg border border-line bg-card p-4 shadow-[0_1px_3px_rgba(26,26,26,0.05)]";
+
+function TaskCard({
+  task,
+  onOpen,
+}: {
+  task: BoardTask;
+  onOpen: (task: BoardTask) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } =
+    useDraggable({ id: task.id });
+
+  const style =
+    !isDragging && transform
+      ? { transform: CSS.Translate.toString(transform) }
+      : undefined;
+
+  return (
+    <article
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      data-task-id={task.id}
+      onClick={() => {
+        if (!isDragging) onOpen(task);
+      }}
+      style={style}
+      className={`${taskCardSurface} touch-none transition-[border-color,box-shadow,opacity] duration-150 hover:border-line-strong hover:shadow-[0_4px_12px_rgba(26,26,26,0.08)] active:cursor-grabbing ${
+        isDragging
+          ? "pointer-events-none opacity-0"
+          : "cursor-grab"
+      }`}
+    >
+      <TaskCardBody task={task} />
+    </article>
+  );
+}
+
+function TaskCardOverlay({ task }: { task: BoardTask }) {
+  return (
+    <article
+      className={`${taskCardSurface} w-[min(100%,22rem)] cursor-grabbing border-ink/35 shadow-lg ring-1 ring-ink/10 rotate-2`}
+    >
+      <TaskCardBody task={task} />
     </article>
   );
 }
@@ -280,22 +304,16 @@ function TaskCard({
  * Sized to match the dragged card so the drop feels 1:1.
  */
 function DropPlaceholder({
-  active,
   height,
   dropActive,
 }: {
-  active: boolean;
-  height: number | null;
+  height: number;
   dropActive: string;
 }) {
   return (
     <div
-      style={height ? { height } : undefined}
-      className={`flex min-h-28 flex-col items-center justify-center gap-2 rounded-lg border border-dashed p-4 transition-all ${
-        active
-          ? dropActive
-          : "border-line-strong bg-card/40 text-ink-faint/80"
-      }`}
+      style={{ height }}
+      className={`flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed p-4 transition-colors duration-200 ${dropActive}`}
     >
       <svg
         viewBox="0 0 20 20"
@@ -308,8 +326,34 @@ function DropPlaceholder({
         <path d="M13.5 17.2a2 2 0 0 1-1.9 1.3H6a2.5 2.5 0 0 1-2.5-2.5V8.4A2 2 0 0 1 4.8 6.5" />
       </svg>
       <span className="font-mono text-[11px] font-medium tracking-wide">
-        {active ? "Release to move here" : "Drop task here"}
+        Release to move here
       </span>
+    </div>
+  );
+}
+
+/** Expands/collapses the drop slot while dragging over a column. */
+function AnimatedDropSlot({
+  open,
+  height,
+  dropActive,
+}: {
+  open: boolean;
+  height: number | null;
+  dropActive: string;
+}) {
+  const targetHeight = height ?? 112;
+
+  return (
+    <div
+      aria-hidden={!open}
+      className="overflow-hidden transition-[height,opacity] duration-300 ease-out"
+      style={{
+        height: open ? targetHeight : 0,
+        opacity: open ? 1 : 0,
+      }}
+    >
+      <DropPlaceholder height={targetHeight} dropActive={dropActive} />
     </div>
   );
 }
@@ -317,7 +361,7 @@ function DropPlaceholder({
 function Column({
   status,
   label,
-  tint,
+  columnClass,
   dot,
   countBg,
   dropRing,
@@ -329,7 +373,7 @@ function Column({
 }: {
   status: BoardTask["status"];
   label: string;
-  tint: string;
+  columnClass: string;
   dot: string;
   countBg: string;
   dropRing: string;
@@ -346,7 +390,7 @@ function Column({
   return (
     <section
       ref={setNodeRef}
-      className={`rounded-xl p-3 transition ${tint} ${
+      className={`transition-[box-shadow] duration-300 ease-out ${columnClass} ${
         isOver ? `ring-2 ${dropRing} ring-offset-2 ring-offset-shell` : ""
       }`}
     >
@@ -366,13 +410,13 @@ function Column({
           <TaskCard key={task.id} task={task} onOpen={onOpen} />
         ))}
         {dropHint && (
-          <DropPlaceholder
-            active={isOver}
+          <AnimatedDropSlot
+            open={isOver}
             height={dragHeight}
             dropActive={dropActive}
           />
         )}
-        {!dropHint && tasks.length === 0 && (
+        {tasks.length === 0 && !(dropHint && isOver) && (
           <p className="rounded-md border border-dashed border-line-strong px-3 py-7 text-center text-xs text-ink-faint">
             Drop tasks here
           </p>
@@ -430,6 +474,7 @@ export function TaskBoard({
   const [dragSource, setDragSource] = useState<BoardTask["status"] | null>(
     null
   );
+  const [activeTask, setActiveTask] = useState<BoardTask | null>(null);
   const [dragHeight, setDragHeight] = useState<number | null>(null);
   const [members, setMembers] = useState<BoardMember[]>(() =>
     seedMembersFromTasks(tasks)
@@ -547,10 +592,8 @@ export function TaskBoard({
     const taskId = String(event.active.id);
     const task = localTasks.find((t) => t.id === taskId);
     setDragSource(task?.status ?? null);
+    setActiveTask(task ?? null);
 
-    // dnd-kit's measured rect (active.rect.current.initial) is not reliably
-    // populated yet inside onDragStart -- for tall cards (image previews) it
-    // lagged behind. Measure the DOM node directly instead.
     const node = document.querySelector(`[data-task-id="${taskId}"]`);
     setDragHeight(
       node ? node.getBoundingClientRect().height : null
@@ -559,6 +602,7 @@ export function TaskBoard({
 
   function handleDragEnd(event: DragEndEvent) {
     setDragSource(null);
+    setActiveTask(null);
     setDragHeight(null);
     const taskId = String(event.active.id);
     const target = event.over?.id as BoardTask["status"] | undefined;
@@ -663,16 +707,17 @@ export function TaskBoard({
         onDragEnd={handleDragEnd}
         onDragCancel={() => {
           setDragSource(null);
+          setActiveTask(null);
           setDragHeight(null);
         }}
       >
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-3">
           {COLUMNS.map((col) => (
             <Column
               key={col.status}
               status={col.status}
               label={col.label}
-              tint={col.tint}
+              columnClass={col.columnClass}
               dot={col.dot}
               countBg={col.countBg}
               dropRing={col.dropRing}
@@ -684,6 +729,9 @@ export function TaskBoard({
             />
           ))}
         </div>
+        <DragOverlay dropAnimation={null}>
+          {activeTask ? <TaskCardOverlay task={activeTask} /> : null}
+        </DragOverlay>
       </DndContext>
 
       {openTask && (

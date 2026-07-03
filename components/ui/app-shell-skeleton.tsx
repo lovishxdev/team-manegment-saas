@@ -4,6 +4,7 @@ import {
   SHELL_SIDEBAR_X,
   SHELL_TOP,
 } from "@/components/layout/app-shell-shared";
+import { ui } from "@/components/ui/ui";
 
 function Pulse({ className }: { className: string }) {
   return (
@@ -67,11 +68,7 @@ export function AppShellLoading() {
 
 export function DashboardGridSkeleton() {
   return (
-    <section className="mt-6 rounded-2xl bg-paper p-6 shadow-sm sm:p-8">
-      <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <Pulse className="h-5 w-36" />
-        <Pulse className="h-10 w-full sm:max-w-md" />
-      </div>
+    <section className={ui.dashboardPanel}>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {Array.from({ length: 3 }).map((_, i) => (
           <Pulse key={i} className="h-40 rounded-xl" />

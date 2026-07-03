@@ -58,6 +58,7 @@ import {
   type Channel,
 } from "@/lib/channel-formatters";
 import { displayUser } from "@/lib/username";
+import { formatTaskRef } from "@/lib/whatsapp-task-ref";
 
 export type BotWorkspaceCtx = {
   workspaceId: string;
@@ -464,7 +465,7 @@ export async function runUnassignTask(
 ): Promise<string> {
   const task = await unassignTask(ctx.workspaceId, userId, shortId);
   return channel === "whatsapp"
-    ? `Unassigned everyone from #${task.shortId} *${task.title}* in ${ctx.workspaceName}.`
+    ? `Unassigned everyone from ${formatTaskRef(task.title)} in ${ctx.workspaceName}.`
     : `Unassigned all members from task #${task.shortId} "${task.title}" in workspace "${ctx.workspaceName}".`;
 }
 
@@ -485,7 +486,7 @@ export async function runAddTaskUpdate(
   });
   const who = displayUser(created.author);
   if (channel === "whatsapp") {
-    return `Posted update on #${created.taskShortId} *${created.taskTitle}* in ${ctx.workspaceName} as @${who}.`;
+    return `Posted on ${formatTaskRef(created.taskTitle)} in ${ctx.workspaceName} as @${who}.`;
   }
   return `Posted update on task #${created.taskShortId} "${created.taskTitle}" in workspace "${ctx.workspaceName}".`;
 }

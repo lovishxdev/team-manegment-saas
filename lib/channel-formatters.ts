@@ -2,6 +2,10 @@ import type { TaskPriority, TaskStatus } from "@/lib/generated/prisma/client";
 import { taskUrl } from "@/lib/app-url";
 import { assetFileName } from "@/lib/services/project";
 import { displayUser } from "@/lib/username";
+import {
+  formatTaskListLine,
+  formatTaskRef,
+} from "@/lib/whatsapp-task-ref";
 
 export type BoardTask = {
   shortId: number;
@@ -37,16 +41,22 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
   DONE: "Done",
 };
 
+const STATUS_CHAT: Record<TaskStatus, string> = {
+  TODO: "to do",
+  IN_PROGRESS: "in progress",
+  DONE: "done",
+};
+
 function formatTaskLine(task: BoardTask, channel: Channel): string {
   if (channel === "whatsapp") {
-    let line = `#${task.shortId} *${task.title}*`;
-    if (task.priority === "HIGH") line += " · high";
-    if (task.tags?.length) line += ` · ${task.tags.slice(0, 3).join(", ")}`;
-    if (task.dueDate) line += ` · due ${formatChatDate(task.dueDate)}`;
+    const meta: string[] = [STATUS_CHAT[task.status]];
+    if (task.priority === "HIGH") meta.push("high");
+    if (task.tags?.length) meta.push(task.tags.slice(0, 3).join(", "));
+    if (task.dueDate) meta.push(`due ${formatChatDate(task.dueDate)}`);
     if (task.assignees.length) {
-      line += ` · ${task.assignees.map((u) => `@${displayUser(u)}`).join(", ")}`;
+      meta.push(task.assignees.map((u) => `@${displayUser(u)}`).join(", "));
     }
-    return line;
+    return formatTaskListLine(task.title, meta);
   }
 
   let line = `  #${task.shortId} ${task.title} [${task.categoryName}, ${task.priority}]`;
@@ -170,13 +180,13 @@ export function formatTaskSummary(
   }
 
   if (channel === "whatsapp") {
-    let line = `#${task.shortId} *${task.title}*`;
-    if (task.priority === "HIGH") line += " · high";
-    if (task.dueDate) line += ` · due ${formatChatDate(task.dueDate)}`;
+    const meta: string[] = [];
+    if (task.priority === "HIGH") meta.push("high");
+    if (task.dueDate) meta.push(`due ${formatChatDate(task.dueDate)}`);
     if (assigneeUsers.length) {
-      line += ` · ${assigneeUsers.map((u) => `@${displayUser(u)}`).join(", ")}`;
+      meta.push(assigneeUsers.map((u) => `@${displayUser(u)}`).join(", "));
     }
-    return line;
+    return formatTaskListLine(task.title, meta);
   }
 
   return `#${task.shortId} "${task.title}" (${parts.join(", ")}) in ${workspaceName}`;
@@ -212,7 +222,7 @@ export function formatTaskUpdates(
 ): string {
   if (updates.length === 0) {
     return channel === "whatsapp"
-      ? `No updates on task #${shortId} yet.`
+      ? `No updates on *${title}* yet.`
       : `No updates on task #${shortId} "${title}" yet.`;
   }
 
@@ -227,7 +237,7 @@ export function formatTaskUpdates(
 
   const header =
     channel === "whatsapp"
-      ? `*Updates · #${shortId} ${title}* (${updates.length})`
+      ? `*Updates · ${formatTaskRef(title)}* (${updates.length})`
       : `Updates on task #${shortId} "${title}" (${updates.length}):`;
 
   return `${header}\n\n${lines.join("\n\n")}`;
@@ -299,7 +309,7 @@ export function formatTaskDetail(
 
   if (channel === "whatsapp") {
     return (
-      `*Task #${task.shortId} · ${task.title}*\n` +
+      `*${formatTaskRef(task.title)}*\n` +
       `Workspace: ${workspaceName}\n` +
       `Status: ${task.status.replace("_", " ")}\n` +
       `Category: ${task.category.name}\n` +
@@ -595,7 +605,7 @@ export function formatTaskRetrievalResults(
 ): string {
   if (hits.length === 0) {
     return channel === "whatsapp"
-      ? `I couldn't find a task matching that in *${workspaceName}*. Try the exact #N or send *show board*.`
+      ? `I couldn't find a task matching that in *${workspaceName}*. Try the task name or send *what's on the board*.`
       : `No task matched that query in "${workspaceName}".`;
   }
 
@@ -605,7 +615,7 @@ export function formatTaskRetrievalResults(
     const lines = hits.map((h) => {
       const match = pct(h.score);
       const status = h.status.replace("_", " ");
-      return `#${h.shortId} *${h.title}* (${status}) — ${match} match`;
+      return `${formatTaskRef(h.title, h.shortId, { id: hits.length > 1 ? "suffix" : "never" })} (${status}) — ${match} match`;
     });
     const header =
       hits.length === 1
@@ -613,8 +623,8 @@ export function formatTaskRetrievalResults(
         : `${hits.length} possible matches in *${workspaceName}*:`;
     const hint =
       hits.length > 1
-        ? "\n\nSay which #N you mean, or ask about the top one."
-        : `\n\nFollow up on #${hits[0].shortId} for details or updates.`;
+        ? "\n\nWhich one did you mean? Say the task name."
+        : `\n\nAsk me about *${hits[0].title}* for details or updates.`;
     return `${header}\n${lines.join("\n")}${hint}`;
   }
 
@@ -696,7 +706,7 @@ export function formatTaskContextPack(
 
   if (channel === "whatsapp") {
     return (
-      `*#${t.shortId} · ${t.title}* · ${workspaceName}\n` +
+      `*${formatTaskRef(t.title)}* · ${workspaceName}\n` +
       matchLine +
       `Status: ${status} · ${t.category} · ${t.priority}\n` +
       `Assignees: ${assignees}\n` +
@@ -725,7 +735,7 @@ export function formatTaskContextFailure(
     const lines = alternatives.map((a) => {
       const pct = Math.round(a.score * 100);
       return channel === "whatsapp"
-        ? `#${a.shortId} *${a.title}* (${pct}%)`
+        ? `${formatTaskRef(a.title, a.shortId, { id: "suffix" })} (${pct}%)`
         : `#${a.shortId} "${a.title}" (${pct}%)`;
     });
     return channel === "whatsapp"
@@ -760,7 +770,7 @@ export function formatAssetDetail(
       ? "_Unknown_"
       : "Unknown";
   const taskLine = asset.task
-    ? `#${asset.task.shortId} "${asset.task.title}"`
+    ? formatTaskRef(asset.task.title)
     : channel === "whatsapp"
       ? "_Not attached to a task_"
       : "Not attached to a task";

@@ -1,4 +1,5 @@
 import type { ActionOutcome } from "@/lib/channel-formatters";
+import { formatTaskRef } from "@/lib/whatsapp-task-ref";
 
 /** Read-only tools — output can go to user as-is (after light cleanup). */
 export const INQUIRY_ACTIONS = new Set([
@@ -54,11 +55,15 @@ export function humanizeToolMessage(action: string | undefined, raw: string): st
   const msg = stripTechnicalNoise(raw, action);
   if (!msg) return "";
 
-  if (msg.startsWith("Ready to delete #")) {
+  if (msg.startsWith("Ready to delete")) {
+    const titleMatch = msg.match(
+      /Ready to delete\s+(?:#\d+\s+)?(?:"([^"]+)"|\*([^*]+)\*)/i
+    );
+    if (titleMatch) {
+      const title = (titleMatch[1] ?? titleMatch[2]).trim();
+      return `I'll delete ${formatTaskRef(title)} — tap Confirm below.`;
+    }
     return msg.replace(
-      "Ready to delete",
-      "I'll delete"
-    ).replace(
       ". I'll send Confirm / Cancel buttons next.",
       " — tap Confirm below."
     );
@@ -67,40 +72,63 @@ export function humanizeToolMessage(action: string | undefined, raw: string): st
     return msg;
   }
 
-  const created = msg.match(
-    /^Created\s+#(\d+)\s+\*([^*]+)\*(.*)$/i
-  ) ?? msg.match(/^#(\d+)\s+\*([^*]+)\*(.*)$/);
+  const created =
+    msg.match(/^Created\s+\*([^*]+)\*(.*)$/i) ??
+    msg.match(/^Created\s+#\d+\s+\*([^*]+)\*(.*)$/i) ??
+    msg.match(/^#\d+\s+\*([^*]+)\*(.*)$/);
   if (created && (action === "create_task" || msg.toLowerCase().startsWith("created"))) {
-    const [, id, title, rest] = created;
+    const [, title, rest] = created;
     const hints = humanizeTaskHints(rest);
-    return `Added *${title.trim()}* as #${id}${hints}.`;
+    return `Added ${formatTaskRef(title.trim())}${hints}.`;
   }
 
-  const updated = msg.match(
-    /^#(\d+)\s+\*([^*]+)\*.*\bis now\s+(\w+(?:\s+\w+)?)\.?$/i
-  );
+  const updated =
+    msg.match(/^Updated\s+\*([^*]+)\*\s*→\s*(.+)$/i) ??
+    msg.match(/^#\d+\s+\*([^*]+)\*.*\bis now\s+(\w+(?:\s+\w+)?)\.?$/i);
   if (updated && action === "update_task") {
-    const [, id, title, statusRaw] = updated;
+    const title = updated[1].trim();
+    const statusRaw = updated[2].trim().replace(/\.$/, "");
     const statusKey = statusRaw.toUpperCase().replace(" ", "_");
     const status = STATUS_PHRASE[statusKey] ?? statusRaw.toLowerCase();
-    return `Updated #${id} *${title.trim()}* → ${status}.`;
+    return `Updated ${formatTaskRef(title)} → ${status}.`;
   }
 
-  if (msg.match(/^Updated #\d+/i) || msg.match(/^Marked #\d+/i)) {
+  if (msg.match(/^Updated\s+\*[^*]+\*\s*→/i)) {
     return msg;
+  }
+  if (msg.match(/^Updated #\d+/i) || msg.match(/^Marked #\d+/i)) {
+    return msg.replace(
+      /^Updated\s+#\d+\s+\*([^*]+)\*\s*→\s*/i,
+      (_, title) => `Updated ${formatTaskRef(title.trim())} → `
+    );
   }
 
   if (msg.startsWith("No task #")) {
-    const n = msg.match(/#(\d+)/)?.[1];
-    return n
-      ? `I couldn't find #${n} on your board.`
-      : "I couldn't find that task.";
+    return "I couldn't find that task on your board.";
   }
   if (msg.startsWith("No matching tasks")) {
-    return "Nothing matched that — try #N or a clearer name.";
+    return "Nothing matched that — try the task name or say *what's on the board*.";
   }
   if (msg.startsWith("No asset") || msg.startsWith("No files")) {
     return msg.replace(/^No files in \*([^*]+)\* yet\./, "No uploads in *$1* yet — send a photo or doc.");
+  }
+  if (msg.startsWith("Posted update on") || msg.startsWith("Posted on")) {
+    const m =
+      msg.match(/^Posted (?:update )?on\s+\*([^*]+)\*/i) ??
+      msg.match(/^Posted (?:update )?on\s+#\d+\s+\*([^*]+)\*/i);
+    if (m) return `Posted on ${formatTaskRef(m[1].trim())}.`;
+  }
+  if (msg.startsWith("Deleted ")) {
+    const m =
+      msg.match(/^Deleted\s+\*([^*]+)\*/i) ??
+      msg.match(/^Deleted\s+#\d+\s+"([^"]+)"/i);
+    if (m) return `Deleted ${formatTaskRef(m[1].trim())}.`;
+  }
+  if (msg.match(/^Unassigned everyone from/i)) {
+    return msg.replace(
+      /^Unassigned everyone from\s+#\d+\s+\*([^*]+)\*/i,
+      (_, title) => `Unassigned everyone from ${formatTaskRef(title.trim())}`
+    );
   }
   if (msg.startsWith("I need ")) {
     return msg;
@@ -109,7 +137,9 @@ export function humanizeToolMessage(action: string | undefined, raw: string): st
     return msg;
   }
   if (msg.startsWith("Attached \"")) {
-    return msg.replace(/ in [^.]+\.$/, ".");
+    return msg
+      .replace(/ to #\d+\s+\*([^*]+)\*/i, (_, title) => ` to ${formatTaskRef(title.trim())}`)
+      .replace(/ in [^.]+\.$/, ".");
   }
   if (msg.startsWith("Saved link")) {
     return msg.replace(/ in \*[^*]+\*/, "");
@@ -188,9 +218,12 @@ export function formatWhatsAppUserReply(
   }
 
   if (failures.length > 0 && successes.length === 0) {
-    let body = failures
-      .map((o) => humanizeToolMessage(o.action, o.message))
-      .join("\n");
+    const unique = [
+      ...new Set(
+        failures.map((o) => humanizeToolMessage(o.action, o.message))
+      ),
+    ];
+    let body = unique.join("\n");
     if (budgetExhausted) {
       body += "\n\nI ran out of steps — send the rest in a new message.";
     }
@@ -201,8 +234,13 @@ export function formatWhatsAppUserReply(
     for (const o of successes) {
       lines.push(`✓ ${humanizeToolMessage(o.action, o.message)}`);
     }
-    for (const o of failures) {
-      lines.push(`✗ ${humanizeToolMessage(o.action, o.message)}`);
+    const failMsgs = [
+      ...new Set(
+        failures.map((o) => humanizeToolMessage(o.action, o.message))
+      ),
+    ];
+    for (const msg of failMsgs) {
+      lines.push(`✗ ${msg}`);
     }
     let body = lines.join("\n");
     body += "\n\nFix the ✗ lines and try again.";

@@ -2,7 +2,7 @@
 
 /*
  * Euclis design tokens — light dashboard theme.
- * Soft gray shell, white panels, subtle borders, mint accent.
+ * Soft gray shell, white panels, subtle borders, ink emphasis.
  */
 @theme {
   /* Surfaces — shell = gray canvas, paper = white cards */
@@ -21,10 +21,10 @@
   --color-line: #e5e7eb;
   --color-line-strong: #d1d5db;
 
-  /* Accent */
-  --color-accent: #00c896;
-  --color-accent-bright: #00e1ab;
-  --color-accent-soft: rgba(0, 200, 150, 0.12);
+  /* UI emphasis — ink (WhatsApp green lives in --color-whatsapp only) */
+  --color-accent: #1a1a1a;
+  --color-accent-bright: #374151;
+  --color-accent-soft: rgba(26, 26, 26, 0.06);
   --color-on-accent: #ffffff;
 
   /* Claude brand */
@@ -148,6 +148,57 @@ body::before {
   }
 }
 
+/* Text highlight — neutral ink tint (not mint accent). */
 ::selection {
-  background: rgba(0, 200, 150, 0.25);
+  background: rgba(26, 26, 26, 0.14);
+  color: var(--color-ink);
+}
+
+::-moz-selection {
+  background: rgba(26, 26, 26, 0.14);
+  color: var(--color-ink);
+}
+
+/* Dashboard workspace panel — soft float over the mesh gradient (no hard border). */
+.dashboard-panel {
+  margin-top: 1.5rem;
+  border-radius: 1rem;
+  padding: 1.5rem;
+  background: rgba(255, 255, 255, 0.68);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.75),
+    0 4px 20px rgba(140, 160, 200, 0.07),
+    0 16px 40px rgba(120, 140, 180, 0.06);
+}
+
+@media (min-width: 640px) {
+  .dashboard-panel {
+    padding: 2rem;
+  }
+}
+
+/* Kanban columns — float shadow on solid status tints (full opacity). */
+.kanban-column {
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    0 4px 20px rgba(140, 160, 200, 0.07),
+    0 16px 40px rgba(120, 140, 180, 0.06);
+}
+
+.kanban-column--todo {
+  background: #ffe4e6; /* rose-100 */
+}
+
+.kanban-column--progress {
+  background: #ffedd5; /* orange-100 */
+}
+
+.kanban-column--done {
+  background: #ede9fe; /* violet-100 */
 }

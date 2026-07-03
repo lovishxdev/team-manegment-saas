@@ -9,9 +9,9 @@ function Pulse({ className }: { className: string }) {
 export function BoardContentSkeleton() {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-      <Pulse className="h-80" />
-      <Pulse className="h-80" />
-      <Pulse className="h-80" />
+      <div aria-hidden className="kanban-column kanban-column--todo h-80 animate-pulse" />
+      <div aria-hidden className="kanban-column kanban-column--progress h-80 animate-pulse" />
+      <div aria-hidden className="kanban-column kanban-column--done h-80 animate-pulse" />
     </div>
   );
 }

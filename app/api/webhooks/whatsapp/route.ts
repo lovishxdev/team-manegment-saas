@@ -16,7 +16,6 @@ import {
   listAssets,
   resolveUserWorkspaceContext,
   ServiceError,
-  resolveBatchAwareTaskShortId,
   updateAssetTagsByRef,
   updateTask,
   uploadAsset,
@@ -26,9 +25,20 @@ import {
   listWorkspaceLinks,
 } from "@/lib/services/links";
 import {
+  lastTaskShortIdFromTurns,
+  resolveTaskUpdateBody,
+} from "@/lib/whatsapp-task-context";
+import {
+  formatToolExecutionError,
+  resolveWhatsAppTaskShortId,
+  validateWhatsAppToolInput,
+} from "@/lib/whatsapp-tool-guard";
+import { formatTaskRef } from "@/lib/whatsapp-task-ref";
+import {
   getRecentConversation,
   markWhatsAppChatInitiated,
   recordExchange,
+  type ConversationTurn,
 } from "@/lib/services/conversation";
 import { findOrCreateWorkspaceByName, getWorkspaceMembers, renameWorkspace, acceptInvite, promoteMember, demoteMemberById, resolveWorkspaceMember, formatMemberRole } from "@/lib/services/workspace";
 import { displayUser } from "@/lib/username";
@@ -212,7 +222,7 @@ Convert the user's message into tool calls when they want to act on their board:
 - search_tasks: filter tasks by tag, category, status, assignee, or keywords (structured search).
 - list_task_updates: when they ask what's happening, what's pending, or recent activity on a task (#N). Prefer this over read_task for status questions.
 - read_task: full task metadata (status, assignees, tags, description). Skip if list_task_updates already answers their question.
-- add_task_update: when they want to post a note on a specific task (#N). Not for editing the task description.
+- add_task_update: post a progress note on a task (#N) — "I started X", "blocked on Y", "shipped Z". Use the user's words as body. ALWAYS call this when they report progress or confirm they want to post an update. Never tell them to use the web app instead.
 - delete_task: when they explicitly want to remove/delete a task (only when clearly intended). This stages a Confirm/Cancel button flow — never claim the task is deleted until they confirm.
 - get_board_state: when they ask what's on the board, task lists, or progress
 - create_workspace: when they want to create/start a new workspace, project, or board (e.g. "create a workspace called Marketing")
@@ -258,10 +268,14 @@ Rules:
 - Infer priority only when stated or strongly implied (e.g. "urgent" = HIGH); otherwise omit it.
 - Resolve relative due dates ("Friday", "tomorrow", "next week") to a concrete YYYY-MM-DD date using today's date above.
 - "assign to me" means assignee "me"; multiple people can be assigned via the assignees array (e.g. ["me", "aarav"]).
-- Use the conversation history to resolve references: "that task" / "it" usually means the task #N mentioned in your most recent reply.
+- Use the conversation history to resolve references: "that task" / "it" / a task name usually means what you just discussed.
+- Never ask the user for "#N" or "short ID" — they use task names. If unclear, list task titles.
 - If the user names a specific workspace/project that is NOT "${activeWorkspaceName}", pass it as the workspace parameter; otherwise always omit workspace.
 - If the message is NOT an actionable board request (greetings, questions, chit-chat), do not call a tool. Reply with one warm, brief sentence — not a feature list.
 - Task description = stable requirements/spec. Task updates = chronological team notes.
+- Progress reports ("I started…", "blocked on…", "finished…") on the task you just discussed → add_task_update with shortId from history (#N) and body = their message (verbatim).
+- If you offered to post an update and they say yes / "post that" → add_task_update immediately with the text you offered (or their earlier message).
+- You CAN post task updates from WhatsApp via add_task_update. Never say you cannot or send them to the web app for notes.
 - Named task without #N: ask_task with their full question (preferred) OR find_task then list_task_updates.
 - Status / "what's going on" questions: ask_task ONLY — do not also call find_task, list_task_updates, or read_task.
 - After tools run, your final text (if any) should sound like a teammate texting back — 2–4 short sentences max. Never paste labeled fields (Status:, Category:, etc.).
@@ -396,14 +410,19 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "add_task_update",
     description:
-      "Post a team update on a task (#N) — blockers, questions, review notes. Not for editing the task description.",
+      "Post a progress note on a task thread (#N). Use when the user reports status, blockers, or confirms they want something posted.",
     input_schema: {
       type: "object",
       properties: {
-        shortId: { type: "integer", description: "Task short ID (#N)" },
+        shortId: {
+          type: "integer",
+          description:
+            "Task #N. Use the task from conversation context if the user did not repeat the number.",
+        },
         body: {
           type: "string",
-          description: "The update message (blocker, question, feedback, status note)",
+          description:
+            "The note text — copy the user's status report verbatim (e.g. 'Started 2 Reddit posts'). Required.",
         },
         workspace: {
           type: "string",
@@ -1306,9 +1325,23 @@ async function handleMediaMessage(
 
   revalidateUserWorkspaces(userId, ctx.workspaceId);
 
+  let taskTitle: string | undefined;
+  if (taskShortId) {
+    try {
+      const task = await getTask(ctx.workspaceId, userId, taskShortId);
+      taskTitle = task.title;
+    } catch {
+      taskTitle = undefined;
+    }
+  }
+
   const reply =
     `Saved "${message.fileName}" to ${ctx.workspaceName}` +
-    (taskShortId ? `, attached to task #${taskShortId}` : "'s assets") +
+    (taskTitle
+      ? `, attached to ${formatTaskRef(taskTitle)}`
+      : taskShortId
+        ? ", attached to that task"
+        : "'s assets") +
     (tags.length ? ` (tags: ${tags.join(", ")})` : "") +
     ".";
   await sendWhatsAppText(message.from, reply);
@@ -1332,8 +1365,11 @@ type WhatsAppSession = {
   pendingRemoveMember: boolean;
   pendingDeleteAsset: boolean;
   whiteboardImages: Buffer[] | null;
-  lastCreatedTask: { shortId: number; workspaceId: string } | null;
+  lastCreatedTask: { shortId: number; workspaceId: string; title: string } | null;
   workspacePickerSent: boolean;
+  userMessage: string;
+  conversationTurns: ConversationTurn[];
+  lastDiscussedTaskShortId: number | null;
 };
 
 async function fetchBoardReply(
@@ -1620,7 +1656,7 @@ async function handleInteractiveMessage(
       });
       await clearPending(from);
       revalidateUserWorkspaces(userId, pending.workspaceId);
-      const reply = `Deleted #${task.shortId} "${task.title}" from ${pending.workspaceName}.`;
+      const reply = `Deleted ${formatTaskRef(task.title)} from ${pending.workspaceName}.`;
       await sendWhatsAppText(from, reply);
       await recordExchange(userId, userText, reply).catch(() => {});
       return;
@@ -1640,7 +1676,7 @@ async function handleInteractiveMessage(
           : task.status === "IN_PROGRESS"
             ? "in progress"
             : "to do";
-      const reply = `Updated #${task.shortId} *${task.title}* → ${statusLabel}.`;
+      const reply = `Updated ${formatTaskRef(task.title)} → ${statusLabel}.`;
       await sendWhatsAppText(from, reply);
       await recordExchange(userId, userText, reply).catch(() => {});
       return;
@@ -1759,6 +1795,8 @@ async function handleMessage(
 
   progress?.beginSlowPing(queued);
 
+  const lastDiscussedTaskShortId = lastTaskShortIdFromTurns(history);
+
   const anthropic = new Anthropic();
   const messages: Anthropic.MessageParam[] = [
     ...history,
@@ -1783,6 +1821,9 @@ async function handleMessage(
     whiteboardImages: null,
     lastCreatedTask: null,
     workspacePickerSent: false,
+    userMessage: text,
+    conversationTurns: history,
+    lastDiscussedTaskShortId,
   };
 
   try {
@@ -1959,7 +2000,7 @@ async function handleMessage(
     if (pending) {
       await sendWhatsAppButtons(
         from,
-        `Delete *#${pending.shortId}* "${pending.taskTitle}"?`,
+        `Delete ${formatTaskRef(pending.taskTitle)}?`,
         [
           { id: BUTTON.deleteConfirm(pending.shortId), title: "🗑 Delete" },
           { id: BUTTON.deleteCancel, title: "✖ Cancel" },
@@ -1968,15 +2009,15 @@ async function handleMessage(
       ).catch(() => {});
     }
   } else if (session.lastCreatedTask) {
-    const { shortId, workspaceId } = session.lastCreatedTask;
+    const { shortId, workspaceId, title } = session.lastCreatedTask;
     await sendWhatsAppButtons(
       from,
-      `Update *#${shortId}* or open it on the web.`,
+      `Mark ${formatTaskRef(title)} in progress or done — or open it on the web.`,
       [
         { id: BUTTON.taskStart(shortId), title: "▶ In progress" },
         { id: BUTTON.taskDone(shortId), title: "✅ Done" },
       ],
-      { header: `Task #${shortId}`, footer: "Tap to update status" }
+      { header: title.slice(0, 60), footer: "Tap to update status" }
     ).catch(() => {});
     await sendWhatsAppCtaUrl(
       from,
@@ -2062,6 +2103,9 @@ async function executeAction(
   input: { workspace?: string; [key: string]: unknown },
   session: WhatsAppSession
 ): Promise<string> {
+  const preflight = validateWhatsAppToolInput(action, input, session);
+  if (!preflight.ok) return preflight.message;
+
   try {
     const explicitWorkspace =
       typeof input.workspace === "string" && input.workspace.trim()
@@ -2144,6 +2188,7 @@ async function executeAction(
         session.lastCreatedTask = {
           shortId: task.shortId,
           workspaceId: ctx.workspaceId,
+          title: task.title,
         };
         revalidateUserWorkspaces(userId, ctx.workspaceId);
         waWebhookLog("task created", {
@@ -2152,7 +2197,7 @@ async function executeAction(
           shortId: task.shortId,
         });
         return (
-          `Created #${task.shortId} *${task.title}*` +
+          `Created *${task.title}*` +
           (task.priority === "HIGH" ? " · high" : "") +
           (task.dueDate
             ? ` · due ${task.dueDate.toISOString().slice(0, 10)}`
@@ -2161,11 +2206,13 @@ async function executeAction(
       }
 
       case "update_task": {
-        const shortId = await resolveBatchAwareTaskShortId(
+        const resolved = await resolveWhatsAppTaskShortId(
           ctx.workspaceId,
-          Number(input.shortId),
-          session.createdTaskShortIds
+          input.shortId,
+          session
         );
+        if (!resolved.ok) return resolved.message;
+        const shortId = resolved.shortId;
 
         const assigneeUpdate = resolveAssigneesUpdate(
           input.assignees,
@@ -2196,15 +2243,18 @@ async function executeAction(
             : task.status === "IN_PROGRESS"
               ? "in progress"
               : "to do";
-        return `Updated #${task.shortId} *${task.title}* → ${statusLabel}.`;
+        return `Updated *${task.title}* → ${statusLabel}.`;
       }
 
       case "read_task": {
-        const shortId = await resolveBatchAwareTaskShortId(
+        const resolved = await resolveWhatsAppTaskShortId(
           ctx.workspaceId,
-          Number(input.shortId),
-          session.createdTaskShortIds
+          input.shortId,
+          session
         );
+        if (!resolved.ok) return resolved.message;
+        const shortId = resolved.shortId;
+
         const task = await getTask(ctx.workspaceId, userId, shortId);
         const recentUpdates = await getRecentTaskUpdates(
           ctx.workspaceId,
@@ -2221,13 +2271,22 @@ async function executeAction(
       }
 
       case "add_task_update": {
-        const shortId = await resolveBatchAwareTaskShortId(
+        const resolved = await resolveWhatsAppTaskShortId(
           ctx.workspaceId,
-          Number(input.shortId),
-          session.createdTaskShortIds
+          input.shortId,
+          session
         );
-        const body = String(input.body ?? "").trim();
-        if (!body) return "I need the update message to post.";
+        if (!resolved.ok) return resolved.message;
+        const shortId = resolved.shortId;
+
+        const body = resolveTaskUpdateBody(
+          input.body,
+          session.userMessage,
+          session.conversationTurns
+        );
+        if (!body) {
+          return "What should the note say?";
+        }
         const result = await runAddTaskUpdate(
           ctx,
           userId,
@@ -2235,16 +2294,20 @@ async function executeAction(
           body,
           "whatsapp"
         );
+        session.lastDiscussedTaskShortId = shortId;
         revalidateUserWorkspaces(userId, ctx.workspaceId);
         return result;
       }
 
       case "list_task_updates": {
-        const shortId = await resolveBatchAwareTaskShortId(
+        const resolved = await resolveWhatsAppTaskShortId(
           ctx.workspaceId,
-          Number(input.shortId),
-          session.createdTaskShortIds
+          input.shortId,
+          session
         );
+        if (!resolved.ok) return resolved.message;
+        const shortId = resolved.shortId;
+
         const limit =
           input.limit !== undefined ? Number(input.limit) : undefined;
         return runListTaskUpdates(
@@ -2257,13 +2320,14 @@ async function executeAction(
       }
 
       case "delete_task": {
-        const shortId = Number(input.shortId);
-        const { board } = await getBoardState(ctx.workspaceId, userId);
-        const all = [...board.TODO, ...board.IN_PROGRESS, ...board.DONE];
-        const existing = all.find((t) => t.shortId === shortId);
-        if (!existing) {
-          return `No task #${shortId} in ${ctx.workspaceName}.`;
-        }
+        const resolved = await resolveWhatsAppTaskShortId(
+          ctx.workspaceId,
+          input.shortId,
+          session
+        );
+        if (!resolved.ok) return resolved.message;
+        const shortId = resolved.shortId;
+        const existing = await getTask(ctx.workspaceId, userId, shortId);
 
         await stageDeleteTask(session.phone, userId, {
           workspaceId: ctx.workspaceId,
@@ -2272,7 +2336,7 @@ async function executeAction(
           taskTitle: existing.title,
         });
         session.pendingDeleteShortId = shortId;
-        return `Ready to delete #${shortId} "${existing.title}". I'll send Confirm / Cancel buttons next.`;
+        return `Ready to delete *${existing.title}*. I'll send Confirm / Cancel buttons next.`;
       }
 
       case "get_board_state": {
@@ -2306,7 +2370,7 @@ async function executeAction(
       case "attach_asset_to_task": {
         const taskShortId = Number(input.taskShortId);
         if (!Number.isInteger(taskShortId) || taskShortId < 1) {
-          return "Which task should I attach the file to? Use #N.";
+          return "Which task should I attach this to? Say the task name.";
         }
         const latest = input.latest === true;
         const fileName =
@@ -2320,7 +2384,7 @@ async function executeAction(
         });
         revalidateUserWorkspaces(userId, ctx.workspaceId);
         const name = assetFileName(asset.url);
-        return `Attached "${name}" to #${task.shortId} *${task.title}* in ${ctx.workspaceName}.`;
+        return `Attached "${name}" to ${formatTaskRef(task.title)} in ${ctx.workspaceName}.`;
       }
 
       case "add_link": {
@@ -2490,12 +2554,19 @@ async function executeAction(
         if (!query) return "What would you like to know about the task?";
         const shortId =
           input.shortId !== undefined ? Number(input.shortId) : undefined;
-        return runAskTask(
+        const result = await runAskTask(
           ctx,
           userId,
           { query, shortId },
           "whatsapp"
         );
+        const idMatch = result.match(/#(\d+)/);
+        if (idMatch) {
+          session.lastDiscussedTaskShortId = Number(idMatch[1]);
+        } else if (shortId !== undefined && Number.isInteger(shortId)) {
+          session.lastDiscussedTaskShortId = shortId;
+        }
+        return result;
       }
 
       case "find_task": {
@@ -2572,15 +2643,16 @@ async function executeAction(
       }
 
       case "unassign_task": {
-        const shortId = await resolveBatchAwareTaskShortId(
+        const resolved = await resolveWhatsAppTaskShortId(
           ctx.workspaceId,
-          Number(input.shortId),
-          session.createdTaskShortIds
+          input.shortId,
+          session
         );
+        if (!resolved.ok) return resolved.message;
         const result = await runUnassignTask(
           ctx,
           userId,
-          shortId,
+          resolved.shortId,
           "whatsapp"
         );
         revalidateUserWorkspaces(userId, ctx.workspaceId);
@@ -2599,12 +2671,6 @@ async function executeAction(
         return "I didn't understand that action. Try creating a task, updating one, or asking for the board.";
     }
   } catch (err) {
-    if (err instanceof ServiceError) {
-      if (err.code === "NO_WORKSPACE") {
-        return 'You need a workspace first. Say: "create a workspace called My Team"';
-      }
-      return err.message;
-    }
-    throw err;
+    return formatToolExecutionError(err);
   }
 }

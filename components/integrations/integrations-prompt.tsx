@@ -202,7 +202,7 @@ export function IntegrationsPrompt({
               Pick your country code, then enter your mobile number without a
               leading zero. Must match the WhatsApp account you message from.
               Manage anytime in{" "}
-              <Link href="/settings" className="text-accent hover:underline">
+              <Link href="/settings" className={ui.linkText}>
                 Settings
               </Link>
               .
@@ -239,7 +239,7 @@ export function IntegrationsPrompt({
 
           {state.error && <p className={`mt-2 ${ui.errorText}`}>{state.error}</p>}
           {state.message && (
-            <p className="mt-2 text-sm text-accent">{state.message}</p>
+            <p className={`mt-2 ${ui.successText}`}>{state.message}</p>
           )}
         </div>
       ) : (
@@ -272,7 +272,7 @@ export function IntegrationsPrompt({
                 href="https://claude.ai/customize/connectors"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-accent hover:underline"
+                className={ui.linkText}
               >
                 Claude Connectors
               </a>{" "}
@@ -284,7 +284,7 @@ export function IntegrationsPrompt({
 
           <Link
             href="/settings"
-            className="mt-4 inline-block text-sm text-accent hover:underline"
+            className={`mt-4 inline-block text-sm ${ui.linkText}`}
           >
             More details in Settings →
           </Link>

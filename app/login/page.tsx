@@ -27,7 +27,7 @@ export default function LoginPage({
       <OAuthButtons next={next} />
       <Divider />
       {deleted && (
-        <p className="mb-3 text-sm text-accent">Your account has been deleted.</p>
+        <p className="mb-3 text-sm text-ink-soft">Your account has been deleted.</p>
       )}
       {error === "auth_callback_failed" && (
         <p className={`mb-3 ${ui.errorText}`}>

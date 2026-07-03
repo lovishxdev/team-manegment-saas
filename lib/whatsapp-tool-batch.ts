@@ -11,6 +11,7 @@ const STAGING_ACTIONS = new Set([
   "remove_member",
   "delete_asset",
   "show_workspace_picker",
+  "add_task_update",
 ]);
 
 export type ToolRunResult = {

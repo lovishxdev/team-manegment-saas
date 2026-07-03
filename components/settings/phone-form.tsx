@@ -36,7 +36,7 @@ export function PhoneForm({ currentPhone }: { currentPhone: string | null }) {
       </p>
       {state.error && <p className={ui.errorText}>{state.error}</p>}
       {state.message && (
-        <p className="text-sm text-accent">{state.message}</p>
+        <p className={ui.successText}>{state.message}</p>
       )}
     </form>
   );

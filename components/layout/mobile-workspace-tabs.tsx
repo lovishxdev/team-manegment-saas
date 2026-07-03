@@ -31,10 +31,10 @@ export function MobileWorkspaceTabs() {
         <Link
           key={tab.id}
           href={`/w/${workspaceId}${tab.path}`}
-          className={`shrink-0 rounded-lg px-3 py-1.5 text-xs transition ${
+          className={`shrink-0 cursor-pointer rounded-lg px-3 py-1.5 text-xs transition ${
             tab.id === activeTab
               ? "bg-paper font-medium text-ink shadow-sm"
-              : "text-ink-soft"
+              : "text-ink-soft hover:bg-paper hover:text-ink"
           }`}
         >
           {tab.label}

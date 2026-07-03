@@ -360,7 +360,7 @@ export function Whiteboard({
     <div className="relative h-full w-full">
       <div className="absolute bottom-4 left-4 z-10 flex items-center gap-2">
         {peers > 1 && (
-          <div className="rounded-md border border-accent/30 bg-accent-soft px-3 py-1 font-mono text-[11px] font-medium text-accent">
+          <div className="rounded-md border border-line bg-paper-deep/80 px-3 py-1 font-mono text-[11px] font-medium text-ink-soft">
             {peers} online
           </div>
         )}

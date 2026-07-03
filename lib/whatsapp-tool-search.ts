@@ -6,6 +6,7 @@ export const WHATSAPP_CORE_TOOL_NAMES = new Set([
   "update_task",
   "get_board_state",
   "ask_task",
+  "add_task_update",
   "create_workspace",
 ]);
 

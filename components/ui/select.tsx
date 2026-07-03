@@ -41,8 +41,11 @@ function CheckIcon() {
 
 /** Matches `ui.input` border, radius, and focus treatment. */
 const fieldCls =
-  "border border-line bg-paper outline-none transition";
-const fieldOpenCls = "border-ink/30 ring-1 ring-ink/10";
+  "border border-line bg-paper outline-none transition-[border-color,background-color,box-shadow,transform] duration-200 " +
+  "hover:-translate-y-px hover:border-ink/30 hover:bg-white hover:shadow-[0_4px_14px_rgba(26,26,26,0.1),0_0_0_1px_rgba(26,26,26,0.05)] " +
+  "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:border-line disabled:hover:bg-paper disabled:hover:shadow-none";
+const fieldOpenCls =
+  "-translate-y-px border-ink/40 bg-white shadow-[0_4px_16px_rgba(26,26,26,0.1),0_0_0_4px_rgba(26,26,26,0.12)]";
 
 const sizeCls = {
   sm: {

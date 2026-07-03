@@ -83,8 +83,8 @@ export function parseButtonId(id: string):
 
 export const HELP_TEXT = `*Quick guide*
 
-• Plain English — "add a task to fix login", "mark #3 done", "what's on the board?"
-• Photos/docs upload on send (caption = tags, #N = attach)
+• Plain English — "add a task to fix login", "mark SEO done", "what's on the board?"
+• Photos/docs upload on send (caption = tags; task name in caption attaches it)
 • Tap *menu* for shortcuts
 
 No workspace yet? *create a workspace called My Team*`;
