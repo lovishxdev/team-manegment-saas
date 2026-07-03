@@ -4,6 +4,7 @@ import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { createTaskAction, type ActionState } from "@/lib/actions/workspace";
 import {
   CategoryField,
+  categoryRowPrimaryBtn,
   type CategoryOption,
 } from "@/components/board/category-field";
 import { ui } from "@/components/ui/ui";
@@ -35,7 +36,7 @@ export function NewTaskForm({
   }, [pending, state, defaultCategoryId]);
 
   return (
-    <form ref={formRef} action={formAction} className={ui.inputRow}>
+    <form ref={formRef} action={formAction} className={`${ui.inputRow} items-center`}>
       <div className={ui.inputRowField}>
         <input
           name="title"
@@ -58,7 +59,7 @@ export function NewTaskForm({
         type="submit"
         disabled={pending}
         aria-busy={pending}
-        className={`${ui.btnPrimary} ${ui.btnShrink} self-center`}
+        className={categoryRowPrimaryBtn}
       >
         Add
       </button>

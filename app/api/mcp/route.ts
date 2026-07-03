@@ -3,16 +3,56 @@ import { z } from "zod";
 import { getUserIdByMcpToken } from "@/lib/identity-cache";
 import { verifyOAuthAccessToken } from "@/lib/services/oauth";
 import {
+  assetFileName,
+  attachAssetToTask,
   createTask,
   deleteTask,
   getBoardState,
+  getTask,
   listAssets,
   resolveUserWorkspaceContext,
   ServiceError,
   taskAssigneeUsers,
+  updateAssetTagsByRef,
   updateTask,
 } from "@/lib/services/project";
-import { createWorkspace, renameWorkspace } from "@/lib/services/workspace";
+import {
+  createWorkspace,
+  getWorkspaceMembers,
+  renameWorkspace,
+  promoteMember,
+  demoteMember,
+  resolveWorkspaceMember,
+  formatMemberRole,
+} from "@/lib/services/workspace";
+import {
+  createWorkspaceInviteLink,
+  formatInviteMembersResult,
+  inviteMembersToWorkspace,
+  MAX_BATCH_INVITES,
+} from "@/lib/services/invites";
+import {
+  prepareDeleteAsset,
+  prepareRemoveMember,
+  runDeleteAssetConfirmed,
+  runDeleteLink,
+  runBulkUpdateTasks,
+  runCreateCategory,
+  runExportWhiteboard,
+  runLeaveWorkspace,
+  runListCategories,
+  runListMyTasks,
+  runListWorkspaces,
+  runPinLink,
+  runReadAsset,
+  runRemoveMemberConfirmed,
+  runSearchTasks,
+  runSwitchWorkspace,
+  runUnassignTask,
+  runUpdateLink,
+  runWorkspaceSummary,
+  MAX_BULK_TASK_UPDATES,
+} from "@/lib/bot/extended-tools";
 import {
   createWorkspaceLink,
   listWorkspaceLinks,
@@ -21,11 +61,13 @@ import {
   formatBoardState,
   formatAssetList,
   formatLinkList,
-  formatTaskDeepLink,
+  formatTaskDetail,
+  formatWorkspaceMemberList,
   mapBoardSnapshot,
 } from "@/lib/channel-formatters";
 import { workspaceUrl } from "@/lib/app-url";
 import { displayUser } from "@/lib/username";
+import { Role } from "@/lib/generated/prisma/client";
 
 /**
  * Claude App Remote MCP connector (Streamable HTTP transport).
@@ -287,10 +329,10 @@ const handler = createMcpHandler(
     );
 
     server.registerTool(
-      "delete_task",
+      "read_task",
       {
         description:
-          "Permanently delete a task, identified by its short ID (the #N number on the board)",
+          "Get full details for one task by short ID (#N). Use when the user asks about a task or a specific field (tags, assignees, due date, status, description, priority, category, attachments). Answer only what they asked unless they wanted everything.",
         inputSchema: {
           shortId: z.number().int().positive().describe("Task short ID (#N)"),
           workspace: workspaceParam,
@@ -300,6 +342,64 @@ const handler = createMcpHandler(
         const userId = extra.authInfo!.extra!.userId as string;
         try {
           const ctx = await resolveUserWorkspaceContext(userId, workspace);
+          const task = await getTask(ctx.workspaceId, userId, shortId);
+          return text(
+            formatTaskDetail(
+              task,
+              ctx.workspaceName,
+              ctx.workspaceId,
+              "mcp"
+            )
+          );
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "delete_task",
+      {
+        description:
+          "Permanently delete a task by short ID (#N). ALWAYS call once without confirm to preview, show the user what will be deleted, and ask them to confirm. Only call again with confirm=true after explicit user confirmation.",
+        inputSchema: {
+          shortId: z.number().int().positive().describe("Task short ID (#N)"),
+          confirm: z
+            .boolean()
+            .optional()
+            .describe(
+              "Set true only after the user explicitly confirms deletion in chat"
+            ),
+          workspace: workspaceParam,
+        },
+      },
+      async ({ shortId, confirm, workspace }, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const ctx = await resolveUserWorkspaceContext(userId, workspace);
+          const state = await getBoardState(ctx.workspaceId, userId);
+          const all = [
+            ...state.board.TODO,
+            ...state.board.IN_PROGRESS,
+            ...state.board.DONE,
+          ];
+          const existing = all.find((t) => t.shortId === shortId);
+          if (!existing) {
+            return toolError(
+              new ServiceError(
+                `Task #${shortId} not found in workspace "${ctx.workspaceName}"`,
+                "NOT_FOUND"
+              )
+            );
+          }
+
+          if (!confirm) {
+            return text(
+              `Delete task #${existing.shortId} "${existing.title}" from workspace "${ctx.workspaceName}"?\n\n` +
+                `This cannot be undone. Ask the user to confirm, then call delete_task again with confirm=true.`
+            );
+          }
+
           const task = await deleteTask({
             workspaceId: ctx.workspaceId,
             shortId,
@@ -391,6 +491,665 @@ const handler = createMcpHandler(
           const ctx = await resolveUserWorkspaceContext(userId, workspace);
           const links = await listWorkspaceLinks(ctx.workspaceId, userId);
           return text(formatLinkList(ctx.workspaceName, links, "mcp"));
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "attach_asset_to_task",
+      {
+        description:
+          "Attach a previously uploaded file/photo to a task. Use latest=true for the most recent upload.",
+        inputSchema: {
+          taskShortId: z
+            .number()
+            .int()
+            .positive()
+            .describe("Task short ID (#N)"),
+          latest: z
+            .boolean()
+            .optional()
+            .describe("Attach the most recently uploaded asset"),
+          fileName: z
+            .string()
+            .optional()
+            .describe("Part of the file name when not using latest"),
+          workspace: workspaceParam,
+        },
+      },
+      async ({ taskShortId, latest, fileName, workspace }, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const ctx = await resolveUserWorkspaceContext(userId, workspace);
+          const { asset, task } = await attachAssetToTask({
+            workspaceId: ctx.workspaceId,
+            userId,
+            taskShortId,
+            latest: latest === true || !fileName,
+            fileName,
+          });
+          const name = assetFileName(asset.url);
+          return text(
+            `Attached "${name}" to task #${task.shortId} "${task.title}" in workspace "${ctx.workspaceName}".`
+          );
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "update_asset_tags",
+      {
+        description:
+          "Add, remove, or replace tags on an uploaded file in the workspace",
+        inputSchema: {
+          tags: z.array(z.string()).min(1).describe("Tag labels"),
+          mode: z
+            .enum(["add", "remove", "set"])
+            .optional()
+            .describe("add (default), remove matching tags, or replace all"),
+          latest: z
+            .boolean()
+            .optional()
+            .describe("Target the most recently uploaded asset"),
+          fileName: z
+            .string()
+            .optional()
+            .describe("Part of the file name when not using latest"),
+          workspace: workspaceParam,
+        },
+      },
+      async ({ tags, mode, latest, fileName, workspace }, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const ctx = await resolveUserWorkspaceContext(userId, workspace);
+          const asset = await updateAssetTagsByRef({
+            workspaceId: ctx.workspaceId,
+            userId,
+            tags,
+            mode: mode ?? "add",
+            latest: latest === true || (!fileName && mode !== "set"),
+            fileName,
+          });
+          const name = assetFileName(asset.url);
+          const tagLine =
+            asset.tags.length > 0 ? asset.tags.join(", ") : "(none)";
+          return text(
+            `Updated tags on "${name}" in workspace "${ctx.workspaceName}": ${tagLine}.`
+          );
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "invite_members",
+      {
+        description: `Invite teammates by username, email, or phone. Up to ${MAX_BATCH_INVITES} per request. WhatsApp users in the 24h window get Accept/Decline buttons; others get a link to share.`,
+        inputSchema: {
+          members: z
+            .array(z.string())
+            .min(1)
+            .max(MAX_BATCH_INVITES)
+            .describe("Usernames, emails, or phone numbers"),
+          workspace: workspaceParam,
+        },
+      },
+      async ({ members, workspace }, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const ctx = await resolveUserWorkspaceContext(userId, workspace);
+          const result = await inviteMembersToWorkspace({
+            workspaceId: ctx.workspaceId,
+            inviterUserId: userId,
+            identifiers: members,
+          });
+          return text(formatInviteMembersResult(result, "mcp"));
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "list_workspace_members",
+      {
+        description: "List everyone in the workspace and their roles",
+        inputSchema: {
+          workspace: workspaceParam,
+        },
+      },
+      async ({ workspace }, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const ctx = await resolveUserWorkspaceContext(userId, workspace);
+          const { members } = await getWorkspaceMembers(
+            ctx.workspaceId,
+            userId
+          );
+          return text(
+            formatWorkspaceMemberList(ctx.workspaceName, members, "mcp")
+          );
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "create_invite_link",
+      {
+        description:
+          "Create a generic invite link anyone can use to join (leaders/sub-leaders only)",
+        inputSchema: {
+          workspace: workspaceParam,
+        },
+      },
+      async ({ workspace }, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const ctx = await resolveUserWorkspaceContext(userId, workspace);
+          const link = await createWorkspaceInviteLink(
+            ctx.workspaceId,
+            userId
+          );
+          return text(
+            `Invite link for "${link.workspaceName}" (share with anyone): ${link.url}`
+          );
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "promote_member",
+      {
+        description:
+          "Promote a workspace member to sub-leader or leader. Leader only.",
+        inputSchema: {
+          member: z
+            .string()
+            .min(1)
+            .describe("Username, email, or name of the member"),
+          role: z
+            .enum(["SUB_LEADER", "LEADER"])
+            .optional()
+            .describe("New role (default SUB_LEADER)"),
+          workspace: workspaceParam,
+        },
+      },
+      async ({ member, role, workspace }, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const ctx = await resolveUserWorkspaceContext(userId, workspace);
+          const newRole = role === "LEADER" ? Role.LEADER : Role.SUB_LEADER;
+          const updated = await promoteMember(
+            ctx.workspaceId,
+            userId,
+            member,
+            newRole
+          );
+          return text(
+            `Promoted @${displayUser(updated.user)} to ${formatMemberRole(updated.role)} in workspace "${ctx.workspaceName}".`
+          );
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "demote_member",
+      {
+        description:
+          "Demote a workspace member to member or sub-leader. Leader only. Call without confirm to preview; call again with confirm=true after the user explicitly agrees.",
+        inputSchema: {
+          member: z
+            .string()
+            .min(1)
+            .describe("Username, email, or name of the member"),
+          role: z
+            .enum(["MEMBER", "SUB_LEADER"])
+            .optional()
+            .describe("New role (default MEMBER)"),
+          confirm: z
+            .boolean()
+            .optional()
+            .describe(
+              "Set true only after the user explicitly confirms demotion in chat"
+            ),
+          workspace: workspaceParam,
+        },
+      },
+      async ({ member, role, confirm, workspace }, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const ctx = await resolveUserWorkspaceContext(userId, workspace);
+          const newRole = role === "SUB_LEADER" ? Role.SUB_LEADER : Role.MEMBER;
+          const target = await resolveWorkspaceMember(ctx.workspaceId, member);
+
+          if (!confirm) {
+            return text(
+              `Demote @${displayUser(target.user)} from ${formatMemberRole(target.role)} to ${formatMemberRole(newRole)} in workspace "${ctx.workspaceName}"?\n\n` +
+                `Ask the user to confirm, then call demote_member again with confirm=true.`
+            );
+          }
+
+          const updated = await demoteMember(
+            ctx.workspaceId,
+            userId,
+            member,
+            newRole
+          );
+          return text(
+            `Demoted @${displayUser(updated.user)} to ${formatMemberRole(updated.role)} in workspace "${ctx.workspaceName}".`
+          );
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "list_my_tasks",
+      {
+        description: "List open tasks assigned to the user",
+        inputSchema: {
+          status: z
+            .string()
+            .optional()
+            .describe("TODO, IN_PROGRESS, DONE, or OPEN"),
+          workspace: workspaceParam,
+        },
+      },
+      async ({ status, workspace }, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const ctx = await resolveUserWorkspaceContext(userId, workspace);
+          return text(
+            await runListMyTasks(ctx, userId, { status }, "mcp")
+          );
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "search_tasks",
+      {
+        description:
+          "Search tasks by title, tag, category, status, assignee, priority, or due date",
+        inputSchema: {
+          query: z.string().optional(),
+          tag: z.string().optional(),
+          category: z.string().optional(),
+          status: z.string().optional(),
+          assignee: z.string().optional(),
+          priority: z.enum(PRIORITIES).optional(),
+          dueBefore: z.string().optional(),
+          dueAfter: z.string().optional(),
+          workspace: workspaceParam,
+        },
+      },
+      async (input, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const ctx = await resolveUserWorkspaceContext(
+            userId,
+            input.workspace
+          );
+          return text(await runSearchTasks(ctx, userId, input, "mcp"));
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "list_workspaces",
+      {
+        description: "List all workspaces the user belongs to",
+        inputSchema: {},
+      },
+      async (_input, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          return text(await runListWorkspaces(userId, "mcp"));
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "switch_workspace",
+      {
+        description: "Set the active workspace by name",
+        inputSchema: {
+          workspace: z.string().min(1).describe("Workspace name to switch to"),
+        },
+      },
+      async ({ workspace }, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          return text(await runSwitchWorkspace(userId, { workspace }, "mcp"));
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "workspace_summary",
+      {
+        description:
+          "Quick workspace overview: members, open tasks, assigned to you",
+        inputSchema: { workspace: workspaceParam },
+      },
+      async ({ workspace }, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const ctx = await resolveUserWorkspaceContext(userId, workspace);
+          return text(await runWorkspaceSummary(ctx, userId, "mcp"));
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "read_asset",
+      {
+        description: "Get details for one uploaded file",
+        inputSchema: {
+          latest: z.boolean().optional(),
+          fileName: z.string().optional(),
+          workspace: workspaceParam,
+        },
+      },
+      async (input, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const ctx = await resolveUserWorkspaceContext(
+            userId,
+            input.workspace
+          );
+          return text(await runReadAsset(ctx, userId, input, "mcp"));
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "delete_asset",
+      {
+        description:
+          "Delete an uploaded file. Preview first; call with confirm=true after user agrees.",
+        inputSchema: {
+          latest: z.boolean().optional(),
+          fileName: z.string().optional(),
+          confirm: z.boolean().optional(),
+          workspace: workspaceParam,
+        },
+      },
+      async (input, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const ctx = await resolveUserWorkspaceContext(
+            userId,
+            input.workspace
+          );
+          const pending = await prepareDeleteAsset(ctx, userId, input);
+          if (!input.confirm) {
+            return text(
+              `Delete file "${pending.fileName}" from workspace "${ctx.workspaceName}"?\n\n` +
+                `Ask the user to confirm, then call delete_asset again with confirm=true.`
+            );
+          }
+          return text(
+            await runDeleteAssetConfirmed(pending, userId, "mcp")
+          );
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "delete_link",
+      {
+        description: "Delete a saved link by title or URL fragment",
+        inputSchema: {
+          link: z.string().min(1),
+          workspace: workspaceParam,
+        },
+      },
+      async ({ link, workspace }, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const ctx = await resolveUserWorkspaceContext(userId, workspace);
+          return text(await runDeleteLink(ctx, userId, { link }, "mcp"));
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "update_link",
+      {
+        description: "Update a saved link",
+        inputSchema: {
+          link: z.string().min(1),
+          newTitle: z.string().optional(),
+          url: z.string().optional(),
+          description: z.string().optional(),
+          pinned: z.boolean().optional(),
+          workspace: workspaceParam,
+        },
+      },
+      async (input, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const ctx = await resolveUserWorkspaceContext(
+            userId,
+            input.workspace
+          );
+          return text(await runUpdateLink(ctx, userId, input, "mcp"));
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "pin_link",
+      {
+        description: "Pin or unpin a saved link",
+        inputSchema: {
+          link: z.string().min(1),
+          pinned: z.boolean().optional(),
+          unpin: z.boolean().optional(),
+          workspace: workspaceParam,
+        },
+      },
+      async (input, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const ctx = await resolveUserWorkspaceContext(
+            userId,
+            input.workspace
+          );
+          return text(await runPinLink(ctx, userId, input, "mcp"));
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "remove_member",
+      {
+        description:
+          "Remove a member from the workspace (leader only). Preview first; confirm=true to apply.",
+        inputSchema: {
+          member: z.string().min(1),
+          confirm: z.boolean().optional(),
+          workspace: workspaceParam,
+        },
+      },
+      async ({ member, confirm, workspace }, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const ctx = await resolveUserWorkspaceContext(userId, workspace);
+          const pending = await prepareRemoveMember(
+            ctx,
+            userId,
+            member
+          );
+          if (!confirm) {
+            return text(
+              `Remove @${pending.targetLabel} from workspace "${ctx.workspaceName}"?\n\n` +
+                `Ask the user to confirm, then call remove_member again with confirm=true.`
+            );
+          }
+          return text(
+            await runRemoveMemberConfirmed(pending, userId, "mcp")
+          );
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "list_categories",
+      {
+        description: "List all task categories in the workspace",
+        inputSchema: { workspace: workspaceParam },
+      },
+      async ({ workspace }, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const ctx = await resolveUserWorkspaceContext(userId, workspace);
+          return text(await runListCategories(ctx, "mcp"));
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "create_category",
+      {
+        description: "Create a new task category (e.g. Legal, Ops)",
+        inputSchema: {
+          name: z.string().min(1).max(32).describe("Category name"),
+          workspace: workspaceParam,
+        },
+      },
+      async ({ name, workspace }, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const ctx = await resolveUserWorkspaceContext(userId, workspace);
+          return text(await runCreateCategory(ctx, { name }, "mcp"));
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "leave_workspace",
+      {
+        description:
+          "Leave the workspace. Blocked if you are the only leader with other members still in the team.",
+        inputSchema: { workspace: workspaceParam },
+      },
+      async ({ workspace }, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const ctx = await resolveUserWorkspaceContext(userId, workspace);
+          return text(await runLeaveWorkspace(ctx, userId, "mcp"));
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "bulk_update_tasks",
+      {
+        description: `Update many tasks at once (max ${MAX_BULK_TASK_UPDATES}). Select by shortIds, range, category, tag, or assignee.`,
+        inputSchema: {
+          shortIds: z.array(z.number().int().positive()).optional(),
+          shortIdFrom: z.number().int().positive().optional(),
+          shortIdTo: z.number().int().positive().optional(),
+          category: z.string().optional(),
+          tag: z.string().optional(),
+          assignee: z.string().optional(),
+          assignedToMe: z.boolean().optional(),
+          status: z.enum(STATUSES).optional().describe("New status"),
+          newCategory: z.string().optional().describe("Move to category"),
+          priority: z.enum(PRIORITIES).optional(),
+          clearAssignees: z.boolean().optional(),
+          workspace: workspaceParam,
+        },
+      },
+      async (input, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const ctx = await resolveUserWorkspaceContext(
+            userId,
+            input.workspace
+          );
+          return text(await runBulkUpdateTasks(ctx, userId, input, "mcp"));
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "unassign_task",
+      {
+        description: "Remove all assignees from a task (#N)",
+        inputSchema: {
+          shortId: z.number().int().positive().describe("Task short ID"),
+          workspace: workspaceParam,
+        },
+      },
+      async ({ shortId, workspace }, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const ctx = await resolveUserWorkspaceContext(userId, workspace);
+          return text(await runUnassignTask(ctx, userId, shortId, "mcp"));
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "export_whiteboard",
+      {
+        description:
+          "Render screenshots of the workspace whiteboard (up to 5 tiles). Returns image URLs.",
+        inputSchema: { workspace: workspaceParam },
+      },
+      async ({ workspace }, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const ctx = await resolveUserWorkspaceContext(userId, workspace);
+          const result = await runExportWhiteboard(ctx, userId, "mcp");
+          return text(result.text);
         } catch (err) {
           return toolError(err);
         }

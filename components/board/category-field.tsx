@@ -9,6 +9,18 @@ export type CategoryOption = {
   name: string;
 };
 
+/** Matches Select `md` trigger height (42px) for inline task-form controls. */
+const rowControlH = "h-[42px]";
+
+const rowIconBtn =
+  `inline-flex ${rowControlH} w-[42px] shrink-0 items-center justify-center rounded-lg border border-line-strong bg-paper text-sm font-medium text-ink-soft transition-colors hover:border-ink/20 hover:text-ink`;
+
+const rowTextBtn =
+  `inline-flex ${rowControlH} shrink-0 items-center justify-center rounded-lg border border-line-strong bg-paper px-3 text-xs font-medium text-ink-soft transition-colors hover:border-ink/20 hover:text-ink`;
+
+export const categoryRowPrimaryBtn =
+  `inline-flex ${rowControlH} shrink-0 items-center justify-center rounded-lg bg-ink px-4 text-xs font-medium text-white transition-colors hover:bg-ink/90 disabled:cursor-not-allowed disabled:opacity-60 min-w-[4.25rem]`;
+
 export function CategoryField({
   categories,
   value,
@@ -58,15 +70,11 @@ export function CategoryField({
           value={newCategory}
           onChange={(e) => updateNewCategory(e.target.value)}
           placeholder="New category"
-          className={`${ui.input} min-w-0 flex-1`}
+          className={`${ui.input} ${rowControlH} min-w-0 flex-1 py-0 text-sm`}
           aria-label="New category name"
           autoFocus
         />
-        <button
-          type="button"
-          onClick={cancelCreate}
-          className={`${ui.btnSecondary} shrink-0 px-2.5 py-2 text-xs`}
-        >
+        <button type="button" onClick={cancelCreate} className={rowTextBtn}>
           Cancel
         </button>
       </div>
@@ -88,7 +96,7 @@ export function CategoryField({
         <button
           type="button"
           onClick={() => setCreating(true)}
-          className={`${ui.btnSecondary} shrink-0 px-2.5 py-2 text-xs`}
+          className={rowIconBtn}
           title="Add custom category"
         >
           +

@@ -14,6 +14,29 @@ export type ContinueMessagePending = {
   text: string;
 };
 
+export type DemoteMemberPending = {
+  workspaceId: string;
+  workspaceName: string;
+  targetUserId: string;
+  targetLabel: string;
+  currentRole: string;
+  newRole: string;
+};
+
+export type RemoveMemberPending = {
+  workspaceId: string;
+  workspaceName: string;
+  targetUserId: string;
+  targetLabel: string;
+};
+
+export type DeleteAssetPending = {
+  workspaceId: string;
+  workspaceName: string;
+  assetId: string;
+  fileName: string;
+};
+
 export async function stageDeleteTask(
   phone: string,
   userId: string,
@@ -28,6 +51,30 @@ export async function stageContinueMessage(
   text: string
 ): Promise<void> {
   await upsertPending(phone, userId, "continue_message", { text });
+}
+
+export async function stageDemoteMember(
+  phone: string,
+  userId: string,
+  data: DemoteMemberPending
+): Promise<void> {
+  await upsertPending(phone, userId, "demote_member", data);
+}
+
+export async function stageRemoveMember(
+  phone: string,
+  userId: string,
+  data: RemoveMemberPending
+): Promise<void> {
+  await upsertPending(phone, userId, "remove_member", data);
+}
+
+export async function stageDeleteAsset(
+  phone: string,
+  userId: string,
+  data: DeleteAssetPending
+): Promise<void> {
+  await upsertPending(phone, userId, "delete_asset", data);
 }
 
 async function upsertPending(
@@ -50,6 +97,30 @@ export async function getPendingDelete(
 ): Promise<DeleteTaskPending | null> {
   const row = await loadPending(phone, userId, "delete_task");
   return row ? (row.payload as DeleteTaskPending) : null;
+}
+
+export async function getPendingDemote(
+  phone: string,
+  userId: string
+): Promise<DemoteMemberPending | null> {
+  const row = await loadPending(phone, userId, "demote_member");
+  return row ? (row.payload as DemoteMemberPending) : null;
+}
+
+export async function getPendingRemoveMember(
+  phone: string,
+  userId: string
+): Promise<RemoveMemberPending | null> {
+  const row = await loadPending(phone, userId, "remove_member");
+  return row ? (row.payload as RemoveMemberPending) : null;
+}
+
+export async function getPendingDeleteAsset(
+  phone: string,
+  userId: string
+): Promise<DeleteAssetPending | null> {
+  const row = await loadPending(phone, userId, "delete_asset");
+  return row ? (row.payload as DeleteAssetPending) : null;
 }
 
 export async function consumeContinueMessage(

@@ -2,7 +2,11 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   devIndicators:false,
-  serverExternalPackages: ["@prisma/client"],
+  serverExternalPackages: [
+    "@prisma/client",
+    "@sparticuz/chromium",
+    "puppeteer-core",
+  ],
   experimental: {
     serverActions: {
       // Asset uploads go through a server action; default limit is 1 MB.

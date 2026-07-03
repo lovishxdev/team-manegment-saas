@@ -962,3 +962,344 @@ export async function getBoardState(workspaceId: string, userId: string) {
 
   return { workspace, board: grouped, totalTasks: tasks.length };
 }
+
+/** Single task with full detail (assignees, category, attachments). */
+export async function getTask(
+  workspaceId: string,
+  userId: string,
+  shortId: number
+) {
+  await assertMembership(userId, workspaceId);
+
+  const task = await prisma.task.findFirst({
+    where: { workspaceId, shortId },
+    include: {
+      ...taskAssigneesInclude,
+      createdBy: { select: { id: true, email: true, username: true } },
+      attachments: {
+        select: { id: true, url: true, fileType: true },
+        orderBy: { createdAt: "asc" },
+      },
+    },
+  });
+  if (!task) {
+    throw new ServiceError(
+      `Task #${shortId} not found in this workspace`,
+      "NOT_FOUND"
+    );
+  }
+
+  await touchLastActiveWorkspace(userId, workspaceId);
+  return task;
+}
+
+const DEFAULT_SEARCH_LIMIT = 25;
+const MAX_SEARCH_LIMIT = 50;
+
+export type SearchTasksInput = {
+  workspaceId: string;
+  userId: string;
+  query?: string;
+  status?: TaskStatus | TaskStatus[];
+  category?: string;
+  tag?: string;
+  assignee?: string;
+  assignedToMe?: boolean;
+  priority?: TaskPriority;
+  dueBefore?: string;
+  dueAfter?: string;
+  limit?: number;
+};
+
+/** Filter tasks by status, tag, assignee, category, due date, title, etc. */
+export async function searchTasks(input: SearchTasksInput) {
+  await assertMembership(input.userId, input.workspaceId);
+
+  const where: Prisma.TaskWhereInput = { workspaceId: input.workspaceId };
+
+  if (input.status) {
+    where.status = Array.isArray(input.status)
+      ? { in: input.status }
+      : input.status;
+  }
+
+  if (input.category) {
+    const cat = await prisma.workspaceCategory.findFirst({
+      where: {
+        workspaceId: input.workspaceId,
+        name: { equals: input.category.trim(), mode: "insensitive" },
+      },
+    });
+    if (!cat) {
+      return [];
+    }
+    where.categoryId = cat.id;
+  }
+
+  if (input.tag) {
+    where.tags = { has: input.tag.trim() };
+  }
+
+  if (input.assignedToMe) {
+    where.assignees = { some: { userId: input.userId } };
+  } else if (input.assignee) {
+    const assigneeId = await resolveAssignee(
+      input.workspaceId,
+      input.assignee
+    );
+    where.assignees = { some: { userId: assigneeId } };
+  }
+
+  if (input.priority) {
+    where.priority = input.priority;
+  }
+
+  if (input.query?.trim()) {
+    const q = input.query.trim();
+    where.OR = [
+      { title: { contains: q, mode: "insensitive" } },
+      { description: { contains: q, mode: "insensitive" } },
+    ];
+  }
+
+  if (input.dueBefore || input.dueAfter) {
+    const due: Prisma.DateTimeNullableFilter = {};
+    if (input.dueBefore) {
+      due.lte = new Date(input.dueBefore);
+    }
+    if (input.dueAfter) {
+      due.gte = new Date(input.dueAfter);
+    }
+    where.dueDate = due;
+  }
+
+  const limit = Math.min(
+    input.limit ?? DEFAULT_SEARCH_LIMIT,
+    MAX_SEARCH_LIMIT
+  );
+
+  const tasks = await prisma.task.findMany({
+    where,
+    include: taskAssigneesInclude,
+    orderBy: { shortId: "asc" },
+    take: limit,
+  });
+
+  await touchLastActiveWorkspace(input.userId, input.workspaceId);
+  return tasks;
+}
+
+/** Open tasks assigned to the caller. */
+export async function listMyTasks(
+  workspaceId: string,
+  userId: string,
+  options?: {
+    status?: TaskStatus | TaskStatus[];
+    limit?: number;
+  }
+) {
+  const status =
+    options?.status ??
+    (["TODO", "IN_PROGRESS"] as const satisfies TaskStatus[]);
+  return searchTasks({
+    workspaceId,
+    userId,
+    assignedToMe: true,
+    status,
+    limit: options?.limit,
+  });
+}
+
+/** Single asset with uploader and optional attached task. */
+export async function getAsset(input: {
+  workspaceId: string;
+  userId: string;
+  assetId?: string;
+  fileName?: string;
+  latest?: boolean;
+}) {
+  await assertMembership(input.userId, input.workspaceId);
+
+  const include = {
+    uploadedBy: { select: { id: true, email: true, username: true } },
+    task: { select: { shortId: true, title: true } },
+  } as const;
+
+  if (input.assetId) {
+    const asset = await prisma.asset.findFirst({
+      where: { id: input.assetId, workspaceId: input.workspaceId },
+      include,
+    });
+    if (!asset) {
+      throw new ServiceError(
+        "Asset not found in this workspace",
+        "NOT_FOUND"
+      );
+    }
+    await touchLastActiveWorkspace(input.userId, input.workspaceId);
+    return asset;
+  }
+
+  const resolved = await resolveAssetForTagging({
+    workspaceId: input.workspaceId,
+    userId: input.userId,
+    fileName: input.fileName,
+    latest: input.latest ?? !input.fileName,
+  });
+
+  const asset = await prisma.asset.findFirst({
+    where: { id: resolved.id },
+    include,
+  });
+  if (!asset) {
+    throw new ServiceError("Asset not found in this workspace", "NOT_FOUND");
+  }
+  await touchLastActiveWorkspace(input.userId, input.workspaceId);
+  return asset;
+}
+
+export const MAX_BULK_TASK_UPDATES = 25;
+
+export type BulkUpdateTasksInput = {
+  workspaceId: string;
+  userId: string;
+  shortIds?: number[];
+  shortIdFrom?: number;
+  shortIdTo?: number;
+  category?: string;
+  tag?: string;
+  assignee?: string;
+  assignedToMe?: boolean;
+  statusFilter?: TaskStatus | TaskStatus[];
+  status?: TaskStatus;
+  newCategory?: string;
+  priority?: TaskPriority;
+  clearAssignees?: boolean;
+};
+
+/** Update many tasks matching shortId range, category, tag, etc. */
+export async function bulkUpdateTasks(input: BulkUpdateTasksInput) {
+  await assertMembership(input.userId, input.workspaceId);
+
+  const hasUpdate =
+    input.status !== undefined ||
+    input.newCategory !== undefined ||
+    input.priority !== undefined ||
+    input.clearAssignees === true;
+  if (!hasUpdate) {
+    throw new ServiceError(
+      "Provide at least one change: status, newCategory, priority, or clearAssignees",
+      "INVALID_INPUT"
+    );
+  }
+
+  const where: Prisma.TaskWhereInput = { workspaceId: input.workspaceId };
+
+  if (input.shortIds?.length) {
+    where.shortId = { in: input.shortIds };
+  } else if (
+    input.shortIdFrom !== undefined &&
+    input.shortIdTo !== undefined
+  ) {
+    where.shortId = { gte: input.shortIdFrom, lte: input.shortIdTo };
+  }
+
+  if (input.category) {
+    const cat = await prisma.workspaceCategory.findFirst({
+      where: {
+        workspaceId: input.workspaceId,
+        name: { equals: input.category.trim(), mode: "insensitive" },
+      },
+    });
+    if (!cat) {
+      throw new ServiceError(
+        `No category "${input.category}" in this workspace`,
+        "NOT_FOUND"
+      );
+    }
+    where.categoryId = cat.id;
+  }
+
+  if (input.tag) {
+    where.tags = { has: input.tag.trim() };
+  }
+
+  if (input.assignedToMe) {
+    where.assignees = { some: { userId: input.userId } };
+  } else if (input.assignee) {
+    const assigneeId = await resolveAssignee(
+      input.workspaceId,
+      input.assignee
+    );
+    where.assignees = { some: { userId: assigneeId } };
+  }
+
+  if (input.statusFilter) {
+    where.status = Array.isArray(input.statusFilter)
+      ? { in: input.statusFilter }
+      : input.statusFilter;
+  }
+
+  const hasSelector =
+    input.shortIds?.length ||
+    (input.shortIdFrom !== undefined && input.shortIdTo !== undefined) ||
+    input.category ||
+    input.tag ||
+    input.assignee ||
+    input.assignedToMe;
+  if (!hasSelector) {
+    throw new ServiceError(
+      "Specify which tasks: shortIds, shortIdFrom/shortIdTo, category, tag, assignee, or assignedToMe",
+      "INVALID_INPUT"
+    );
+  }
+
+  const tasks = await prisma.task.findMany({
+    where,
+    select: { shortId: true },
+    orderBy: { shortId: "asc" },
+    take: MAX_BULK_TASK_UPDATES + 1,
+  });
+
+  if (tasks.length === 0) {
+    throw new ServiceError("No tasks matched that criteria", "NOT_FOUND");
+  }
+  if (tasks.length > MAX_BULK_TASK_UPDATES) {
+    throw new ServiceError(
+      `Too many tasks matched (max ${MAX_BULK_TASK_UPDATES} per bulk update). Narrow your filters.`,
+      "INVALID_INPUT"
+    );
+  }
+
+  const updated = [];
+  for (const task of tasks) {
+    updated.push(
+      await updateTask({
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+        shortId: task.shortId,
+        status: input.status,
+        category: input.newCategory,
+        priority: input.priority,
+        assignees: input.clearAssignees ? [] : undefined,
+      })
+    );
+  }
+
+  await touchLastActiveWorkspace(input.userId, input.workspaceId);
+  return updated;
+}
+
+/** Clear all assignees on a task. */
+export async function unassignTask(
+  workspaceId: string,
+  userId: string,
+  shortId: number
+) {
+  return updateTask({
+    workspaceId,
+    userId,
+    shortId,
+    assignees: [],
+  });
+}

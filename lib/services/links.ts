@@ -183,3 +183,163 @@ export async function toggleWorkspaceLinkPin(input: {
     data: { pinned: !link.pinned },
   });
 }
+
+/** Resolve a bookmark by id, title, or URL fragment. */
+export async function resolveWorkspaceLink(
+  workspaceId: string,
+  userId: string,
+  identifier: string
+) {
+  const links = await listWorkspaceLinks(workspaceId, userId);
+  const trimmed = identifier.trim();
+
+  const byId = links.find((l) => l.id === trimmed);
+  if (byId) return byId;
+
+  const needle = trimmed.toLowerCase();
+  const exactTitle = links.filter((l) => l.title.toLowerCase() === needle);
+  if (exactTitle.length === 1) return exactTitle[0];
+
+  const matches = links.filter(
+    (l) =>
+      l.title.toLowerCase().includes(needle) ||
+      l.url.toLowerCase().includes(needle)
+  );
+  if (matches.length === 1) return matches[0];
+  if (matches.length > 1) {
+    throw new ServiceError(
+      `Multiple links match "${identifier}": ${matches.map((l) => l.title).join(", ")}. Be more specific.`,
+      "INVALID_INPUT"
+    );
+  }
+
+  throw new ServiceError(
+    `No link matching "${identifier}" in this workspace`,
+    "NOT_FOUND"
+  );
+}
+
+export async function updateWorkspaceLink(input: {
+  workspaceId: string;
+  userId: string;
+  linkId: string;
+  title?: string;
+  url?: string;
+  description?: string | null;
+  pinned?: boolean;
+}) {
+  const { workspaceId, linkId, userId } = input;
+  const membership = await getActorMembership(userId, workspaceId);
+  if (!membership) {
+    throw new ServiceError(
+      "You are not a member of this workspace",
+      "FORBIDDEN"
+    );
+  }
+
+  const link = await prisma.workspaceLink.findFirst({
+    where: { id: linkId, workspaceId },
+  });
+  if (!link) {
+    throw new ServiceError("Link not found in this workspace", "NOT_FOUND");
+  }
+
+  const isLeadership =
+    membership.role === "LEADER" || membership.role === "SUB_LEADER";
+  if (!isLeadership && link.createdById !== userId) {
+    throw new ServiceError(
+      "Only leaders, sub-leaders, or the person who added the link can edit it",
+      "FORBIDDEN"
+    );
+  }
+
+  const data: {
+    title?: string;
+    url?: string;
+    description?: string | null;
+    pinned?: boolean;
+  } = {};
+
+  if (input.title !== undefined) {
+    const title = input.title.trim();
+    if (!title) {
+      throw new ServiceError("Title is required", "INVALID_INPUT");
+    }
+    if (title.length > 120) {
+      throw new ServiceError(
+        "Title must be 120 characters or fewer",
+        "INVALID_INPUT"
+      );
+    }
+    data.title = title;
+  }
+
+  if (input.url !== undefined) {
+    data.url = normalizeUrl(input.url);
+  }
+
+  if (input.description !== undefined) {
+    const description = input.description?.trim() || null;
+    if (description && description.length > 500) {
+      throw new ServiceError(
+        "Description must be 500 characters or fewer",
+        "INVALID_INPUT"
+      );
+    }
+    data.description = description;
+  }
+
+  if (input.pinned !== undefined) {
+    data.pinned = input.pinned;
+  }
+
+  if (Object.keys(data).length === 0) {
+    throw new ServiceError("Nothing to update", "INVALID_INPUT");
+  }
+
+  const updated = await prisma.workspaceLink.update({
+    where: { id: linkId },
+    data,
+  });
+  await touchLastActiveWorkspace(userId, workspaceId);
+  return updated;
+}
+
+export async function setWorkspaceLinkPin(input: {
+  workspaceId: string;
+  linkId: string;
+  userId: string;
+  pinned: boolean;
+}) {
+  const { workspaceId, linkId, userId, pinned } = input;
+  const membership = await getActorMembership(userId, workspaceId);
+  if (!membership) {
+    throw new ServiceError(
+      "You are not a member of this workspace",
+      "FORBIDDEN"
+    );
+  }
+
+  const link = await prisma.workspaceLink.findFirst({
+    where: { id: linkId, workspaceId },
+  });
+  if (!link) {
+    throw new ServiceError("Link not found in this workspace", "NOT_FOUND");
+  }
+
+  const isLeadership =
+    membership.role === "LEADER" || membership.role === "SUB_LEADER";
+  if (!isLeadership && link.createdById !== userId) {
+    throw new ServiceError(
+      "Only leaders, sub-leaders, or the person who added the link can pin it",
+      "FORBIDDEN"
+    );
+  }
+
+  const updated = await prisma.workspaceLink.update({
+    where: { id: linkId },
+    data: { pinned },
+  });
+  await touchLastActiveWorkspace(userId, workspaceId);
+  return updated;
+}

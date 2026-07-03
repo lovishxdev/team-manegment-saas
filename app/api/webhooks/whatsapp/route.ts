@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   TaskPriority,
   TaskStatus,
+  Role,
 } from "@/lib/generated/prisma/client";
 import { getUserIdByPhone } from "@/lib/identity-cache";
 import {
@@ -11,6 +12,7 @@ import {
   createTask,
   deleteTask,
   getBoardState,
+  getTask,
   listAssets,
   resolveUserWorkspaceContext,
   ServiceError,
@@ -28,7 +30,37 @@ import {
   markWhatsAppChatInitiated,
   recordExchange,
 } from "@/lib/services/conversation";
-import { findOrCreateWorkspaceByName, renameWorkspace } from "@/lib/services/workspace";
+import { findOrCreateWorkspaceByName, getWorkspaceMembers, renameWorkspace, acceptInvite, promoteMember, demoteMemberById, resolveWorkspaceMember, formatMemberRole } from "@/lib/services/workspace";
+import { displayUser } from "@/lib/username";
+import {
+  createWorkspaceInviteLink,
+  formatInviteMembersResult,
+  inviteMembersToWorkspace,
+  MAX_BATCH_INVITES,
+} from "@/lib/services/invites";
+import {
+  prepareDeleteAsset,
+  prepareRemoveMember,
+  runDeleteAssetConfirmed,
+  runDeleteLink,
+  runBulkUpdateTasks,
+  runCreateCategory,
+  runExportWhiteboard,
+  runLeaveWorkspace,
+  runListCategories,
+  runListMyTasks,
+  runListWorkspaces,
+  runPinLink,
+  runReadAsset,
+  runRemoveMemberConfirmed,
+  runSearchTasks,
+  runSwitchWorkspace,
+  runUnassignTask,
+  runUpdateLink,
+  runWorkspaceSummary,
+  MAX_BULK_TASK_UPDATES,
+} from "@/lib/bot/extended-tools";
+import { sendWhatsAppImageBuffer } from "@/lib/whatsapp-media";
 import { revalidateUserWorkspaces } from "@/lib/revalidate-nav";
 import {
   claimInboundMessage,
@@ -60,7 +92,9 @@ import {
   formatBoardState,
   formatLinkList,
   formatTaskDeepLink,
+  formatTaskDetail,
   formatTaskSummary,
+  formatWorkspaceMemberList,
   mapBoardSnapshot,
   type ActionOutcome,
 } from "@/lib/channel-formatters";
@@ -85,9 +119,15 @@ import {
   clearPending,
   consumeContinueMessage,
   getPendingDelete,
+  getPendingDemote,
+  getPendingRemoveMember,
+  getPendingDeleteAsset,
   peekContinueMessage,
   stageContinueMessage,
   stageDeleteTask,
+  stageDemoteMember,
+  stageRemoveMember,
+  stageDeleteAsset,
 } from "@/lib/whatsapp-pending";
 import {
   activateWorkspace,
@@ -147,7 +187,8 @@ ${workspaceContext}
 Convert the user's message into tool calls when they want to act on their board:
 - create_task: when they want to add/create a task. Use a SHORT title (a few words, under ~80 chars). Put bullet lists, long paragraphs, SEO keywords, and detailed requirements in description — never dump them all into title.
 - update_task: when they want to change a task - move/complete/start it, retitle it, set priority, due date, tags, or assign it (they usually reference it as #N)
-- delete_task: when they explicitly want to remove/delete a task (only when clearly intended)
+- read_task: when they ask for details about a specific task (#N), or about one field on a task (tags, assignees, due date, status, description, priority, category, attachments). Always call this tool — then answer only what they asked unless they wanted the full task.
+- delete_task: when they explicitly want to remove/delete a task (only when clearly intended). This stages a Confirm/Cancel button flow — never claim the task is deleted until they confirm.
 - get_board_state: when they ask what's on the board, task lists, or progress
 - create_workspace: when they want to create/start a new workspace, project, or board (e.g. "create a workspace called Marketing")
 - rename_workspace: when they want to rename an existing workspace (leader only)
@@ -157,6 +198,28 @@ Convert the user's message into tool calls when they want to act on their board:
 - list_links: when they ask what links, bookmarks, or URLs are saved. Call only list_links — do not call add_link in the same turn unless they also asked to save a new link.
 - show_workspace_picker: when they want to choose or switch workspace, ask which workspace they're on, or pick a different board — but NOT when they already named a specific workspace to act on (use the workspace parameter on other tools instead). Sends an interactive picker to the chat.
 - update_asset_tags: when they want to tag an already-uploaded file/photo (e.g. "tag the last photo booth, marketing" or "remove tag draft from banner.png"). ALWAYS call this tool for tagging requests — never say you cannot tag files.
+- invite_members: when they want to add teammates by username, email, or phone (up to ${MAX_BATCH_INVITES} people in one message). Leaders/sub-leaders only.
+- list_workspace_members: when they ask who is on the team or who is in the workspace
+- create_invite_link: when they want a generic shareable invite link (not directed at a specific person)
+- promote_member: when they want to promote someone to sub-leader or leader (leader only)
+- demote_member: when they want to lower someone's role (leader only). Stages Confirm/Cancel buttons — never claim demotion happened until they confirm.
+- list_my_tasks: when they ask what's assigned to them or their open tasks
+- search_tasks: when they want to find tasks by tag, category, status, assignee, priority, due date, or title keywords
+- list_workspaces: when they ask which workspaces they're in
+- switch_workspace: when they want to change the active workspace by name
+- workspace_summary: when they want a quick overview (open tasks, members, counts)
+- read_asset: when they ask about a specific uploaded file (latest upload or by name)
+- delete_asset: when they want to remove an uploaded file. Stages Confirm/Cancel buttons.
+- delete_link: when they want to remove a saved link (by title or URL)
+- update_link: when they want to edit a link's title, URL, description, or pin state
+- pin_link: when they want to pin or unpin a saved link
+- remove_member: when they want to kick someone from the workspace (leader only). Stages Confirm/Cancel buttons.
+- list_categories: when they ask what task categories exist in the workspace
+- create_category: when they want to add a new task category (e.g. Legal, Ops)
+- leave_workspace: when they want to leave the current team/workspace (blocked if they're the only leader with other members)
+- bulk_update_tasks: when they want to update many tasks at once (e.g. mark #1–#4 done, move all Design tasks to in progress). Max ${MAX_BULK_TASK_UPDATES} per call.
+- unassign_task: when they want to clear all assignees from a specific task (#N)
+- export_whiteboard: when they want screenshots of the team whiteboard (up to 5 images sent in chat)
 
 Rules:
 - Images/documents sent directly in WhatsApp (not via this text tool) are saved as assets automatically. Caption text becomes comma-separated tags; #N in the caption attaches the file to task #N. Tell users they can tag on upload by adding a caption like "booth, banner" or "#42 booth".
@@ -174,6 +237,7 @@ Rules:
 - Use the conversation history to resolve references: "that task" / "it" usually means the task #N mentioned in your most recent reply.
 - If the user names a specific workspace/project that is NOT "${activeWorkspaceName}", pass it as the workspace parameter; otherwise always omit workspace.
 - If the message is NOT an actionable board request (greetings, questions, chit-chat), do not call a tool. Reply with one short, friendly sentence telling them what you can do.
+- After read_task, answer only the part the user asked for (e.g. just tags or just assignees) unless they asked for full details.
 - Never invent task IDs or titles.`;
 }
 
@@ -277,6 +341,22 @@ const TOOLS: Anthropic.Tool[] = [
           items: { type: "string" },
           description: "Full replacement list of assignees",
         },
+        workspace: {
+          type: "string",
+          description: "Workspace name, only if the user explicitly mentioned one",
+        },
+      },
+      required: ["shortId"],
+    },
+  },
+  {
+    name: "read_task",
+    description:
+      "Get full details for one task by #N short ID. Use when the user asks about a task or a specific field (tags, assignees, due date, status, description, etc.).",
+    input_schema: {
+      type: "object",
+      properties: {
+        shortId: { type: "integer", description: "Task short ID (the N in #N)" },
         workspace: {
           type: "string",
           description: "Workspace name, only if the user explicitly mentioned one",
@@ -467,6 +547,416 @@ const TOOLS: Anthropic.Tool[] = [
         },
       },
       required: ["tags"],
+    },
+  },
+  {
+    name: "invite_members",
+    description: `Invite people to the workspace by username, email, or phone. Up to ${MAX_BATCH_INVITES} people per request. Sends WhatsApp Accept/Decline when possible; otherwise returns a link to share.`,
+    input_schema: {
+      type: "object",
+      properties: {
+        members: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Usernames, emails, or phone numbers to invite (max 8)",
+        },
+        workspace: {
+          type: "string",
+          description: "Workspace name, only if the user explicitly mentioned one",
+        },
+      },
+      required: ["members"],
+    },
+  },
+  {
+    name: "list_workspace_members",
+    description: "List everyone in the workspace and their roles",
+    input_schema: {
+      type: "object",
+      properties: {
+        workspace: {
+          type: "string",
+          description: "Workspace name, only if the user explicitly mentioned one",
+        },
+      },
+    },
+  },
+  {
+    name: "create_invite_link",
+    description:
+      "Create a generic invite link anyone can use to join the workspace (leaders/sub-leaders only)",
+    input_schema: {
+      type: "object",
+      properties: {
+        workspace: {
+          type: "string",
+          description: "Workspace name, only if the user explicitly mentioned one",
+        },
+      },
+    },
+  },
+  {
+    name: "promote_member",
+    description:
+      "Promote a workspace member to sub-leader or leader. Leader only.",
+    input_schema: {
+      type: "object",
+      properties: {
+        member: {
+          type: "string",
+          description: "Username, email, or name of the member to promote",
+        },
+        role: {
+          type: "string",
+          enum: ["SUB_LEADER", "LEADER"],
+          description: "New role (default SUB_LEADER)",
+        },
+        workspace: {
+          type: "string",
+          description: "Workspace name, only if the user explicitly mentioned one",
+        },
+      },
+      required: ["member"],
+    },
+  },
+  {
+    name: "demote_member",
+    description:
+      "Demote a workspace member to member or sub-leader. Leader only. Sends Confirm/Cancel buttons before applying.",
+    input_schema: {
+      type: "object",
+      properties: {
+        member: {
+          type: "string",
+          description: "Username, email, or name of the member to demote",
+        },
+        role: {
+          type: "string",
+          enum: ["MEMBER", "SUB_LEADER"],
+          description: "New role (default MEMBER)",
+        },
+        workspace: {
+          type: "string",
+          description: "Workspace name, only if the user explicitly mentioned one",
+        },
+      },
+      required: ["member"],
+    },
+  },
+  {
+    name: "list_my_tasks",
+    description: "List open tasks assigned to the user",
+    input_schema: {
+      type: "object",
+      properties: {
+        status: {
+          type: "string",
+          description:
+            "Filter: TODO, IN_PROGRESS, DONE, or OPEN (todo + in progress). Default OPEN.",
+        },
+        workspace: {
+          type: "string",
+          description: "Workspace name, only if the user explicitly mentioned one",
+        },
+      },
+    },
+  },
+  {
+    name: "search_tasks",
+    description:
+      "Search/filter tasks by title, tag, category, status, assignee, priority, or due date",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search title or description" },
+        tag: { type: "string", description: "Exact tag label" },
+        category: { type: "string", description: "Category name" },
+        status: {
+          type: "string",
+          description: "TODO, IN_PROGRESS, DONE, or OPEN",
+        },
+        assignee: {
+          type: "string",
+          description: "Username or email of assignee",
+        },
+        priority: {
+          type: "string",
+          enum: ["LOW", "MEDIUM", "HIGH"],
+        },
+        dueBefore: {
+          type: "string",
+          description: "Due on or before YYYY-MM-DD",
+        },
+        dueAfter: {
+          type: "string",
+          description: "Due on or after YYYY-MM-DD",
+        },
+        workspace: {
+          type: "string",
+          description: "Workspace name, only if the user explicitly mentioned one",
+        },
+      },
+    },
+  },
+  {
+    name: "list_workspaces",
+    description: "List all workspaces the user belongs to",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "switch_workspace",
+    description: "Set the active workspace by name",
+    input_schema: {
+      type: "object",
+      properties: {
+        workspace: {
+          type: "string",
+          description: "Workspace name to switch to",
+        },
+      },
+      required: ["workspace"],
+    },
+  },
+  {
+    name: "workspace_summary",
+    description:
+      "Quick workspace overview: members, open tasks, assigned to you, status counts",
+    input_schema: {
+      type: "object",
+      properties: {
+        workspace: {
+          type: "string",
+          description: "Workspace name, only if the user explicitly mentioned one",
+        },
+      },
+    },
+  },
+  {
+    name: "read_asset",
+    description:
+      "Get details for one uploaded file (use latest=true for last upload, or fileName)",
+    input_schema: {
+      type: "object",
+      properties: {
+        latest: { type: "boolean", description: "Most recent upload" },
+        fileName: {
+          type: "string",
+          description: "Part of the file name",
+        },
+        workspace: {
+          type: "string",
+          description: "Workspace name, only if the user explicitly mentioned one",
+        },
+      },
+    },
+  },
+  {
+    name: "delete_asset",
+    description:
+      "Delete an uploaded file. Sends Confirm/Cancel buttons before applying.",
+    input_schema: {
+      type: "object",
+      properties: {
+        latest: { type: "boolean" },
+        fileName: { type: "string" },
+        workspace: {
+          type: "string",
+          description: "Workspace name, only if the user explicitly mentioned one",
+        },
+      },
+    },
+  },
+  {
+    name: "delete_link",
+    description: "Delete a saved link by title or URL fragment",
+    input_schema: {
+      type: "object",
+      properties: {
+        link: { type: "string", description: "Link title or URL to match" },
+        workspace: {
+          type: "string",
+          description: "Workspace name, only if the user explicitly mentioned one",
+        },
+      },
+      required: ["link"],
+    },
+  },
+  {
+    name: "update_link",
+    description: "Update a saved link's title, URL, description, or pin",
+    input_schema: {
+      type: "object",
+      properties: {
+        link: { type: "string", description: "Link title to find" },
+        newTitle: { type: "string" },
+        url: { type: "string" },
+        description: { type: "string" },
+        pinned: { type: "boolean" },
+        workspace: {
+          type: "string",
+          description: "Workspace name, only if the user explicitly mentioned one",
+        },
+      },
+      required: ["link"],
+    },
+  },
+  {
+    name: "pin_link",
+    description: "Pin or unpin a saved link",
+    input_schema: {
+      type: "object",
+      properties: {
+        link: { type: "string", description: "Link title to find" },
+        pinned: { type: "boolean", description: "false to unpin" },
+        unpin: { type: "boolean", description: "Set true to unpin" },
+        workspace: {
+          type: "string",
+          description: "Workspace name, only if the user explicitly mentioned one",
+        },
+      },
+      required: ["link"],
+    },
+  },
+  {
+    name: "remove_member",
+    description:
+      "Remove a member from the workspace (leader only). Sends Confirm/Cancel buttons.",
+    input_schema: {
+      type: "object",
+      properties: {
+        member: {
+          type: "string",
+          description: "Username, email, or name",
+        },
+        workspace: {
+          type: "string",
+          description: "Workspace name, only if the user explicitly mentioned one",
+        },
+      },
+      required: ["member"],
+    },
+  },
+  {
+    name: "list_categories",
+    description: "List all task categories in the workspace",
+    input_schema: {
+      type: "object",
+      properties: {
+        workspace: {
+          type: "string",
+          description: "Workspace name, only if the user explicitly mentioned one",
+        },
+      },
+    },
+  },
+  {
+    name: "create_category",
+    description: "Create a new task category in the workspace",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Category name (e.g. Legal)" },
+        workspace: {
+          type: "string",
+          description: "Workspace name, only if the user explicitly mentioned one",
+        },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "leave_workspace",
+    description:
+      "Leave the workspace. Fails if you are the only leader and other members remain.",
+    input_schema: {
+      type: "object",
+      properties: {
+        workspace: {
+          type: "string",
+          description: "Workspace to leave, only if not the active one",
+        },
+      },
+    },
+  },
+  {
+    name: "bulk_update_tasks",
+    description: `Update many tasks at once (max ${MAX_BULK_TASK_UPDATES}). Select by shortIds, shortId range, category, tag, or assignee.`,
+    input_schema: {
+      type: "object",
+      properties: {
+        shortIds: {
+          type: "array",
+          items: { type: "integer" },
+          description: "Task short IDs (#N) to update",
+        },
+        shortIdFrom: {
+          type: "integer",
+          description: "Range start (inclusive), e.g. 1 for #1–#4 with shortIdTo 4",
+        },
+        shortIdTo: { type: "integer", description: "Range end (inclusive)" },
+        category: {
+          type: "string",
+          description: "Only tasks in this category",
+        },
+        tag: { type: "string", description: "Only tasks with this tag" },
+        assignee: { type: "string", description: "Only tasks assigned to this member" },
+        assignedToMe: {
+          type: "boolean",
+          description: "Only tasks assigned to the sender",
+        },
+        status: {
+          type: "string",
+          enum: ["TODO", "IN_PROGRESS", "DONE"],
+          description: "New status to set",
+        },
+        newCategory: {
+          type: "string",
+          description: "Move tasks to this category",
+        },
+        priority: {
+          type: "string",
+          enum: ["LOW", "MEDIUM", "HIGH"],
+          description: "New priority",
+        },
+        clearAssignees: {
+          type: "boolean",
+          description: "Remove all assignees from matched tasks",
+        },
+        workspace: {
+          type: "string",
+          description: "Workspace name, only if the user explicitly mentioned one",
+        },
+      },
+    },
+  },
+  {
+    name: "unassign_task",
+    description: "Remove all assignees from a task (#N)",
+    input_schema: {
+      type: "object",
+      properties: {
+        shortId: { type: "integer", description: "Task short ID (#N)" },
+        workspace: {
+          type: "string",
+          description: "Workspace name, only if the user explicitly mentioned one",
+        },
+      },
+      required: ["shortId"],
+    },
+  },
+  {
+    name: "export_whiteboard",
+    description:
+      "Render and send screenshots of the workspace whiteboard (up to 5 images). Large boards are split into tiles.",
+    input_schema: {
+      type: "object",
+      properties: {
+        workspace: {
+          type: "string",
+          description: "Workspace name, only if the user explicitly mentioned one",
+        },
+      },
     },
   },
 ];
@@ -715,6 +1205,10 @@ type WhatsAppSession = {
   workspaceName: string | null;
   createdTaskShortIds: number[];
   pendingDeleteShortId: number | null;
+  pendingDemote: boolean;
+  pendingRemoveMember: boolean;
+  pendingDeleteAsset: boolean;
+  whiteboardImages: Buffer[] | null;
   lastCreatedTask: { shortId: number; workspaceId: string } | null;
   workspacePickerSent: boolean;
 };
@@ -873,9 +1367,35 @@ async function handleInteractiveMessage(
       return;
     }
 
+    if (action.type === "invite_decline") {
+      const reply =
+        "Invite declined. (If you didn't expect this invitation, you're all set.)";
+      await sendWhatsAppText(from, reply);
+      await recordExchange(userId, userText, reply).catch(() => {});
+      return;
+    }
+
+    if (action.type === "invite_accept") {
+      try {
+        const workspace = await acceptInvite(action.inviteId, userId);
+        revalidateUserWorkspaces(userId, workspace.id);
+        const reply = `Welcome to *${workspace.name}*! You're now a member. Send *menu* for quick actions.`;
+        await sendWhatsAppText(from, reply);
+        await recordExchange(userId, userText, reply).catch(() => {});
+      } catch (err) {
+        const reply =
+          err instanceof ServiceError
+            ? err.message
+            : "Could not accept the invite. It may have expired.";
+        await sendWhatsAppText(from, reply);
+        await recordExchange(userId, userText, reply).catch(() => {});
+      }
+      return;
+    }
+
     if (action.type === "delete_cancel") {
       await clearPending(from);
-      const reply = "Delete cancelled.";
+      const reply = "Cancelled.";
       await sendWhatsAppText(from, reply);
       await recordExchange(userId, userText, reply).catch(() => {});
       return;
@@ -887,6 +1407,78 @@ async function handleInteractiveMessage(
     }
 
     const ctx = await resolveUserWorkspaceContext(userId);
+
+    if (action.type === "demote_confirm") {
+      const pending = await getPendingDemote(from, userId);
+      if (
+        !pending ||
+        pending.targetUserId !== action.targetUserId ||
+        pending.newRole !== action.newRole
+      ) {
+        const reply =
+          "That demotion confirmation expired. Ask me to demote them again.";
+        await sendWhatsAppText(from, reply);
+        await recordExchange(userId, userText, reply).catch(() => {});
+        return;
+      }
+
+      const updated = await demoteMemberById(
+        pending.workspaceId,
+        userId,
+        pending.targetUserId,
+        action.newRole as Role
+      );
+      await clearPending(from);
+      revalidateUserWorkspaces(userId, pending.workspaceId);
+      const reply = `Demoted @${displayUser(updated.user)} to ${formatMemberRole(updated.role)} in ${pending.workspaceName}.`;
+      await sendWhatsAppText(from, reply);
+      await recordExchange(userId, userText, reply).catch(() => {});
+      return;
+    }
+
+    if (action.type === "remove_confirm") {
+      const pending = await getPendingRemoveMember(from, userId);
+      if (!pending || pending.targetUserId !== action.targetUserId) {
+        const reply =
+          "That removal confirmation expired. Ask me to remove them again.";
+        await sendWhatsAppText(from, reply);
+        await recordExchange(userId, userText, reply).catch(() => {});
+        return;
+      }
+
+      const reply = await runRemoveMemberConfirmed(
+        pending,
+        userId,
+        "whatsapp"
+      );
+      await clearPending(from);
+      revalidateUserWorkspaces(userId, pending.workspaceId);
+      await sendWhatsAppText(from, reply);
+      await recordExchange(userId, userText, reply).catch(() => {});
+      return;
+    }
+
+    if (action.type === "delete_asset_confirm") {
+      const pending = await getPendingDeleteAsset(from, userId);
+      if (!pending || pending.assetId !== action.assetId) {
+        const reply =
+          "That delete confirmation expired. Ask me to delete the file again.";
+        await sendWhatsAppText(from, reply);
+        await recordExchange(userId, userText, reply).catch(() => {});
+        return;
+      }
+
+      const reply = await runDeleteAssetConfirmed(
+        pending,
+        userId,
+        "whatsapp"
+      );
+      await clearPending(from);
+      revalidateUserWorkspaces(userId, pending.workspaceId);
+      await sendWhatsAppText(from, reply);
+      await recordExchange(userId, userText, reply).catch(() => {});
+      return;
+    }
 
     if (action.type === "delete_confirm") {
       const pending = await getPendingDelete(from, userId);
@@ -1057,6 +1649,10 @@ async function handleMessage(
     workspaceName: activeCtx.workspaceName,
     createdTaskShortIds: [],
     pendingDeleteShortId: null,
+    pendingDemote: false,
+    pendingRemoveMember: false,
+    pendingDeleteAsset: false,
+    whiteboardImages: null,
     lastCreatedTask: null,
     workspacePickerSent: false,
   };
@@ -1139,7 +1735,63 @@ async function handleMessage(
     );
   }
 
-  if (session.pendingDeleteShortId) {
+  if (session.whiteboardImages && session.whiteboardImages.length > 0) {
+    const total = session.whiteboardImages.length;
+    const name = session.workspaceName ?? "workspace";
+    for (let i = 0; i < total; i++) {
+      await sendWhatsAppImageBuffer(
+        from,
+        session.whiteboardImages[i],
+        `Whiteboard ${i + 1}/${total} · ${name}`
+      ).catch(() => {});
+    }
+    session.whiteboardImages = null;
+  } else if (session.pendingRemoveMember) {
+    const pending = await getPendingRemoveMember(from, userId);
+    if (pending) {
+      await sendWhatsAppButtons(
+        from,
+        `Remove *@${pending.targetLabel}* from ${pending.workspaceName}?`,
+        [
+          { id: BUTTON.removeConfirm(pending.targetUserId), title: "🚫 Remove" },
+          { id: BUTTON.deleteCancel, title: "✖ Cancel" },
+        ],
+        { header: "Confirm removal", footer: "Leader action" }
+      ).catch(() => {});
+    }
+  } else if (session.pendingDeleteAsset) {
+    const pending = await getPendingDeleteAsset(from, userId);
+    if (pending) {
+      await sendWhatsAppButtons(
+        from,
+        `Delete file *${pending.fileName}* from ${pending.workspaceName}?`,
+        [
+          {
+            id: BUTTON.deleteAssetConfirm(pending.assetId),
+            title: "🗑 Delete",
+          },
+          { id: BUTTON.deleteCancel, title: "✖ Cancel" },
+        ],
+        { header: "Confirm delete file", footer: "This cannot be undone" }
+      ).catch(() => {});
+    }
+  } else if (session.pendingDemote) {
+    const pending = await getPendingDemote(from, userId);
+    if (pending) {
+      await sendWhatsAppButtons(
+        from,
+        `Demote *@${pending.targetLabel}* from ${formatMemberRole(pending.currentRole as Role)} to ${formatMemberRole(pending.newRole as Role)}?`,
+        [
+          {
+            id: BUTTON.demoteConfirm(pending.targetUserId, pending.newRole),
+            title: "⬇ Demote",
+          },
+          { id: BUTTON.deleteCancel, title: "✖ Cancel" },
+        ],
+        { header: "Confirm demotion", footer: "Leader action" }
+      ).catch(() => {});
+    }
+  } else if (session.pendingDeleteShortId) {
     const pending = await getPendingDelete(from, userId);
     if (pending) {
       await sendWhatsAppButtons(
@@ -1270,6 +1922,22 @@ async function executeAction(
         : `Workspace "${workspace.name}" already exists. Using it as your active workspace for the rest of this request.`;
     }
 
+    if (action === "list_workspaces") {
+      return runListWorkspaces(userId, "whatsapp");
+    }
+
+    if (action === "switch_workspace") {
+      const result = await runSwitchWorkspace(userId, input, "whatsapp");
+      const switched = await resolveUserWorkspaceContext(
+        userId,
+        String(input.workspace ?? "")
+      );
+      session.workspaceId = switched.workspaceId;
+      session.workspaceName = switched.workspaceName;
+      revalidateUserWorkspaces(userId, switched.workspaceId);
+      return result;
+    }
+
     const ctx = explicitWorkspace
       ? await resolveUserWorkspaceContext(userId, explicitWorkspace)
       : session.workspaceId && session.workspaceName
@@ -1361,6 +2029,21 @@ async function executeAction(
         return (
           `Done. ${formatTaskSummary(task, ctx.workspaceName, "whatsapp")} is now ${task.status.replace("_", " ")}.` +
           formatTaskDeepLink(ctx.workspaceId, task.shortId, "whatsapp")
+        );
+      }
+
+      case "read_task": {
+        const shortId = await resolveBatchAwareTaskShortId(
+          ctx.workspaceId,
+          Number(input.shortId),
+          session.createdTaskShortIds
+        );
+        const task = await getTask(ctx.workspaceId, userId, shortId);
+        return formatTaskDetail(
+          task,
+          ctx.workspaceName,
+          ctx.workspaceId,
+          "whatsapp"
         );
       }
 
@@ -1511,6 +2194,175 @@ async function executeAction(
         const tagLine =
           asset.tags.length > 0 ? asset.tags.join(", ") : "(none)";
         return `Updated tags on "${name}" in ${ctx.workspaceName}: ${tagLine}.`;
+      }
+
+      case "invite_members": {
+        const raw = input.members;
+        const members = Array.isArray(raw)
+          ? raw.map((m) => String(m))
+          : String(raw ?? "")
+              .split(/[,;\n]+/)
+              .map((m) => m.trim())
+              .filter(Boolean);
+        if (members.length === 0) {
+          return "Who should I invite? Give usernames, emails, or phone numbers (up to 8 at once).";
+        }
+        const result = await inviteMembersToWorkspace({
+          workspaceId: ctx.workspaceId,
+          inviterUserId: userId,
+          identifiers: members,
+        });
+        revalidateUserWorkspaces(userId, ctx.workspaceId);
+        return formatInviteMembersResult(result, "whatsapp");
+      }
+
+      case "list_workspace_members": {
+        const { members } = await getWorkspaceMembers(ctx.workspaceId, userId);
+        return formatWorkspaceMemberList(ctx.workspaceName, members, "whatsapp");
+      }
+
+      case "create_invite_link": {
+        const link = await createWorkspaceInviteLink(
+          ctx.workspaceId,
+          userId
+        );
+        return `Invite link for *${link.workspaceName}* (share with anyone):\n${link.url}`;
+      }
+
+      case "promote_member": {
+        const member = String(input.member ?? "").trim();
+        if (!member) return "Who should I promote?";
+        const newRole =
+          input.role === "LEADER" ? Role.LEADER : Role.SUB_LEADER;
+        const updated = await promoteMember(
+          ctx.workspaceId,
+          userId,
+          member,
+          newRole
+        );
+        revalidateUserWorkspaces(userId, ctx.workspaceId);
+        return `Promoted @${displayUser(updated.user)} to ${formatMemberRole(updated.role)} in ${ctx.workspaceName}.`;
+      }
+
+      case "demote_member": {
+        const member = String(input.member ?? "").trim();
+        if (!member) return "Who should I demote?";
+        const newRole =
+          input.role === "SUB_LEADER" ? Role.SUB_LEADER : Role.MEMBER;
+        const target = await resolveWorkspaceMember(ctx.workspaceId, member);
+        if (target.userId === userId) {
+          return "You cannot demote yourself.";
+        }
+        if (target.role === newRole) {
+          return `@${displayUser(target.user)} is already ${formatMemberRole(newRole)}.`;
+        }
+        const rank = { MEMBER: 0, SUB_LEADER: 1, LEADER: 2 };
+        if (rank[newRole] >= rank[target.role]) {
+          return "That is not a demotion — use promote_member instead.";
+        }
+
+        await stageDemoteMember(session.phone, userId, {
+          workspaceId: ctx.workspaceId,
+          workspaceName: ctx.workspaceName,
+          targetUserId: target.userId,
+          targetLabel: displayUser(target.user),
+          currentRole: target.role,
+          newRole,
+        });
+        session.pendingDemote = true;
+        return `Ready to demote @${displayUser(target.user)} from ${formatMemberRole(target.role)} to ${formatMemberRole(newRole)}. I'll send Confirm / Cancel buttons next.`;
+      }
+
+      case "list_my_tasks":
+        return runListMyTasks(ctx, userId, input, "whatsapp");
+
+      case "search_tasks":
+        return runSearchTasks(ctx, userId, input, "whatsapp");
+
+      case "workspace_summary":
+        return runWorkspaceSummary(ctx, userId, "whatsapp");
+
+      case "read_asset":
+        return runReadAsset(ctx, userId, input, "whatsapp");
+
+      case "delete_asset": {
+        const pending = await prepareDeleteAsset(ctx, userId, input);
+        await stageDeleteAsset(session.phone, userId, pending);
+        session.pendingDeleteAsset = true;
+        return `Ready to delete file "${pending.fileName}". I'll send Confirm / Cancel buttons next.`;
+      }
+
+      case "delete_link":
+        revalidateUserWorkspaces(userId, ctx.workspaceId);
+        return runDeleteLink(ctx, userId, input, "whatsapp");
+
+      case "update_link":
+        revalidateUserWorkspaces(userId, ctx.workspaceId);
+        return runUpdateLink(ctx, userId, input, "whatsapp");
+
+      case "pin_link":
+        revalidateUserWorkspaces(userId, ctx.workspaceId);
+        return runPinLink(ctx, userId, input, "whatsapp");
+
+      case "remove_member": {
+        const member = String(input.member ?? "").trim();
+        if (!member) return "Who should I remove from the workspace?";
+        const pending = await prepareRemoveMember(ctx, userId, member);
+        await stageRemoveMember(session.phone, userId, pending);
+        session.pendingRemoveMember = true;
+        return `Ready to remove @${pending.targetLabel} from ${ctx.workspaceName}. I'll send Confirm / Cancel buttons next.`;
+      }
+
+      case "list_categories":
+        return runListCategories(ctx, "whatsapp");
+
+      case "create_category": {
+        const result = await runCreateCategory(ctx, input, "whatsapp");
+        revalidateUserWorkspaces(userId, ctx.workspaceId);
+        return result;
+      }
+
+      case "leave_workspace": {
+        const result = await runLeaveWorkspace(ctx, userId, "whatsapp");
+        session.workspaceId = null;
+        session.workspaceName = null;
+        revalidateUserWorkspaces(userId, ctx.workspaceId);
+        return result;
+      }
+
+      case "bulk_update_tasks": {
+        const result = await runBulkUpdateTasks(
+          ctx,
+          userId,
+          input,
+          "whatsapp"
+        );
+        revalidateUserWorkspaces(userId, ctx.workspaceId);
+        return result;
+      }
+
+      case "unassign_task": {
+        const shortId = await resolveBatchAwareTaskShortId(
+          ctx.workspaceId,
+          Number(input.shortId),
+          session.createdTaskShortIds
+        );
+        const result = await runUnassignTask(
+          ctx,
+          userId,
+          shortId,
+          "whatsapp"
+        );
+        revalidateUserWorkspaces(userId, ctx.workspaceId);
+        return result;
+      }
+
+      case "export_whiteboard": {
+        const result = await runExportWhiteboard(ctx, userId, "whatsapp");
+        if (result.images?.length) {
+          session.whiteboardImages = result.images;
+        }
+        return result.text;
       }
 
       default:

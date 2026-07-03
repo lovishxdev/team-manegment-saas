@@ -168,6 +168,107 @@ export function formatTaskSummary(
   return `#${task.shortId} "${task.title}" (${parts.join(", ")}) in ${workspaceName}`;
 }
 
+export type TaskDetail = {
+  shortId: number;
+  title: string;
+  status: TaskStatus;
+  priority: TaskPriority;
+  dueDate: Date | null;
+  tags: string[];
+  description: string | null;
+  category: { name: string };
+  assignees: { user: { email: string | null; username: string | null } }[];
+  attachments: { url: string; fileType: string }[];
+  createdBy?: { email: string | null; username: string | null } | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+/** Full task detail with labeled fields — model can answer partial questions (tags only, etc.). */
+export function formatTaskDetail(
+  task: TaskDetail,
+  workspaceName: string,
+  workspaceId: string,
+  channel: Channel
+): string {
+  const assigneeLine =
+    task.assignees.length > 0
+      ? task.assignees.map((a) => `@${displayUser(a.user)}`).join(", ")
+      : channel === "whatsapp"
+        ? "_Unassigned_"
+        : "Unassigned";
+
+  const tagsLine =
+    task.tags.length > 0
+      ? task.tags.join(", ")
+      : channel === "whatsapp"
+        ? "_None_"
+        : "None";
+
+  const dueLine = task.dueDate
+    ? task.dueDate.toISOString().slice(0, 10)
+    : channel === "whatsapp"
+      ? "_None_"
+      : "None";
+
+  const description =
+    task.description?.trim() ||
+    (channel === "whatsapp" ? "_No description_" : "No description");
+
+  const attachmentLines =
+    task.attachments.length > 0
+      ? task.attachments.map((a) => {
+          const name = assetFileName(a.url);
+          return channel === "whatsapp"
+            ? `• ${name} (${a.fileType})`
+            : `- ${name} (${a.fileType})`;
+        })
+      : [channel === "whatsapp" ? "_None_" : "None"];
+
+  const createdByLine = task.createdBy
+    ? `@${displayUser(task.createdBy)}`
+    : channel === "whatsapp"
+      ? "_Unknown_"
+      : "Unknown";
+
+  const url = taskUrl(workspaceId, task.shortId);
+
+  if (channel === "whatsapp") {
+    return (
+      `*Task #${task.shortId} · ${task.title}*\n` +
+      `Workspace: ${workspaceName}\n` +
+      `Status: ${task.status.replace("_", " ")}\n` +
+      `Category: ${task.category.name}\n` +
+      `Priority: ${task.priority}\n` +
+      `Due date: ${dueLine}\n` +
+      `Tags: ${tagsLine}\n` +
+      `Assignees: ${assigneeLine}\n` +
+      `Created by: ${createdByLine}\n` +
+      `Created: ${task.createdAt.toISOString().slice(0, 10)}\n` +
+      `Updated: ${task.updatedAt.toISOString().slice(0, 10)}\n` +
+      `Description:\n${description}\n\n` +
+      `Attachments (${task.attachments.length}):\n${attachmentLines.join("\n")}\n\n` +
+      `Open: ${url}`
+    );
+  }
+
+  return (
+    `Task #${task.shortId} "${task.title}" in workspace "${workspaceName}"\n` +
+    `Status: ${task.status}\n` +
+    `Category: ${task.category.name}\n` +
+    `Priority: ${task.priority}\n` +
+    `Due date: ${dueLine}\n` +
+    `Tags: ${tagsLine}\n` +
+    `Assignees: ${assigneeLine}\n` +
+    `Created by: ${createdByLine}\n` +
+    `Created: ${task.createdAt.toISOString().slice(0, 10)}\n` +
+    `Updated: ${task.updatedAt.toISOString().slice(0, 10)}\n` +
+    `Description:\n${description}\n\n` +
+    `Attachments (${task.attachments.length}):\n${attachmentLines.join("\n")}\n\n` +
+    `Link: ${url}`
+  );
+}
+
 export function formatTaskDeepLink(
   workspaceId: string,
   shortId: number,
@@ -329,4 +430,224 @@ export function formatLinkList(
   });
 
   return `${header}\n\n${lines.join("\n\n")}`;
+}
+
+export type WorkspaceMemberRow = {
+  role: string;
+  user: { email: string | null; username: string | null };
+};
+
+export function formatWorkspaceMemberList(
+  workspaceName: string,
+  members: WorkspaceMemberRow[],
+  channel: Channel
+): string {
+  if (members.length === 0) {
+    return channel === "whatsapp"
+      ? `No members in *${workspaceName}*.`
+      : `No members in "${workspaceName}".`;
+  }
+
+  const header =
+    channel === "whatsapp"
+      ? `👥 *${workspaceName}* · ${members.length} member${members.length === 1 ? "" : "s"}`
+      : `Members of "${workspaceName}" (${members.length}):`;
+
+  const lines = members.map((m) => {
+    const label = `@${displayUser(m.user)}`;
+    if (channel === "whatsapp") {
+      return `• ${label} (${m.role.replace("_", " ")})`;
+    }
+    return `- ${label} [${m.role}]`;
+  });
+
+  return `${header}\n${lines.join("\n")}`;
+}
+
+export function formatTaskSearchResults(
+  workspaceName: string,
+  tasks: BoardTask[],
+  channel: Channel,
+  label = "Tasks"
+): string {
+  if (tasks.length === 0) {
+    return channel === "whatsapp"
+      ? `No matching tasks in *${workspaceName}*.`
+      : `No matching tasks in "${workspaceName}".`;
+  }
+
+  const header =
+    channel === "whatsapp"
+      ? `*${label} · ${workspaceName}* (${tasks.length})`
+      : `${label} in "${workspaceName}" (${tasks.length}):`;
+
+  const lines = tasks.map((t) => formatTaskLine(t, channel));
+  return `${header}\n${lines.join("\n")}`;
+}
+
+export function formatAssetDetail(
+  asset: {
+    url: string;
+    fileType: string;
+    tags: string[];
+    createdAt: Date;
+    uploadedBy: { email: string | null; username: string | null } | null;
+    task: { shortId: number; title: string } | null;
+  },
+  workspaceName: string,
+  channel: Channel
+): string {
+  const name = assetFileName(asset.url);
+  const tagsLine =
+    asset.tags.length > 0
+      ? asset.tags.join(", ")
+      : channel === "whatsapp"
+        ? "_None_"
+        : "None";
+  const uploader = asset.uploadedBy
+    ? `@${displayUser(asset.uploadedBy)}`
+    : channel === "whatsapp"
+      ? "_Unknown_"
+      : "Unknown";
+  const taskLine = asset.task
+    ? `#${asset.task.shortId} "${asset.task.title}"`
+    : channel === "whatsapp"
+      ? "_Not attached to a task_"
+      : "Not attached to a task";
+
+  if (channel === "whatsapp") {
+    return (
+      `*File · ${name}*\n` +
+      `Workspace: ${workspaceName}\n` +
+      `Type: ${asset.fileType}\n` +
+      `Tags: ${tagsLine}\n` +
+      `Uploaded by: ${uploader}\n` +
+      `Uploaded: ${asset.createdAt.toISOString().slice(0, 10)}\n` +
+      `Attached to: ${taskLine}\n` +
+      `URL: ${asset.url}`
+    );
+  }
+
+  return (
+    `Asset "${name}" in workspace "${workspaceName}"\n` +
+    `Type: ${asset.fileType}\n` +
+    `Tags: ${tagsLine}\n` +
+    `Uploaded by: ${uploader}\n` +
+    `Uploaded: ${asset.createdAt.toISOString().slice(0, 10)}\n` +
+    `Attached to: ${taskLine}\n` +
+    `URL: ${asset.url}`
+  );
+}
+
+export function formatWorkspaceList(
+  workspaces: {
+    id: string;
+    name: string;
+    role: string;
+    isActive: boolean;
+  }[],
+  channel: Channel
+): string {
+  if (workspaces.length === 0) {
+    return channel === "whatsapp"
+      ? "You don't belong to any workspace yet."
+      : "You don't belong to any workspace yet.";
+  }
+
+  const header =
+    channel === "whatsapp"
+      ? `*Your workspaces* (${workspaces.length})`
+      : `Your workspaces (${workspaces.length}):`;
+
+  const lines = workspaces.map((w) => {
+    const active = w.isActive
+      ? channel === "whatsapp"
+        ? " · _active_"
+        : " [active]"
+      : "";
+    const role = w.role.replace("_", " ");
+    if (channel === "whatsapp") {
+      return `• *${w.name}* (${role})${active}`;
+    }
+    return `- ${w.name} (${role})${active}`;
+  });
+
+  return `${header}\n${lines.join("\n")}`;
+}
+
+export function formatWorkspaceSummary(
+  summary: {
+    workspace: { name: string };
+    role: string;
+    memberCount: number;
+    openTasks: number;
+    assignedToYou: number;
+    tasksByStatus: Record<"TODO" | "IN_PROGRESS" | "DONE", number>;
+  },
+  channel: Channel
+): string {
+  const { workspace, role, memberCount, openTasks, assignedToYou, tasksByStatus } =
+    summary;
+
+  if (channel === "whatsapp") {
+    return (
+      `*${workspace.name}* summary\n` +
+      `Your role: ${role.replace("_", " ")}\n` +
+      `Members: ${memberCount}\n` +
+      `Open tasks: ${openTasks}\n` +
+      `Assigned to you: ${assignedToYou}\n` +
+      `To Do: ${tasksByStatus.TODO} · In progress: ${tasksByStatus.IN_PROGRESS} · Done: ${tasksByStatus.DONE}`
+    );
+  }
+
+  return (
+    `Workspace "${workspace.name}" summary\n` +
+    `Your role: ${role}\n` +
+    `Members: ${memberCount}\n` +
+    `Open tasks: ${openTasks}\n` +
+    `Assigned to you: ${assignedToYou}\n` +
+    `Tasks by status: TODO ${tasksByStatus.TODO}, IN_PROGRESS ${tasksByStatus.IN_PROGRESS}, DONE ${tasksByStatus.DONE}`
+  );
+}
+
+export function formatCategoryList(
+  workspaceName: string,
+  categories: { name: string }[],
+  channel: Channel
+): string {
+  if (categories.length === 0) {
+    return channel === "whatsapp"
+      ? `No categories in *${workspaceName}*.`
+      : `No categories in "${workspaceName}".`;
+  }
+
+  const header =
+    channel === "whatsapp"
+      ? `*Categories · ${workspaceName}* (${categories.length})`
+      : `Categories in "${workspaceName}" (${categories.length}):`;
+
+  const lines = categories.map((c) =>
+    channel === "whatsapp" ? `• ${c.name}` : `- ${c.name}`
+  );
+  return `${header}\n${lines.join("\n")}`;
+}
+
+export function formatBulkTaskUpdateResult(
+  workspaceName: string,
+  tasks: BoardTask[],
+  channel: Channel
+): string {
+  if (tasks.length === 0) {
+    return channel === "whatsapp"
+      ? `No tasks updated in *${workspaceName}*.`
+      : `No tasks updated in "${workspaceName}".`;
+  }
+
+  const header =
+    channel === "whatsapp"
+      ? `*Updated ${tasks.length} task${tasks.length === 1 ? "" : "s"} · ${workspaceName}*`
+      : `Updated ${tasks.length} task(s) in "${workspaceName}":`;
+
+  const lines = tasks.map((t) => formatTaskLine(t, channel));
+  return `${header}\n${lines.join("\n")}`;
 }

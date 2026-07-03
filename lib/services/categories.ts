@@ -113,6 +113,54 @@ export async function findOrCreateCategoryByName(
   });
 }
 
+/** Create a category explicitly (fails if the name already exists). */
+export async function createWorkspaceCategory(
+  workspaceId: string,
+  raw: string
+): Promise<WorkspaceCategoryRow> {
+  await ensureDefaultCategories(workspaceId);
+
+  let name: string;
+  try {
+    name = validateCategoryName(raw);
+  } catch (err) {
+    throw new ServiceError(
+      err instanceof Error ? err.message : "Invalid category name",
+      "INVALID_INPUT"
+    );
+  }
+
+  const slug = slugifyCategoryName(name);
+  const existing = await prisma.workspaceCategory.findFirst({
+    where: {
+      workspaceId,
+      OR: [{ slug }, { name: { equals: name, mode: "insensitive" } }],
+    },
+    select: { id: true, name: true },
+  });
+  if (existing) {
+    throw new ServiceError(
+      `Category "${existing.name}" already exists`,
+      "INVALID_INPUT"
+    );
+  }
+
+  const maxOrder = await prisma.workspaceCategory.aggregate({
+    where: { workspaceId },
+    _max: { sortOrder: true },
+  });
+
+  return prisma.workspaceCategory.create({
+    data: {
+      workspaceId,
+      name,
+      slug,
+      sortOrder: (maxOrder._max.sortOrder ?? -1) + 1,
+    },
+    select: { id: true, name: true, slug: true },
+  });
+}
+
 export async function resolveTaskCategoryId(
   workspaceId: string,
   input: { categoryId?: string; category?: string }

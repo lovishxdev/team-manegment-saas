@@ -3,7 +3,7 @@ import { Prisma, Role } from "@/lib/generated/prisma/client";
 import { invalidateMcpToken, invalidatePhone } from "@/lib/identity-cache";
 import { prisma } from "@/lib/prisma";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { getActorMembership, ServiceError } from "@/lib/services/project";
+import { getActorMembership, ServiceError, touchLastActiveWorkspace, resolveUserWorkspaceContext } from "@/lib/services/project";
 import {
   normalizeUsername,
   validateUsernameFormat,
@@ -309,6 +309,176 @@ export async function updateMemberRole(
   });
 }
 
+const ROLE_RANK: Record<Role, number> = {
+  [Role.MEMBER]: 0,
+  [Role.SUB_LEADER]: 1,
+  [Role.LEADER]: 2,
+};
+
+export function formatMemberRole(role: Role): string {
+  return role.replace("_", " ");
+}
+
+/** Resolve a workspace member by user id, username, or email fragment. */
+export async function resolveWorkspaceMember(
+  workspaceId: string,
+  identifier: string
+): Promise<{
+  userId: string;
+  role: Role;
+  user: { id: string; email: string | null; username: string | null };
+}> {
+  const memberships = await prisma.workspaceMembership.findMany({
+    where: { workspaceId },
+    include: { user: { select: { id: true, email: true, username: true } } },
+  });
+
+  const trimmed = identifier.trim();
+  const byId = memberships.find((m) => m.user.id === trimmed);
+  if (byId) {
+    return { userId: byId.user.id, role: byId.role, user: byId.user };
+  }
+
+  const needle = trimmed.toLowerCase();
+  const byUsername = memberships.find(
+    (m) => m.user.username?.toLowerCase() === needle
+  );
+  if (byUsername) {
+    return {
+      userId: byUsername.user.id,
+      role: byUsername.role,
+      user: byUsername.user,
+    };
+  }
+
+  const matches = memberships.filter(
+    (m) =>
+      m.user.email?.toLowerCase().includes(needle) ||
+      m.user.username?.toLowerCase().includes(needle)
+  );
+  if (matches.length === 1) {
+    return {
+      userId: matches[0].user.id,
+      role: matches[0].role,
+      user: matches[0].user,
+    };
+  }
+  if (matches.length > 1) {
+    throw new ServiceError(
+      `Multiple members match "${identifier}": ${matches
+        .map((m) => displayUser(m.user))
+        .join(", ")}. Be more specific.`,
+      "AMBIGUOUS_WORKSPACE"
+    );
+  }
+  throw new ServiceError(
+    `No workspace member matches "${identifier}"`,
+    "NOT_FOUND"
+  );
+}
+
+/** LEADER only. Promotes a member to SUB_LEADER or LEADER. */
+export async function promoteMember(
+  workspaceId: string,
+  actorId: string,
+  memberRef: string,
+  newRole: Role = Role.SUB_LEADER
+) {
+  if (newRole !== Role.SUB_LEADER && newRole !== Role.LEADER) {
+    throw new ServiceError(
+      "Promotion supports SUB_LEADER or LEADER only",
+      "INVALID_INPUT"
+    );
+  }
+
+  const target = await resolveWorkspaceMember(workspaceId, memberRef);
+  if (target.userId === actorId) {
+    throw new ServiceError("You cannot change your own role here", "INVALID_INPUT");
+  }
+  if (target.role === newRole) {
+    throw new ServiceError(
+      `@${displayUser(target.user)} is already ${formatMemberRole(newRole)}`,
+      "INVALID_INPUT"
+    );
+  }
+  if (ROLE_RANK[newRole] <= ROLE_RANK[target.role]) {
+    throw new ServiceError(
+      "That is not a promotion — use demote_member to lower someone's role",
+      "INVALID_INPUT"
+    );
+  }
+
+  const updated = await updateMemberRole(
+    workspaceId,
+    actorId,
+    target.userId,
+    newRole
+  );
+  return { ...target, role: updated.role };
+}
+
+/** LEADER only. Demotes a member to MEMBER or SUB_LEADER. */
+export async function demoteMember(
+  workspaceId: string,
+  actorId: string,
+  memberRef: string,
+  newRole: Role = Role.MEMBER
+) {
+  if (newRole !== Role.MEMBER && newRole !== Role.SUB_LEADER) {
+    throw new ServiceError(
+      "Demotion supports MEMBER or SUB_LEADER only",
+      "INVALID_INPUT"
+    );
+  }
+
+  const target = await resolveWorkspaceMember(workspaceId, memberRef);
+  if (target.userId === actorId) {
+    throw new ServiceError("You cannot change your own role here", "INVALID_INPUT");
+  }
+  if (target.role === newRole) {
+    throw new ServiceError(
+      `@${displayUser(target.user)} is already ${formatMemberRole(newRole)}`,
+      "INVALID_INPUT"
+    );
+  }
+  if (ROLE_RANK[newRole] >= ROLE_RANK[target.role]) {
+    throw new ServiceError(
+      "That is not a demotion — use promote_member to raise someone's role",
+      "INVALID_INPUT"
+    );
+  }
+
+  const updated = await updateMemberRole(
+    workspaceId,
+    actorId,
+    target.userId,
+    newRole
+  );
+  return { ...target, role: updated.role };
+}
+
+/** LEADER only. Demote by resolved user id (confirmation flows). */
+export async function demoteMemberById(
+  workspaceId: string,
+  actorId: string,
+  targetUserId: string,
+  newRole: Role
+) {
+  const membership = await prisma.workspaceMembership.findUnique({
+    where: { userId_workspaceId: { userId: targetUserId, workspaceId } },
+    include: { user: { select: { id: true, email: true, username: true } } },
+  });
+  if (!membership) {
+    throw new ServiceError("That user is not a member", "NOT_FOUND");
+  }
+  return demoteMember(
+    workspaceId,
+    actorId,
+    membership.user.username ?? membership.user.email ?? targetUserId,
+    newRole
+  );
+}
+
 /** LEADER only. Cannot remove the last leader (leave/delete instead). */
 export async function removeMember(
   workspaceId: string,
@@ -457,6 +627,104 @@ export async function saveExcalidrawState(
     where: { id: workspaceId },
     data: { excalidrawState: state as object },
   });
+}
+
+export type UserWorkspaceChoice = {
+  id: string;
+  name: string;
+  role: Role;
+  isActive: boolean;
+};
+
+/** Workspace list for bots (id, name, role, active flag). */
+export async function listUserWorkspaceChoices(
+  userId: string
+): Promise<UserWorkspaceChoice[]> {
+  const [memberships, user] = await Promise.all([
+    prisma.workspaceMembership.findMany({
+      where: { userId },
+      include: { workspace: { select: { id: true, name: true } } },
+      orderBy: { joinedAt: "desc" },
+    }),
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { lastActiveWorkspaceId: true },
+    }),
+  ]);
+
+  return memberships.map((m) => ({
+    id: m.workspace.id,
+    name: m.workspace.name,
+    role: m.role,
+    isActive: m.workspace.id === user?.lastActiveWorkspaceId,
+  }));
+}
+
+/** Set the user's active workspace by name or id. */
+export async function switchWorkspace(userId: string, workspaceHint: string) {
+  const ctx = await resolveUserWorkspaceContext(userId, workspaceHint);
+  await touchLastActiveWorkspace(userId, ctx.workspaceId);
+  return ctx;
+}
+
+export type WorkspaceSummary = {
+  workspace: { id: string; name: string };
+  role: Role;
+  memberCount: number;
+  openTasks: number;
+  assignedToYou: number;
+  tasksByStatus: Record<"TODO" | "IN_PROGRESS" | "DONE", number>;
+};
+
+/** Quick workspace health snapshot for bots. */
+export async function getWorkspaceSummary(
+  workspaceId: string,
+  userId: string
+): Promise<WorkspaceSummary> {
+  const membership = await getActorMembership(userId, workspaceId);
+  if (!membership) {
+    throw new ServiceError("You are not a member of this workspace", "FORBIDDEN");
+  }
+
+  const [workspace, memberCount, openTasks, assignedToYou, byStatus] =
+    await Promise.all([
+      prisma.workspace.findUniqueOrThrow({
+        where: { id: workspaceId },
+        select: { id: true, name: true },
+      }),
+      prisma.workspaceMembership.count({ where: { workspaceId } }),
+      prisma.task.count({
+        where: { workspaceId, status: { not: "DONE" } },
+      }),
+      prisma.task.count({
+        where: {
+          workspaceId,
+          status: { not: "DONE" },
+          assignees: { some: { userId } },
+        },
+      }),
+      prisma.task.groupBy({
+        by: ["status"],
+        where: { workspaceId },
+        _count: { _all: true },
+      }),
+    ]);
+
+  await touchLastActiveWorkspace(userId, workspaceId);
+
+  const tasksByStatus = { TODO: 0, IN_PROGRESS: 0, DONE: 0 };
+  for (const row of byStatus) {
+    tasksByStatus[row.status] = row._count._all;
+  }
+
+  return {
+    workspace,
+    role: membership.role,
+    memberCount,
+    openTasks,
+    assignedToYou,
+    tasksByStatus,
+  };
 }
 
 /** Issues a fresh MCP token, invalidating the old one immediately. */

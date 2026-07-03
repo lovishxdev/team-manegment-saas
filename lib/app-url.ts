@@ -28,6 +28,10 @@ export function getAppBaseUrl(): string {
   return "http://localhost:3000";
 }
 
+export function inviteUrl(inviteId: string): string {
+  return `${getAppBaseUrl()}/invite/${inviteId}`;
+}
+
 export function workspaceUrl(workspaceId: string): string {
   return `${getAppBaseUrl()}/w/${workspaceId}`;
 }

@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Whiteboard export</title>
+  </head>
+  <body>
+    <script type="module">
+      import {
+        exportToBlob,
+        getCommonBoundingBox,
+        getNonDeletedElements,
+        restoreElements,
+      } from "https://esm.sh/@excalidraw/excalidraw@0.18.1";
+
+      const MAX_IMAGES = 5;
+      const TILE_PX = 1400;
+      const PADDING = 48;
+
+      function planTiles(box, maxImages) {
+        const w = box.width + PADDING * 2;
+        const h = box.height + PADDING * 2;
+
+        if (w <= TILE_PX && h <= TILE_PX) {
+          return [
+            {
+              minX: box.minX - PADDING,
+              minY: box.minY - PADDING,
+              maxX: box.maxX + PADDING,
+              maxY: box.maxY + PADDING,
+            },
+          ];
+        }
+
+        let cols = Math.max(1, Math.ceil(w / TILE_PX));
+        let rows = Math.max(1, Math.ceil(h / TILE_PX));
+        while (cols * rows > maxImages) {
+          if (cols >= rows && cols > 1) cols -= 1;
+          else if (rows > 1) rows -= 1;
+          else break;
+        }
+
+        const tileW = w / cols;
+        const tileH = h / rows;
+        const tiles = [];
+        const baseMinX = box.minX - PADDING;
+        const baseMinY = box.minY - PADDING;
+
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            if (tiles.length >= maxImages) break;
+            const minX = baseMinX + c * tileW;
+            const minY = baseMinY + r * tileH;
+            tiles.push({
+              minX,
+              minY,
+              maxX: minX + tileW,
+              maxY: minY + tileH,
+            });
+          }
+        }
+        return tiles;
+      }
+
+      function elementInTile(el, tile) {
+        const box = getCommonBoundingBox([el]);
+        return !(
+          box.maxX < tile.minX ||
+          box.minX > tile.maxX ||
+          box.maxY < tile.minY ||
+          box.minY > tile.maxY
+        );
+      }
+
+      function bufferToBase64(buffer) {
+        let binary = "";
+        const bytes = new Uint8Array(buffer);
+        for (let i = 0; i < bytes.length; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        return btoa(binary);
+      }
+
+      window.__renderWhiteboard = async (raw) => {
+        const restored = restoreElements(raw.elements || [], null);
+        const elements = getNonDeletedElements(restored);
+        const files = raw.files || null;
+
+        if (elements.length === 0) {
+          return { images: [], empty: true };
+        }
+
+        const box = getCommonBoundingBox(elements);
+        const tiles = planTiles(box, MAX_IMAGES);
+        const images = [];
+
+        for (let i = 0; i < tiles.length; i++) {
+          const tile = tiles[i];
+          const subset = elements.filter((el) => elementInTile(el, tile));
+          if (subset.length === 0) continue;
+
+          const blob = await exportToBlob({
+            elements: subset,
+            appState: {
+              exportBackground: true,
+              viewBackgroundColor: "#ffffff",
+              exportPadding: 24,
+            },
+            files,
+            maxWidthOrHeight: TILE_PX,
+          });
+
+          const b64 = bufferToBase64(await blob.arrayBuffer());
+          images.push(b64);
+        }
+
+        return { images, empty: false, tileCount: images.length };
+      };
+    </script>
+  </body>
+</html>
