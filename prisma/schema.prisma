@@ -50,6 +50,7 @@ model User {
   memberships    WorkspaceMembership[]
   taskAssignments TaskAssignee[]
   createdTasks   Task[]                @relation("CreatedTasks")
+  taskUpdates    TaskUpdate[]
   uploadedAssets Asset[]
   createdLinks   WorkspaceLink[]
   oauthCodes     OAuthCode[]
@@ -70,6 +71,7 @@ model Workspace {
   links           WorkspaceLink[]
   invites         WorkspaceInvite[]
   categories      WorkspaceCategory[]
+  taskUpdates     TaskUpdate[]
   lastActiveUsers User[]                @relation("LastActiveWorkspace")
 }
 
@@ -128,6 +130,7 @@ model Task {
   assignees   TaskAssignee[]
   createdBy   User?     @relation("CreatedTasks", fields: [createdById], references: [id], onDelete: SetNull)
   attachments Asset[]
+  updates     TaskUpdate[]
 
   @@unique([workspaceId, shortId])
   @@index([workspaceId, status])
@@ -146,6 +149,23 @@ model TaskAssignee {
   @@id([taskId, userId])
   @@index([userId])
   @@index([taskId])
+}
+
+/// Per-task team updates — blockers, questions, review notes (not the static description).
+model TaskUpdate {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  taskId      String   @db.Uuid
+  authorId    String   @db.Uuid
+  body        String
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  task      Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author    User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
+  @@index([workspaceId, createdAt])
 }
 
 model Asset {

@@ -36,12 +36,14 @@ import {
   prepareRemoveMember,
   runDeleteAssetConfirmed,
   runDeleteLink,
+  runAddTaskUpdate,
   runBulkUpdateTasks,
   runCreateCategory,
   runExportWhiteboard,
   runLeaveWorkspace,
   runListCategories,
   runListMyTasks,
+  runListTaskUpdates,
   runListWorkspaces,
   runPinLink,
   runReadAsset,
@@ -53,6 +55,7 @@ import {
   runWorkspaceSummary,
   MAX_BULK_TASK_UPDATES,
 } from "@/lib/bot/extended-tools";
+import { getRecentTaskUpdates } from "@/lib/services/task-updates";
 import {
   createWorkspaceLink,
   listWorkspaceLinks,
@@ -343,12 +346,19 @@ const handler = createMcpHandler(
         try {
           const ctx = await resolveUserWorkspaceContext(userId, workspace);
           const task = await getTask(ctx.workspaceId, userId, shortId);
+          const recentUpdates = await getRecentTaskUpdates(
+            ctx.workspaceId,
+            userId,
+            shortId,
+            10
+          );
           return text(
             formatTaskDetail(
               task,
               ctx.workspaceName,
               ctx.workspaceId,
-              "mcp"
+              "mcp",
+              recentUpdates
             )
           );
         } catch (err) {
@@ -1111,6 +1121,66 @@ const handler = createMcpHandler(
             input.workspace
           );
           return text(await runBulkUpdateTasks(ctx, userId, input, "mcp"));
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "add_task_update",
+      {
+        description:
+          "Post a team update on a task (#N) — blockers, questions, review notes. Not for editing the task description.",
+        inputSchema: {
+          shortId: z.number().int().positive().describe("Task short ID (#N)"),
+          body: z.string().min(1).describe("Update message"),
+          workspace: workspaceParam,
+        },
+      },
+      async ({ shortId, body, workspace }, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const ctx = await resolveUserWorkspaceContext(userId, workspace);
+          return text(
+            await runAddTaskUpdate(ctx, userId, shortId, body, "mcp")
+          );
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.registerTool(
+      "list_task_updates",
+      {
+        description:
+          "List team updates on a task (#N) — blockers, questions, follow-ups. Use when the user asks what's happening or pending on a task.",
+        inputSchema: {
+          shortId: z.number().int().positive().describe("Task short ID (#N)"),
+          limit: z
+            .number()
+            .int()
+            .positive()
+            .max(100)
+            .optional()
+            .describe("Max updates (default 50)"),
+          workspace: workspaceParam,
+        },
+      },
+      async ({ shortId, limit, workspace }, extra) => {
+        const userId = extra.authInfo!.extra!.userId as string;
+        try {
+          const ctx = await resolveUserWorkspaceContext(userId, workspace);
+          return text(
+            await runListTaskUpdates(
+              ctx,
+              userId,
+              shortId,
+              "mcp",
+              limit
+            )
+          );
         } catch (err) {
           return toolError(err);
         }

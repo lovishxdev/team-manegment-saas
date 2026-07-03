@@ -43,12 +43,14 @@ import {
   prepareRemoveMember,
   runDeleteAssetConfirmed,
   runDeleteLink,
+  runAddTaskUpdate,
   runBulkUpdateTasks,
   runCreateCategory,
   runExportWhiteboard,
   runLeaveWorkspace,
   runListCategories,
   runListMyTasks,
+  runListTaskUpdates,
   runListWorkspaces,
   runPinLink,
   runReadAsset,
@@ -60,6 +62,7 @@ import {
   runWorkspaceSummary,
   MAX_BULK_TASK_UPDATES,
 } from "@/lib/bot/extended-tools";
+import { getRecentTaskUpdates } from "@/lib/services/task-updates";
 import { sendWhatsAppImageBuffer } from "@/lib/whatsapp-media";
 import { revalidateUserWorkspaces } from "@/lib/revalidate-nav";
 import {
@@ -187,7 +190,9 @@ ${workspaceContext}
 Convert the user's message into tool calls when they want to act on their board:
 - create_task: when they want to add/create a task. Use a SHORT title (a few words, under ~80 chars). Put bullet lists, long paragraphs, SEO keywords, and detailed requirements in description — never dump them all into title.
 - update_task: when they want to change a task - move/complete/start it, retitle it, set priority, due date, tags, or assign it (they usually reference it as #N)
-- read_task: when they ask for details about a specific task (#N), or about one field on a task (tags, assignees, due date, status, description, priority, category, attachments). Always call this tool — then answer only what they asked unless they wanted the full task.
+- read_task: when they ask for details about a specific task (#N), or about one field on a task (tags, assignees, due date, status, description, priority, category, attachments, updates). Always call this tool — then answer only what they asked unless they wanted the full task.
+- add_task_update: when they report a blocker, question, status note, or review feedback on a specific task (#N). Use for live team communication on that task — not for editing the task description.
+- list_task_updates: when they ask what's happening on a task, what's pending, blockers, or the conversation history on #N. Use this for full update history; read_task includes only recent updates.
 - delete_task: when they explicitly want to remove/delete a task (only when clearly intended). This stages a Confirm/Cancel button flow — never claim the task is deleted until they confirm.
 - get_board_state: when they ask what's on the board, task lists, or progress
 - create_workspace: when they want to create/start a new workspace, project, or board (e.g. "create a workspace called Marketing")
@@ -237,6 +242,7 @@ Rules:
 - Use the conversation history to resolve references: "that task" / "it" usually means the task #N mentioned in your most recent reply.
 - If the user names a specific workspace/project that is NOT "${activeWorkspaceName}", pass it as the workspace parameter; otherwise always omit workspace.
 - If the message is NOT an actionable board request (greetings, questions, chit-chat), do not call a tool. Reply with one short, friendly sentence telling them what you can do.
+- Task description = stable requirements/spec. Task updates = chronological team notes (blockers, questions, review feedback).
 - After read_task, answer only the part the user asked for (e.g. just tags or just assignees) unless they asked for full details.
 - Never invent task IDs or titles.`;
 }
@@ -357,6 +363,46 @@ const TOOLS: Anthropic.Tool[] = [
       type: "object",
       properties: {
         shortId: { type: "integer", description: "Task short ID (the N in #N)" },
+        workspace: {
+          type: "string",
+          description: "Workspace name, only if the user explicitly mentioned one",
+        },
+      },
+      required: ["shortId"],
+    },
+  },
+  {
+    name: "add_task_update",
+    description:
+      "Post a team update on a task (#N) — blockers, questions, review notes. Not for editing the task description.",
+    input_schema: {
+      type: "object",
+      properties: {
+        shortId: { type: "integer", description: "Task short ID (#N)" },
+        body: {
+          type: "string",
+          description: "The update message (blocker, question, feedback, status note)",
+        },
+        workspace: {
+          type: "string",
+          description: "Workspace name, only if the user explicitly mentioned one",
+        },
+      },
+      required: ["shortId", "body"],
+    },
+  },
+  {
+    name: "list_task_updates",
+    description:
+      "List all team updates on a task (#N) — blockers, questions, and follow-ups. Use when the user asks what's happening or pending on a task.",
+    input_schema: {
+      type: "object",
+      properties: {
+        shortId: { type: "integer", description: "Task short ID (#N)" },
+        limit: {
+          type: "integer",
+          description: "Max updates to return (default 50)",
+        },
         workspace: {
           type: "string",
           description: "Workspace name, only if the user explicitly mentioned one",
@@ -2042,11 +2088,54 @@ async function executeAction(
           session.createdTaskShortIds
         );
         const task = await getTask(ctx.workspaceId, userId, shortId);
+        const recentUpdates = await getRecentTaskUpdates(
+          ctx.workspaceId,
+          userId,
+          shortId,
+          10
+        );
         return formatTaskDetail(
           task,
           ctx.workspaceName,
           ctx.workspaceId,
+          "whatsapp",
+          recentUpdates
+        );
+      }
+
+      case "add_task_update": {
+        const shortId = await resolveBatchAwareTaskShortId(
+          ctx.workspaceId,
+          Number(input.shortId),
+          session.createdTaskShortIds
+        );
+        const body = String(input.body ?? "").trim();
+        if (!body) return "I need the update message to post.";
+        const result = await runAddTaskUpdate(
+          ctx,
+          userId,
+          shortId,
+          body,
           "whatsapp"
+        );
+        revalidateUserWorkspaces(userId, ctx.workspaceId);
+        return result;
+      }
+
+      case "list_task_updates": {
+        const shortId = await resolveBatchAwareTaskShortId(
+          ctx.workspaceId,
+          Number(input.shortId),
+          session.createdTaskShortIds
+        );
+        const limit =
+          input.limit !== undefined ? Number(input.limit) : undefined;
+        return runListTaskUpdates(
+          ctx,
+          userId,
+          shortId,
+          "whatsapp",
+          limit
         );
       }
 

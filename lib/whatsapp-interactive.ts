@@ -108,6 +108,7 @@ export const HELP_TEXT = `*What I can do*
 • Leave workspace — leave the team (only leader guard applies)
 • Bulk update — change many tasks at once (status, category, etc.)
 • Unassign task — clear all assignees from #N
+• Task updates — post or read blockers/notes on #N ("what's pending on task 3?")
 • Whiteboard screenshots — send up to 5 images of the team whiteboard
 
 Message me naturally — I'll figure out the right action.`;

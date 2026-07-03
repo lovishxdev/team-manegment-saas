@@ -13,6 +13,7 @@ import {
   CategoryField,
   type CategoryOption,
 } from "@/components/board/category-field";
+import { TaskUpdatesSection } from "@/components/board/task-updates-section";
 import { ui, tagColor } from "@/components/ui/ui";
 
 const STATUSES = ["TODO", "IN_PROGRESS", "DONE"] as const;
@@ -124,25 +125,34 @@ export function TaskDetailModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-lg border border-line bg-card p-6"
+        className="flex max-h-[min(90dvh,calc(100vh-2rem))] w-full max-w-lg flex-col overflow-hidden rounded-lg border border-line bg-card"
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="task-detail-title"
       >
-        <div className="mb-5 flex items-start justify-between">
-          <h2 className="text-base font-semibold text-ink">
+        <div className="flex shrink-0 items-start justify-between border-b border-line px-6 py-4">
+          <h2
+            id="task-detail-title"
+            className="text-base font-semibold text-ink"
+          >
             Task{" "}
             <span className="font-mono text-sm text-ink-faint">
               #{task.shortId}
             </span>
           </h2>
           <button
+            type="button"
             onClick={onClose}
             className="rounded-md px-2 text-lg leading-none text-ink-faint hover:text-ink"
+            aria-label="Close"
           >
             ×
           </button>
         </div>
 
-        <div className="flex flex-col gap-4">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-4">
+          <div className="flex flex-col gap-4">
           <div>
             <label className={labelCls}>Title</label>
             <input
@@ -281,6 +291,12 @@ export function TaskDetailModal({
             </div>
           </div>
 
+          <TaskUpdatesSection
+            workspaceId={workspaceId}
+            taskId={task.id}
+            taskShortId={task.shortId}
+          />
+
           <div>
             <label className={labelCls}>
               Attachments ({task.attachments.length})
@@ -338,9 +354,13 @@ export function TaskDetailModal({
           </div>
 
           {error && <p className={ui.errorText}>{error}</p>}
+          </div>
+        </div>
 
-          <div className="mt-1 flex items-center justify-between">
+        <div className="shrink-0 border-t border-line px-6 py-4">
+          <div className="flex items-center justify-between">
             <button
+              type="button"
               onClick={remove}
               disabled={pending}
               className={ui.btnGhostDanger}
@@ -348,10 +368,15 @@ export function TaskDetailModal({
               Delete
             </button>
             <div className="flex gap-2">
-              <button onClick={onClose} className={ui.btnSecondary}>
+              <button
+                type="button"
+                onClick={onClose}
+                className={ui.btnSecondary}
+              >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={save}
                 disabled={pending}
                 aria-busy={pending}

@@ -38,6 +38,10 @@ import {
 } from "@/lib/services/links";
 import { displayUser } from "@/lib/username";
 import { findOrCreateCategoryByName } from "@/lib/services/categories";
+import {
+  createTaskUpdate,
+  listTaskUpdates,
+} from "@/lib/services/task-updates";
 
 export type ActionState = { error?: string; workspaceId?: string };
 
@@ -448,4 +452,62 @@ export async function fetchWorkspaceMemberLabelsAction(workspaceId: string) {
     id: m.user.id,
     label: displayUser(m.user),
   }));
+}
+
+export type TaskUpdateView = {
+  id: string;
+  body: string;
+  createdAt: string;
+  authorLabel: string;
+};
+
+export async function fetchTaskUpdatesAction(
+  workspaceId: string,
+  taskShortId: number
+): Promise<{ updates: TaskUpdateView[]; error?: string }> {
+  const user = await requireUser();
+  try {
+    const { updates } = await listTaskUpdates(
+      workspaceId,
+      user.id,
+      taskShortId
+    );
+    return {
+      updates: updates.map((u) => ({
+        id: u.id,
+        body: u.body,
+        createdAt: u.createdAt.toISOString(),
+        authorLabel: displayUser(u.author),
+      })),
+    };
+  } catch (err) {
+    return { updates: [], error: errorMessage(err) };
+  }
+}
+
+export async function addTaskUpdateAction(
+  workspaceId: string,
+  taskShortId: number,
+  body: string
+): Promise<ActionState & { update?: TaskUpdateView }> {
+  const user = await requireUser();
+  try {
+    const created = await createTaskUpdate({
+      workspaceId,
+      userId: user.id,
+      shortId: taskShortId,
+      body,
+    });
+    revalidatePath(`/w/${workspaceId}`);
+    return {
+      update: {
+        id: created.id,
+        body: created.body,
+        createdAt: created.createdAt.toISOString(),
+        authorLabel: displayUser(created.author),
+      },
+    };
+  } catch (err) {
+    return { error: errorMessage(err) };
+  }
 }

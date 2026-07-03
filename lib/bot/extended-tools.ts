@@ -38,9 +38,14 @@ import {
   switchWorkspace,
 } from "@/lib/services/workspace";
 import {
+  createTaskUpdate,
+  listTaskUpdates,
+} from "@/lib/services/task-updates";
+import {
   formatAssetDetail,
   formatBulkTaskUpdateResult,
   formatCategoryList,
+  formatTaskUpdates,
   formatTaskSearchResults,
   formatWorkspaceList,
   formatWorkspaceSummary,
@@ -412,6 +417,42 @@ export async function runUnassignTask(
 }
 
 export { MAX_BULK_TASK_UPDATES };
+
+export async function runAddTaskUpdate(
+  ctx: BotWorkspaceCtx,
+  userId: string,
+  shortId: number,
+  body: string,
+  channel: Channel
+): Promise<string> {
+  const created = await createTaskUpdate({
+    workspaceId: ctx.workspaceId,
+    userId,
+    shortId,
+    body,
+  });
+  const who = displayUser(created.author);
+  if (channel === "whatsapp") {
+    return `Posted update on #${created.taskShortId} *${created.taskTitle}* in ${ctx.workspaceName} as @${who}.`;
+  }
+  return `Posted update on task #${created.taskShortId} "${created.taskTitle}" in workspace "${ctx.workspaceName}".`;
+}
+
+export async function runListTaskUpdates(
+  ctx: BotWorkspaceCtx,
+  userId: string,
+  shortId: number,
+  channel: Channel,
+  limit?: number
+): Promise<string> {
+  const { task, updates } = await listTaskUpdates(
+    ctx.workspaceId,
+    userId,
+    shortId,
+    { limit }
+  );
+  return formatTaskUpdates(task.shortId, task.title, updates, channel);
+}
 
 export async function runExportWhiteboard(
   ctx: BotWorkspaceCtx,
