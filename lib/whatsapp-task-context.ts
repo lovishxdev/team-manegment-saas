@@ -1,5 +1,13 @@
 import type { ConversationTurn } from "@/lib/services/conversation";
 
+/** User reporting progress — task name optional when context is clear. */
+export const PROGRESS_REPORT =
+  /^(?:i\s+)?(?:have\s+)?(?:just\s+)?(?:started|finished|completed|blocked|shipped|deployed|sent|posted|published|wrote|made|done with)\b/i;
+
+export function isProgressReport(text: string): boolean {
+  return PROGRESS_REPORT.test(text.trim());
+}
+
 /** Last #N mentioned in recent chat (assistant or user), newest first. */
 export function lastTaskShortIdFromTurns(
   turns: ConversationTurn[]
@@ -19,6 +27,12 @@ export function taskTitleHintsFromTurns(turns: ConversationTurn[]): string[] {
   const hints: string[] = [];
   for (let i = turns.length - 1; i >= 0; i--) {
     const content = turns[i].content;
+    const thats = content.match(
+      /that['']?s\s+#\d+\s+([^.\n]+?)(?:\.|,|\n|$)/i
+    );
+    if (thats?.[1]) {
+      hints.push(thats[1].replace(/\*+/g, "").trim());
+    }
     const afterNum = content.match(/#\d+\s+([^(•\n]+?)(?:\s*\(|\.|,|\n|$)/);
     if (afterNum?.[1]) {
       hints.push(afterNum[1].replace(/\*+/g, "").trim());
@@ -79,7 +93,13 @@ export function resolveTaskUpdateBody(
       const offered = turns[i].content.match(
         /(?:want to post|should i post|post)\s+(?:that\s+)?(.+?)\?/i
       );
-      if (offered?.[1]) return offered[1].trim();
+      if (offered?.[1]) {
+        let text = offered[1].trim();
+        text = text.replace(/^that\s+you['']ve\s+/i, "I've ");
+        text = text.replace(/^you['']ve\s+/i, "I've ");
+        text = text.replace(/\s+on it\.?$/i, "");
+        return text;
+      }
     }
     for (let i = turns.length - 1; i >= 0; i--) {
       if (turns[i].role !== "user") continue;

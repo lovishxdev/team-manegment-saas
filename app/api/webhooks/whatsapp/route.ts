@@ -117,6 +117,11 @@ import {
 } from "@/lib/channel-formatters";
 import { classifyActionOutcome } from "@/lib/whatsapp-action-outcome";
 import { formatWhatsAppUserReply } from "@/lib/whatsapp-voice";
+import { tryFastPathTaskUpdate } from "@/lib/whatsapp-fast-path";
+import {
+  isOrchestratorEnabled,
+  runWhatsAppOrchestrator,
+} from "@/lib/whatsapp-orchestrator";
 import {
   isSonnetPolishEnabled,
   polishWhatsAppReply,
@@ -207,10 +212,11 @@ function buildSystemPrompt(activeWorkspaceName: string | null): string {
 WhatsApp formatting: bold = *single asterisks* only. Never use **markdown** or *Section:* headers — use plain "To do:" for board sections.
 
 Voice examples:
-- User: "mark login bug done" → you (after tools): "Marked #12 Login Bug as done."
-- User: "what's on the board" → brief summary, not a data dump.
-- Bad: "✅ Done. Created #2 Task (GENERAL, MEDIUM) · My Workspace"
-- Good: "Added *Return From Gym* as #2."
+- User: "mark login bug done" → after update_task: leave final text empty (tool output is sent to the user).
+- User: "what's on the board" → call get_board_state only; leave final text empty — never summarize with #N.
+- User: "I started 2 reddit posts" (after discussing a task) → add_task_update with body = their words; leave final text empty.
+- Bad: "Marked #1 as done" or "You've got #1 Seo Queries" — never use #N in user-facing text; use *task titles*.
+- Good tool outcomes: "Added *Return From Gym*." / "Updated *Seo Queries* → done." / board lists *Title* · status
 
 ${workspaceContext}
 
@@ -262,7 +268,7 @@ Rules:
 - Compound requests need multiple tool calls: execute them one step at a time, using each result before the next call. E.g. "create a workspace and add 3 tasks" = create_workspace first, then create_task three times. Always pass the workspace name on every tool after create_workspace in the same request.
 - When the user says "task 1", "task 2", etc. referring to tasks they just asked you to create in THIS message, they mean the 1st/2nd/... task created in this request — use the #N shortId from each create_task tool result, NOT the literal number N. But "previous task", "the other task", or a task named by title (e.g. "go to the gym") always means an EXISTING task from before the new creates — look up its #N via get_board_state or use the title match; never mark a newly created task done when they asked about a previous one.
 - "Previous task" / "the task before" / a task referenced by title is NEVER the task you just created in the same message unless they explicitly mean the new one.
-- After all actions are done, reply with ONE short natural message (1–3 sentences). Never paste raw tool output — summarize what matters in plain language.
+- After all actions are done, leave your final text EMPTY when tool results already answer the user (board lists, task details, create/update confirmations). Only add text for greetings or when no tools ran.
 - Compound requests (multiple things in one message): call a tool for every actionable part. If you cannot do a part (missing info, no matching task, ambiguous target), do NOT skip silently — either let the tool fail with a clear error, or end your turn with a short note listing what could NOT be done and why (e.g. "Could not attach image: no task specified").
 - Infer category from context (e.g. marketing, ops, frontend) only when clear; otherwise omit it.
 - Infer priority only when stated or strongly implied (e.g. "urgent" = HIGH); otherwise omit it.
@@ -278,7 +284,7 @@ Rules:
 - You CAN post task updates from WhatsApp via add_task_update. Never say you cannot or send them to the web app for notes.
 - Named task without #N: ask_task with their full question (preferred) OR find_task then list_task_updates.
 - Status / "what's going on" questions: ask_task ONLY — do not also call find_task, list_task_updates, or read_task.
-- After tools run, your final text (if any) should sound like a teammate texting back — 2–4 short sentences max. Never paste labeled fields (Status:, Category:, etc.).
+- After tools run, your final text should usually be EMPTY. The app sends formatted tool output directly. Never paste #N IDs or re-summarize board/task data.
 - After read_task, answer only the part the user asked for unless they wanted full details.
 - Never invent task IDs or titles.`;
 }
@@ -410,26 +416,26 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "add_task_update",
     description:
-      "Post a progress note on a task thread (#N). Use when the user reports status, blockers, or confirms they want something posted.",
+      "Post a progress note on a task. Use when the user reports status, blockers, or confirms they want something posted. shortId and body are optional — resolved from context and the user's message.",
     input_schema: {
       type: "object",
       properties: {
         shortId: {
           type: "integer",
           description:
-            "Task #N. Use the task from conversation context if the user did not repeat the number.",
+            "Task short ID if known. Omit when the task was just discussed — it will be inferred.",
         },
         body: {
           type: "string",
           description:
-            "The note text — copy the user's status report verbatim (e.g. 'Started 2 Reddit posts'). Required.",
+            "The note text. Omit to use the user's message verbatim.",
         },
         workspace: {
           type: "string",
           description: "Workspace name, only if the user explicitly mentioned one",
         },
       },
-      required: ["shortId", "body"],
+      required: [],
     },
   },
   {
@@ -1390,6 +1396,103 @@ async function fetchBoardReply(
   return `${body}\n\nOpen: ${workspaceUrl(ctx.workspaceId)}`;
 }
 
+/** Buttons, whiteboard images, and post-create flows after a text reply. */
+async function sendPostActionFollowUps(
+  from: string,
+  userId: string,
+  _userText: string,
+  session: WhatsAppSession
+) {
+  if (session.whiteboardImages && session.whiteboardImages.length > 0) {
+    const total = session.whiteboardImages.length;
+    const name = session.workspaceName ?? "workspace";
+    for (let i = 0; i < total; i++) {
+      await sendWhatsAppImageBuffer(
+        from,
+        session.whiteboardImages[i],
+        `Whiteboard ${i + 1}/${total} · ${name}`
+      ).catch(() => {});
+    }
+    session.whiteboardImages = null;
+  } else if (session.pendingRemoveMember) {
+    const pending = await getPendingRemoveMember(from, userId);
+    if (pending) {
+      await sendWhatsAppButtons(
+        from,
+        `Remove *@${pending.targetLabel}* from ${pending.workspaceName}?`,
+        [
+          { id: BUTTON.removeConfirm(pending.targetUserId), title: "🚫 Remove" },
+          { id: BUTTON.deleteCancel, title: "✖ Cancel" },
+        ],
+        { header: "Confirm removal", footer: "Leader action" }
+      ).catch(() => {});
+    }
+  } else if (session.pendingDeleteAsset) {
+    const pending = await getPendingDeleteAsset(from, userId);
+    if (pending) {
+      await sendWhatsAppButtons(
+        from,
+        `Delete file *${pending.fileName}* from ${pending.workspaceName}?`,
+        [
+          {
+            id: BUTTON.deleteAssetConfirm(pending.assetId),
+            title: "🗑 Delete",
+          },
+          { id: BUTTON.deleteCancel, title: "✖ Cancel" },
+        ],
+        { header: "Confirm delete file", footer: "This cannot be undone" }
+      ).catch(() => {});
+    }
+  } else if (session.pendingDemote) {
+    const pending = await getPendingDemote(from, userId);
+    if (pending) {
+      await sendWhatsAppButtons(
+        from,
+        `Demote *@${pending.targetLabel}* from ${formatMemberRole(pending.currentRole as Role)} to ${formatMemberRole(pending.newRole as Role)}?`,
+        [
+          {
+            id: BUTTON.demoteConfirm(pending.targetUserId, pending.newRole),
+            title: "⬇ Demote",
+          },
+          { id: BUTTON.deleteCancel, title: "✖ Cancel" },
+        ],
+        { header: "Confirm demotion", footer: "Leader action" }
+      ).catch(() => {});
+    }
+  } else if (session.pendingDeleteShortId) {
+    const pending = await getPendingDelete(from, userId);
+    if (pending) {
+      await sendWhatsAppButtons(
+        from,
+        `Delete ${formatTaskRef(pending.taskTitle)}?`,
+        [
+          { id: BUTTON.deleteConfirm(pending.shortId), title: "🗑 Delete" },
+          { id: BUTTON.deleteCancel, title: "✖ Cancel" },
+        ],
+        { header: "Confirm delete", footer: "This cannot be undone" }
+      ).catch(() => {});
+    }
+  } else if (session.lastCreatedTask) {
+    const { shortId, workspaceId, title } = session.lastCreatedTask;
+    await sendWhatsAppButtons(
+      from,
+      `Mark ${formatTaskRef(title)} in progress or done — or open it on the web.`,
+      [
+        { id: BUTTON.taskStart(shortId), title: "▶ In progress" },
+        { id: BUTTON.taskDone(shortId), title: "✅ Done" },
+      ],
+      { header: title.slice(0, 60), footer: "Tap to update status" }
+    ).catch(() => {});
+    await sendWhatsAppCtaUrl(
+      from,
+      "Open your workspace in the browser.",
+      "Open board",
+      workspaceUrl(workspaceId),
+      { footer: "Euclis dashboard" }
+    ).catch(() => {});
+  }
+}
+
 async function sendGreetingWithButtons(
   from: string,
   userId: string,
@@ -1797,18 +1900,6 @@ async function handleMessage(
 
   const lastDiscussedTaskShortId = lastTaskShortIdFromTurns(history);
 
-  const anthropic = new Anthropic();
-  const messages: Anthropic.MessageParam[] = [
-    ...history,
-    { role: "user" as const, content: text },
-  ];
-
-  // Agentic loop: execute every tool call, feed results back, and let the
-  // model keep chaining until the whole request is done (or we hit the cap).
-  const actionResults: ActionOutcome[] = [];
-  let reply: string | null = null;
-  let assistantNote: string | null = null;
-  let budgetExhausted = true;
   const session: WhatsAppSession = {
     phone: from,
     workspaceId: activeCtx.workspaceId,
@@ -1825,6 +1916,81 @@ async function handleMessage(
     conversationTurns: history,
     lastDiscussedTaskShortId,
   };
+
+  if (isOrchestratorEnabled() && hasWorkspace) {
+    try {
+      const orchestrated = await runWhatsAppOrchestrator({
+        userId,
+        userMessage: text,
+        history,
+        workspaceId: activeCtx.workspaceId,
+        workspaceName: activeCtx.workspaceName,
+        lastDiscussedTaskShortId,
+        buildSystemPrompt,
+        allTools: TOOLS,
+        buildHaikuTools: buildWhatsAppHaikuTools,
+        maxToolTurns: MAX_TOOL_TURNS,
+        executeAction: (action, input) =>
+          executeAction(userId, action, input, session),
+        onProgress: (action, result) => progress?.step(action, result),
+        session,
+      });
+
+      progress?.finish();
+
+      if (process.env.WHATSAPP_WEBHOOK_DEBUG === "1") {
+        console.log("[whatsapp-webhook] orchestrator", {
+          route: orchestrated.route,
+          intent: orchestrated.triage.intent,
+          judge: orchestrated.judge?.verdict,
+        });
+      }
+
+      if (orchestrated.reply) {
+        await sendWhatsAppText(from, orchestrated.reply);
+        await recordExchange(userId, text, orchestrated.reply).catch((err) =>
+          console.error("Failed to record conversation:", err)
+        );
+      }
+
+      await sendPostActionFollowUps(from, userId, text, session);
+      return;
+    } catch (err) {
+      console.error("[whatsapp] orchestrator failed, falling back to legacy:", err);
+    }
+  }
+
+  if (hasWorkspace && !isWhatsAppGreeting(text) && !isOrchestratorEnabled()) {
+    try {
+      const fastReply = await tryFastPathTaskUpdate({
+        userId,
+        userMessage: text,
+        turns: history,
+        lastDiscussedTaskShortId,
+      });
+      if (fastReply) {
+        progress?.finish();
+        await sendWhatsAppText(from, fastReply);
+        await recordExchange(userId, text, fastReply).catch(() => {});
+        return;
+      }
+    } catch (err) {
+      console.error("[whatsapp] fast-path task update failed:", err);
+    }
+  }
+
+  const anthropic = new Anthropic();
+  const messages: Anthropic.MessageParam[] = [
+    ...history,
+    { role: "user" as const, content: text },
+  ];
+
+  // Agentic loop: execute every tool call, feed results back, and let the
+  // model keep chaining until the whole request is done (or we hit the cap).
+  const actionResults: ActionOutcome[] = [];
+  let reply: string | null = null;
+  let assistantNote: string | null = null;
+  let budgetExhausted = true;
 
   try {
   for (let turn = 0; turn < MAX_TOOL_TURNS; turn++) {
@@ -1939,94 +2105,7 @@ async function handleMessage(
     );
   }
 
-  if (session.whiteboardImages && session.whiteboardImages.length > 0) {
-    const total = session.whiteboardImages.length;
-    const name = session.workspaceName ?? "workspace";
-    for (let i = 0; i < total; i++) {
-      await sendWhatsAppImageBuffer(
-        from,
-        session.whiteboardImages[i],
-        `Whiteboard ${i + 1}/${total} · ${name}`
-      ).catch(() => {});
-    }
-    session.whiteboardImages = null;
-  } else if (session.pendingRemoveMember) {
-    const pending = await getPendingRemoveMember(from, userId);
-    if (pending) {
-      await sendWhatsAppButtons(
-        from,
-        `Remove *@${pending.targetLabel}* from ${pending.workspaceName}?`,
-        [
-          { id: BUTTON.removeConfirm(pending.targetUserId), title: "🚫 Remove" },
-          { id: BUTTON.deleteCancel, title: "✖ Cancel" },
-        ],
-        { header: "Confirm removal", footer: "Leader action" }
-      ).catch(() => {});
-    }
-  } else if (session.pendingDeleteAsset) {
-    const pending = await getPendingDeleteAsset(from, userId);
-    if (pending) {
-      await sendWhatsAppButtons(
-        from,
-        `Delete file *${pending.fileName}* from ${pending.workspaceName}?`,
-        [
-          {
-            id: BUTTON.deleteAssetConfirm(pending.assetId),
-            title: "🗑 Delete",
-          },
-          { id: BUTTON.deleteCancel, title: "✖ Cancel" },
-        ],
-        { header: "Confirm delete file", footer: "This cannot be undone" }
-      ).catch(() => {});
-    }
-  } else if (session.pendingDemote) {
-    const pending = await getPendingDemote(from, userId);
-    if (pending) {
-      await sendWhatsAppButtons(
-        from,
-        `Demote *@${pending.targetLabel}* from ${formatMemberRole(pending.currentRole as Role)} to ${formatMemberRole(pending.newRole as Role)}?`,
-        [
-          {
-            id: BUTTON.demoteConfirm(pending.targetUserId, pending.newRole),
-            title: "⬇ Demote",
-          },
-          { id: BUTTON.deleteCancel, title: "✖ Cancel" },
-        ],
-        { header: "Confirm demotion", footer: "Leader action" }
-      ).catch(() => {});
-    }
-  } else if (session.pendingDeleteShortId) {
-    const pending = await getPendingDelete(from, userId);
-    if (pending) {
-      await sendWhatsAppButtons(
-        from,
-        `Delete ${formatTaskRef(pending.taskTitle)}?`,
-        [
-          { id: BUTTON.deleteConfirm(pending.shortId), title: "🗑 Delete" },
-          { id: BUTTON.deleteCancel, title: "✖ Cancel" },
-        ],
-        { header: "Confirm delete", footer: "This cannot be undone" }
-      ).catch(() => {});
-    }
-  } else if (session.lastCreatedTask) {
-    const { shortId, workspaceId, title } = session.lastCreatedTask;
-    await sendWhatsAppButtons(
-      from,
-      `Mark ${formatTaskRef(title)} in progress or done — or open it on the web.`,
-      [
-        { id: BUTTON.taskStart(shortId), title: "▶ In progress" },
-        { id: BUTTON.taskDone(shortId), title: "✅ Done" },
-      ],
-      { header: title.slice(0, 60), footer: "Tap to update status" }
-    ).catch(() => {});
-    await sendWhatsAppCtaUrl(
-      from,
-      "Open your workspace in the browser.",
-      "Open board",
-      workspaceUrl(workspaceId),
-      { footer: "Euclis dashboard" }
-    ).catch(() => {});
-  }
+  await sendPostActionFollowUps(from, userId, text, session);
 }
 
 function parseInputDueDate(value: unknown): Date | null | undefined {

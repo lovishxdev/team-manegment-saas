@@ -9,8 +9,10 @@ import {
 import {
   formatAmbiguousTaskPick,
   formatTaskPickPrompt,
+  isProgressReport,
   resolveTaskUpdateBody,
   taskTitleHintsFromTurns,
+  lastTaskShortIdFromTurns,
 } from "@/lib/whatsapp-task-context";
 
 /** Every tool Haiku may call on WhatsApp — reject unknown names early. */
@@ -78,7 +80,11 @@ function resolveShortIdHint(
   raw: unknown,
   session: WhatsAppToolSession
 ): number | null {
-  return parsePositiveInt(raw) ?? session.lastDiscussedTaskShortId;
+  return (
+    parsePositiveInt(raw) ??
+    session.lastDiscussedTaskShortId ??
+    lastTaskShortIdFromTurns(session.conversationTurns)
+  );
 }
 
 type BoardTaskRow = {
@@ -107,6 +113,14 @@ async function matchTaskFromContext(
   const board = await loadBoardTasks(workspaceId);
   if (board.length === 0) {
     return { kind: "none", tasks: [] };
+  }
+
+  if (isProgressReport(session.userMessage)) {
+    const fromHistory = resolveShortIdHint(undefined, session);
+    if (fromHistory) {
+      const hit = board.find((t) => t.shortId === fromHistory);
+      if (hit) return { kind: "one", shortId: fromHistory };
+    }
   }
 
   const queries = [

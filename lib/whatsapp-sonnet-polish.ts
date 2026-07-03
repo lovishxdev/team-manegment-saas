@@ -18,7 +18,8 @@ Formatting (WhatsApp only — NOT Markdown):
 - NEVER nest asterisks (*outer *inner* outer*)
 - Task titles may be bold: *Fix login bug*
 - Section headers: plain "To do:" or "In progress:" — no asterisks on headers
-- Keep #N task IDs, URLs, @usernames, and facts exactly as in the draft
+- Keep task *titles* bold; use titles not #N IDs in user-facing text
+- Keep URLs, @usernames, and facts exactly as in the draft
 - Use _italic_ sparingly for notes only
 
 Content:

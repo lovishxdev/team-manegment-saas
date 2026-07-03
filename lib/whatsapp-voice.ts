@@ -96,7 +96,16 @@ export function humanizeToolMessage(action: string | undefined, raw: string): st
   if (msg.match(/^Updated\s+\*[^*]+\*\s*→/i)) {
     return msg;
   }
-  if (msg.match(/^Updated #\d+/i) || msg.match(/^Marked #\d+/i)) {
+  if (msg.match(/^Posted that on #\d+/i)) {
+    return msg.replace(
+      /^Posted that on #\d+\.?$/i,
+      "Posted that."
+    );
+  }
+  if (msg.match(/^Marked #\d+ as done/i)) {
+    return msg.replace(/^Marked #\d+ as done\.?$/i, "Marked that as done.");
+  }
+  if (msg.match(/^Updated #\d+/i)) {
     return msg.replace(
       /^Updated\s+#\d+\s+\*([^*]+)\*\s*→\s*/i,
       (_, title) => `Updated ${formatTaskRef(title.trim())} → `
@@ -164,7 +173,7 @@ function humanizeTaskHints(rest: string): string {
 }
 
 /**
- * User-facing WhatsApp reply — conversational, not receipt-style.
+ * User-facing WhatsApp reply — prefer formatted tool output over model summaries.
  */
 export function formatWhatsAppUserReply(
   outcomes: ActionOutcome[],
@@ -176,28 +185,17 @@ export function formatWhatsAppUserReply(
   const successes = withMessage.filter((o) => o.ok);
   const failures = withMessage.filter((o) => !o.ok);
 
-  const inquiryOnly =
-    successes.length > 0 &&
-    failures.length === 0 &&
-    successes.every((o) => o.action && INQUIRY_ACTIONS.has(o.action));
-
-  if (inquiryOnly && note) return note;
-
-  if (inquiryOnly && successes.length === 1 && !budgetExhausted) {
-    return humanizeToolMessage(successes[0].action, successes[0].message);
-  }
-
-  if (
-    successes.length === 1 &&
-    failures.length === 0 &&
-    !budgetExhausted &&
-    note
-  ) {
-    return note;
-  }
+  const humanizedSuccesses = successes.map((o) =>
+    humanizeToolMessage(o.action, o.message)
+  );
+  const humanizedFailures = [
+    ...new Set(
+      failures.map((o) => humanizeToolMessage(o.action, o.message))
+    ),
+  ];
 
   if (successes.length === 1 && failures.length === 0 && !budgetExhausted) {
-    return humanizeToolMessage(successes[0].action, successes[0].message);
+    return humanizedSuccesses[0];
   }
 
   if (withMessage.length === 0 && note) return note;
@@ -209,21 +207,14 @@ export function formatWhatsAppUserReply(
   const lines: string[] = [];
 
   if (failures.length === 0 && !budgetExhausted && successes.length > 1) {
-    for (const o of successes) {
-      lines.push(`• ${humanizeToolMessage(o.action, o.message)}`);
+    for (const msg of humanizedSuccesses) {
+      lines.push(`• ${msg}`);
     }
-    let body = lines.join("\n");
-    if (note) body += `\n\n${note}`;
-    return body;
+    return lines.join("\n");
   }
 
   if (failures.length > 0 && successes.length === 0) {
-    const unique = [
-      ...new Set(
-        failures.map((o) => humanizeToolMessage(o.action, o.message))
-      ),
-    ];
-    let body = unique.join("\n");
+    let body = humanizedFailures.join("\n");
     if (budgetExhausted) {
       body += "\n\nI ran out of steps — send the rest in a new message.";
     }
@@ -231,31 +222,20 @@ export function formatWhatsAppUserReply(
   }
 
   if (failures.length > 0 && successes.length > 0) {
-    for (const o of successes) {
-      lines.push(`✓ ${humanizeToolMessage(o.action, o.message)}`);
+    for (const msg of humanizedSuccesses) {
+      lines.push(`✓ ${msg}`);
     }
-    const failMsgs = [
-      ...new Set(
-        failures.map((o) => humanizeToolMessage(o.action, o.message))
-      ),
-    ];
-    for (const msg of failMsgs) {
+    for (const msg of humanizedFailures) {
       lines.push(`✗ ${msg}`);
     }
     let body = lines.join("\n");
     body += "\n\nFix the ✗ lines and try again.";
-    if (note) body += `\n\n${note}`;
     return body;
   }
 
   if (budgetExhausted && successes.length > 0 && failures.length === 0) {
-    const lines = successes.map(
-      (o) => `• ${humanizeToolMessage(o.action, o.message)}`
-    );
-    return `${lines.join("\n")}\n\nSend any remaining steps in a new message.`;
+    return `${humanizedSuccesses.map((m) => `• ${m}`).join("\n")}\n\nSend any remaining steps in a new message.`;
   }
 
-  return successes
-    .map((o) => humanizeToolMessage(o.action, o.message))
-    .join("\n");
+  return humanizedSuccesses.join("\n");
 }
