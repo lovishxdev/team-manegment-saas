@@ -286,41 +286,6 @@ export async function resolveWhatsAppTaskShortId(
   return { ok: true, shortId };
 }
 
-/** Match by title only — used when the user names a task in this message (e.g. "work on SEO queries"). Chat history is still used for vague follow-ups ("post that", "I started…"). */
-export async function resolveWhatsAppTaskByTitle(
-  workspaceId: string,
-  titleQuery: string
-): Promise<ResolvedTaskShortId> {
-  const q = titleQuery.trim();
-  if (q.length < 2) {
-    return { ok: false, message: "Which task did you mean?" };
-  }
-
-  const board = await loadBoardTasks(workspaceId);
-  if (board.length === 0) {
-    return { ok: false, message: "You don't have any tasks on the board yet." };
-  }
-
-  const matched = resolveFromBoard(board, q);
-  if (matched.kind === "one") {
-    return { ok: true, shortId: matched.shortId };
-  }
-  if (matched.kind === "ambiguous") {
-    return {
-      ok: false,
-      message: formatAmbiguousTaskPick(matched.tasks),
-    };
-  }
-
-  return {
-    ok: false,
-    message: formatTaskPickPrompt(
-      board.map((t) => ({ title: t.title })),
-      "I couldn't find that task."
-    ),
-  };
-}
-
 /** Map server errors to safe WhatsApp copy — never leak stack traces or 500s. */
 export function formatToolExecutionError(err: unknown): string {
   if (err instanceof ServiceError) {

@@ -39,9 +39,9 @@ import {
 } from "@/lib/whatsapp-inbound";
 import { WhatsAppProgress } from "@/lib/whatsapp-progress";
 import {
-  getClientToolUses,
-  runClientToolUses,
-} from "@/lib/whatsapp-tool-batch";
+  runWhatsAppAgentLoop,
+  type AgentLoopResult,
+} from "@/lib/whatsapp-agent-loop";
 import { buildWhatsAppHaikuTools } from "@/lib/whatsapp-tool-search";
 import {
   enqueueInboundMessage,
@@ -65,19 +65,9 @@ import {
 import {
   formatBoardState,
   mapBoardSnapshot,
-  type ActionOutcome,
 } from "@/lib/channel-formatters";
-import { classifyActionOutcome } from "@/lib/whatsapp-action-outcome";
 import { formatWhatsAppUserReply } from "@/lib/whatsapp-voice";
-import { tryFastPathTaskUpdate } from "@/lib/whatsapp-fast-path";
-import {
-  isOrchestratorEnabled,
-  runWhatsAppOrchestrator,
-} from "@/lib/whatsapp-orchestrator";
-import {
-  isSonnetPolishEnabled,
-  polishWhatsAppReply,
-} from "@/lib/whatsapp-sonnet-polish";
+import { guardWhatsAppReply } from "@/lib/whatsapp-reply-guard";
 import { workspaceUrl } from "@/lib/app-url";
 import { getAppOrigin } from "@/lib/app-origin";
 import { isWhatsAppGreeting } from "@/lib/whatsapp-bot";
@@ -123,13 +113,25 @@ import type { WhatsAppSessionState } from "@/lib/tools/types";
 /**
  * WhatsApp bot interface (Meta Cloud API webhook).
  *
- * Flow: signature check -> phone lookup -> Claude Haiku with native tool-use
- * extracts the intended action -> service layer executes -> confirmation
- * text sent back via Graph API.
+ * Flow: signature check -> phone lookup -> single agent loop (Claude with
+ * native tool-use over the shared registry) -> deterministic reply guard ->
+ * Graph API send. Same architecture as the MCP connector, plus a chat loop.
  */
 
-// claude-3-5-haiku reached end-of-life; Haiku 4.5 is the current fast model.
-const HAIKU_MODEL = "claude-haiku-4-5";
+/** One capable model runs the whole conversation — no triage router. */
+const WHATSAPP_AGENT_MODEL =
+  process.env.WHATSAPP_AGENT_MODEL?.trim() || "claude-sonnet-4-5";
+
+/** Read-only tools whose results the model should answer from in its own words. */
+const INQUIRY_TOOLS = new Set([
+  "ask_task",
+  "read_task",
+  "list_task_updates",
+  "find_task",
+  "search_tasks",
+  "workspace_summary",
+  "read_asset",
+]);
 
 const DENIED_MESSAGE =
   "This number isn't linked yet. Sign in at Euclis → Settings → WhatsApp, add your phone, then message me again.";
@@ -168,6 +170,7 @@ Voice examples:
 - User: "mark login bug done" → after update_task: leave final text empty (tool output is sent to the user).
 - User: "what's on the board" → call get_board_state only; leave final text empty — never summarize with #N.
 - User: "I started 2 reddit posts" (after discussing a task) → add_task_update with body = their words; leave final text empty.
+- User: "what's going on with the login redesign" → call ask_task, then WRITE the answer yourself: 2–5 short sentences leading with what they asked (status, blocker, latest), specific facts from the thread only.
 - Bad: "Marked #1 as done" or "You've got #1 Seo Queries" — never use #N in user-facing text; use *task titles*.
 - Good tool outcomes: "Added *Return From Gym*." / "Updated *Seo Queries* → done." / board lists *Title* · status
 
@@ -221,7 +224,8 @@ Rules:
 - Compound requests need multiple tool calls: execute them one step at a time, using each result before the next call. E.g. "create a workspace and add 3 tasks" = create_workspace first, then create_task three times. Always pass the workspace name on every tool after create_workspace in the same request.
 - When the user says "task 1", "task 2", etc. referring to tasks they just asked you to create in THIS message, they mean the 1st/2nd/... task created in this request — use the #N shortId from each create_task tool result, NOT the literal number N. But "previous task", "the other task", or a task named by title (e.g. "go to the gym") always means an EXISTING task from before the new creates — look up its #N via get_board_state or use the title match; never mark a newly created task done when they asked about a previous one.
 - "Previous task" / "the task before" / a task referenced by title is NEVER the task you just created in the same message unless they explicitly mean the new one.
-- After all actions are done, leave your final text EMPTY when tool results already answer the user (board lists, task details, create/update confirmations). Only add text for greetings or when no tools ran.
+- After MUTATIONS (create/update/delete/post/invite) and board lists: leave your final text EMPTY — the app sends the formatted tool output directly. Never restate confirmations.
+- After INQUIRY tools (ask_task, read_task, list_task_updates, find_task, search_tasks): ALWAYS write the final answer yourself. 2–5 short sentences or up to 4 bullets. Lead with exactly what they asked. Use facts from the tool result only — never invent, never paste the raw thread or labeled dumps (Status:, Updates (N):), never use #N.
 - Compound requests (multiple things in one message): call a tool for every actionable part. If you cannot do a part (missing info, no matching task, ambiguous target), do NOT skip silently — either let the tool fail with a clear error, or end your turn with a short note listing what could NOT be done and why (e.g. "Could not attach image: no task specified").
 - Infer category from context (e.g. marketing, ops, frontend) only when clear; otherwise omit it.
 - Infer priority only when stated or strongly implied (e.g. "urgent" = HIGH); otherwise omit it.
@@ -237,7 +241,6 @@ Rules:
 - You CAN post task updates from WhatsApp via add_task_update. Never say you cannot or send them to the web app for notes.
 - Named task without #N: ask_task with their full question (preferred) OR find_task then list_task_updates.
 - Status / "what's going on" questions: ask_task ONLY — do not also call find_task, list_task_updates, or read_task.
-- After tools run, your final text should usually be EMPTY. The app sends formatted tool output directly. Never paste #N IDs or re-summarize board/task data.
 - After read_task, answer only the part the user asked for unless they wanted full details.
 - Never invent task IDs or titles.`;
 }
@@ -1021,8 +1024,8 @@ async function handleMessage(
     return;
   }
 
-  // Recent exchanges give Haiku the context to resolve follow-ups like
-  // "make that one high priority" (the prior reply names the task #N).
+  // Recent exchanges give the agent the context to resolve follow-ups like
+  // "make that one high priority" (the prior reply names the task).
   const history = await getRecentConversation(userId);
   const activeCtx = hasWorkspace
     ? await resolveUserWorkspaceContext(userId)
@@ -1049,181 +1052,54 @@ async function handleMessage(
     lastDiscussedTaskShortId,
   };
 
-  if (isOrchestratorEnabled() && hasWorkspace) {
-    try {
-      const orchestrated = await runWhatsAppOrchestrator({
-        userId,
-        userMessage: text,
-        history,
-        workspaceId: activeCtx.workspaceId,
-        workspaceName: activeCtx.workspaceName,
-        lastDiscussedTaskShortId,
-        buildSystemPrompt,
-        allTools: TOOLS,
-        buildHaikuTools: buildWhatsAppHaikuTools,
-        maxToolTurns: MAX_TOOL_TURNS,
-        executeAction: (action, input) =>
-          executeAction(userId, action, input, session),
-        onProgress: (action, result) => progress?.step(action, result),
-        session,
-      });
-
-      progress?.finish();
-
-      if (process.env.WHATSAPP_WEBHOOK_DEBUG === "1") {
-        console.log("[whatsapp-webhook] orchestrator", {
-          route: orchestrated.route,
-          intent: orchestrated.triage.intent,
-          judge: orchestrated.judge?.verdict,
-        });
-      }
-
-      if (orchestrated.reply) {
-        await sendWhatsAppText(from, orchestrated.reply);
-        await recordExchange(userId, text, orchestrated.reply).catch((err) =>
-          console.error("Failed to record conversation:", err)
-        );
-      }
-
-      await sendPostActionFollowUps(from, userId, text, session);
-      return;
-    } catch (err) {
-      console.error("[whatsapp] orchestrator failed, falling back to legacy:", err);
-    }
-  }
-
-  if (hasWorkspace && !isWhatsAppGreeting(text) && !isOrchestratorEnabled()) {
-    try {
-      const fastReply = await tryFastPathTaskUpdate({
-        userId,
-        userMessage: text,
-        turns: history,
-        lastDiscussedTaskShortId,
-      });
-      if (fastReply) {
-        progress?.finish();
-        await sendWhatsAppText(from, fastReply);
-        await recordExchange(userId, text, fastReply).catch(() => {});
-        return;
-      }
-    } catch (err) {
-      console.error("[whatsapp] fast-path task update failed:", err);
-    }
-  }
-
-  const anthropic = new Anthropic();
-  const messages: Anthropic.MessageParam[] = [
-    ...history,
-    { role: "user" as const, content: text },
-  ];
-
-  // Agentic loop: execute every tool call, feed results back, and let the
-  // model keep chaining until the whole request is done (or we hit the cap).
-  const actionResults: ActionOutcome[] = [];
-  let reply: string | null = null;
-  let assistantNote: string | null = null;
-  let budgetExhausted = true;
-
+  // Single agent (MCP-style): one capable model, full registry tools, no
+  // triage router. The model composes inquiry answers; mutations use the
+  // deterministic tool output.
+  let loop: AgentLoopResult;
   try {
-  for (let turn = 0; turn < MAX_TOOL_TURNS; turn++) {
-    const response = await anthropic.messages.create({
-      model: HAIKU_MODEL,
-      max_tokens: 1024,
-      system: buildSystemPrompt(activeCtx.workspaceName),
-      tools: buildWhatsAppHaikuTools(TOOLS),
-      messages,
+    loop = await runWhatsAppAgentLoop({
+      anthropic: new Anthropic(),
+      model: WHATSAPP_AGENT_MODEL,
+      systemPrompt: buildSystemPrompt(activeCtx.workspaceName),
+      tools: buildWhatsAppHaikuTools(TOOLS) ?? TOOLS,
+      messages: [...history, { role: "user" as const, content: text }],
+      maxTurns: MAX_TOOL_TURNS,
+      runTool: (name, input) => executeAction(userId, name, input, session),
+      onProgress: (action, result) => progress?.step(action, result),
     });
-
-    const toolUses = getClientToolUses(response.content);
-
-    if (toolUses.length === 0) {
-      if (response.stop_reason === "tool_use") {
-        // Server-side tool search only — keep going without client tool_result rows.
-        messages.push({ role: "assistant", content: response.content });
-        continue;
-      }
-
-      budgetExhausted = false;
-      const textBlock = response.content.find(
-        (block): block is Anthropic.TextBlock => block.type === "text"
-      );
-      const note = textBlock?.text.trim() || null;
-      if (actionResults.length === 0) {
-        reply = note;
-      } else if (note) {
-        assistantNote = note;
-      }
-      break;
-    }
-
-    messages.push({ role: "assistant", content: response.content });
-
-    const batchResults = await runClientToolUses(toolUses, async (toolUse) => {
-      const result = await executeAction(
-        userId,
-        toolUse.name,
-        toolUse.input as Record<string, unknown>,
-        session
-      );
-      const outcome = classifyActionOutcome(toolUse.name, result);
-      actionResults.push(outcome);
-      await progress?.step(toolUse.name, result);
-      return {
-        toolUseId: toolUse.id,
-        action: toolUse.name,
-        result,
-        outcome,
-      };
-    });
-
-    const results: Anthropic.ToolResultBlockParam[] = batchResults.map(
-      (row) => ({
-        type: "tool_result",
-        tool_use_id: row.toolUseId,
-        content: row.result,
-      })
-    );
-    messages.push({ role: "user", content: results });
-  }
   } finally {
     progress?.finish();
   }
+
+  const { actionResults, assistantNote, budgetExhausted } = loop;
+  let reply = loop.reply;
 
   const withMessage = actionResults.filter((o) => o.message.trim());
   const staticFallback =
     "Tell me what to add or change on your board — or send *menu*.";
 
   if (withMessage.length > 0) {
-    reply = formatWhatsAppUserReply(
+    const toolFallback = formatWhatsAppUserReply(
       actionResults,
       budgetExhausted,
-      assistantNote
+      null
     );
-  } else if (!reply && !session.workspacePickerSent) {
+    const inquiryOnly = withMessage.every(
+      (o) => o.action && INQUIRY_TOOLS.has(o.action)
+    );
+    // Inquiries: the model's composed answer wins (it read the tool results).
+    // Mutations: the deterministic confirmation wins — no restating by the model.
+    const draft =
+      inquiryOnly && assistantNote?.trim() ? assistantNote : toolFallback;
+    reply = guardWhatsAppReply({ draft, toolFallback, actionResults });
+  } else if (reply) {
+    reply = guardWhatsAppReply({
+      draft: reply,
+      toolFallback: reply,
+      actionResults,
+    });
+  } else if (!session.workspacePickerSent) {
     reply = staticFallback;
-  }
-
-  if (reply && isSonnetPolishEnabled() && reply !== staticFallback) {
-    try {
-      const polished = await polishWhatsAppReply({
-        userMessage: text,
-        draftReply: reply,
-        workspaceName: activeCtx.workspaceName,
-        actionResults,
-      });
-      if (process.env.WHATSAPP_WEBHOOK_DEBUG === "1") {
-        console.log("[whatsapp-webhook] sonnet polish", {
-          draft: reply.slice(0, 200),
-          polished: polished.slice(0, 200),
-        });
-      }
-      reply = polished;
-    } catch (err) {
-      console.error(
-        "[whatsapp-webhook] Sonnet polish failed, using draft:",
-        err
-      );
-    }
   }
 
   if (reply) {
