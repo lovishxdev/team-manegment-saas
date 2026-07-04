@@ -47,8 +47,7 @@ export function LandingStyles() {
         position: absolute;
         inset: 0;
         z-index: -3;
-        background-size: cover;
-        background-position: center center;
+        overflow: hidden;
         transform: scale(1.04);
         animation: lp-hero-pan 38s ease-in-out infinite alternate;
         will-change: transform;

@@ -147,16 +147,7 @@ export async function executeSimpleIntent(
       }
 
       case "read_task": {
-        // When the user names a task in THIS message, match by title.
-        // Otherwise fall back to workspace conversation context (last discussed task).
-        const titleQuery =
-          slots.task_ref?.trim() ||
-          userMessage
-            .replace(
-              /.*(?:work on|focus on|switch to|start (?:working )?on)\s+/i,
-              ""
-            )
-            .trim();
+        const titleQuery = slots.task_ref?.trim() || slots.task_title?.trim();
 
         const resolved = titleQuery
           ? await resolveWhatsAppTaskByTitle(ctx.workspaceId, titleQuery)

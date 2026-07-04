@@ -4,6 +4,7 @@ import type { ActionOutcome } from "@/lib/channel-formatters";
 import { formatWhatsAppUserReply } from "@/lib/whatsapp-voice";
 import { classifyActionOutcome } from "@/lib/whatsapp-action-outcome";
 import { runWhatsAppAgentLoop } from "@/lib/whatsapp-agent-loop";
+import { complexAgentModel, simpleAgentModel } from "@/lib/whatsapp-orchestrator/types";
 import { buildOrchestratorContext } from "@/lib/whatsapp-orchestrator/context-pack";
 import { executeSimpleIntent } from "@/lib/whatsapp-orchestrator/execute-simple";
 import {
@@ -13,23 +14,21 @@ import {
 import { summarizeAskTaskReply } from "@/lib/whatsapp-orchestrator/summarize-ask-task";
 import { triageWhatsAppMessage } from "@/lib/whatsapp-orchestrator/triage";
 import { refineTriageResult } from "@/lib/whatsapp-orchestrator/refine-triage";
+import { pickOrchestratorRoute } from "@/lib/whatsapp-orchestrator/route";
 import {
   toolsForIntent,
   triageSystemAugment,
 } from "@/lib/whatsapp-orchestrator/tools-for-intent";
 import {
-  complexAgentModel,
   isAskTaskSummarizeEnabled,
   isJudgeEnabled,
-  simpleAgentModel,
-  simpleExecuteMinConfidence,
-  SIMPLE_INTENTS,
   type OrchestratorResult,
   type OrchestratorRoute,
   type TriageResult,
 } from "@/lib/whatsapp-orchestrator/types";
 import { runAskTask } from "@/lib/bot/extended-tools";
 import { resolveUserWorkspaceContext } from "@/lib/services/project";
+import { ragQueryFromTriage } from "@/lib/whatsapp-orchestrator/normalize-slots";
 
 export type OrchestratorDeps = {
   userId: string;
@@ -56,27 +55,6 @@ export type OrchestratorDeps = {
   onProgress?: (action: string, result: string) => void | Promise<void>;
 };
 
-function pickRoute(triage: TriageResult): OrchestratorRoute {
-  if (triage.clarifying_question && triage.confidence < 0.6) {
-    return "clarify";
-  }
-  // ask_task: deterministic RAG → Sonnet summary (not full tool agent).
-  if (triage.intent === "ask_task") {
-    return "sonnet";
-  }
-  if (
-    triage.complexity === "simple" &&
-    SIMPLE_INTENTS.has(triage.intent) &&
-    triage.confidence >= simpleExecuteMinConfidence()
-  ) {
-    return "simple";
-  }
-  if (triage.intent === "read_task" && triage.complexity === "simple") {
-    return "simple";
-  }
-  return triage.complexity === "complex" ? "sonnet" : "haiku";
-}
-
 /**
  * Multi-step WhatsApp orchestration:
  * 1. Triage (Gemini Flash via OpenRouter)
@@ -98,7 +76,7 @@ export async function runWhatsAppOrchestrator(
     pack,
     await triageWhatsAppMessage(pack)
   );
-  const route = pickRoute(triage);
+  const route = pickOrchestratorRoute(triage);
 
   if (process.env.WHATSAPP_WEBHOOK_DEBUG === "1") {
     console.log("[orchestrator] route", route, triage.intent, triage.confidence);
@@ -248,8 +226,7 @@ async function runAskTaskWithSummary(
   pack: Awaited<ReturnType<typeof buildOrchestratorContext>>,
   triage: TriageResult
 ): Promise<OrchestratorResult> {
-  const query =
-    triage.slots?.query?.trim() || deps.userMessage.trim();
+  const query = ragQueryFromTriage(triage, deps.userMessage);
   const ctx = await resolveUserWorkspaceContext(deps.userId);
 
   const raw = await runAskTask(
@@ -266,7 +243,7 @@ async function runAskTaskWithSummary(
   let reply = raw;
   if (isAskTaskSummarizeEnabled()) {
     reply = await summarizeAskTaskReply({
-      userQuestion: query,
+      userQuestion: deps.userMessage,
       taskContextPack: raw,
       workspaceName: ctx.workspaceName,
     });

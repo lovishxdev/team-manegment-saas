@@ -3,8 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { ServiceError, resolveBatchAwareTaskShortId } from "@/lib/services/project";
 import type { ConversationTurn } from "@/lib/services/conversation";
 import {
-  rankTasksByTitleQuery,
-  scoreTaskTitleQuery,
+  resolveTaskFromBoard,
+  type TaskMatchRow,
 } from "@/lib/task-title-search";
 import {
   formatAmbiguousTaskPick,
@@ -87,11 +87,7 @@ function resolveShortIdHint(
   );
 }
 
-type BoardTaskRow = {
-  shortId: number;
-  title: string;
-  description: string | null;
-};
+type BoardTaskRow = TaskMatchRow;
 
 async function loadBoardTasks(workspaceId: string): Promise<BoardTaskRow[]> {
   return prisma.task.findMany({
@@ -99,6 +95,10 @@ async function loadBoardTasks(workspaceId: string): Promise<BoardTaskRow[]> {
     select: { shortId: true, title: true, description: true },
     orderBy: { shortId: "asc" },
   });
+}
+
+function resolveFromBoard(board: BoardTaskRow[], titleQuery: string) {
+  return resolveTaskFromBoard(board, titleQuery);
 }
 
 /** Match task by name from the user's message or recent chat context. */
@@ -123,54 +123,22 @@ async function matchTaskFromContext(
     }
   }
 
-  const queries = [
-    session.userMessage.trim(),
-    ...taskTitleHintsFromTurns(session.conversationTurns),
-  ].filter((q) => q.length >= 2);
-
-  let best: { shortId: number; score: number } | null = null;
-
-  for (const query of queries) {
-    for (const task of board) {
-      const score = scoreTaskTitleQuery(query, task.title, task.description);
-      if (score < 0.38) continue;
-      if (!best || score > best.score) {
-        best = { shortId: task.shortId, score };
-      }
+  const hintQueries = taskTitleHintsFromTurns(session.conversationTurns);
+  for (const hint of hintQueries) {
+    const matched = resolveFromBoard(board, hint);
+    if (matched.kind === "one") {
+      return { kind: "one", shortId: matched.shortId };
     }
   }
 
-  if (!best) {
-    return {
-      kind: "none",
-      tasks: board.map((t) => ({ title: t.title })),
-    };
+  const matched = resolveFromBoard(board, session.userMessage.trim());
+  if (matched.kind === "one") {
+    return { kind: "one", shortId: matched.shortId };
   }
-
-  const userQuery = session.userMessage.trim();
-  if (userQuery.length >= 2) {
-    const ranked = rankTasksByTitleQuery(userQuery, board, 0.38);
-    if (ranked.length >= 2) {
-      const top = scoreTaskTitleQuery(
-        userQuery,
-        ranked[0].title,
-        ranked[0].description
-      );
-      const runner = scoreTaskTitleQuery(
-        userQuery,
-        ranked[1].title,
-        ranked[1].description
-      );
-      if (Math.abs(top - runner) < 0.12) {
-        return {
-          kind: "ambiguous",
-          tasks: ranked.slice(0, 3).map((t) => ({ title: t.title })),
-        };
-      }
-    }
+  if (matched.kind === "ambiguous") {
+    return { kind: "ambiguous", tasks: matched.tasks };
   }
-
-  return { kind: "one", shortId: best.shortId };
+  return { kind: "none", tasks: matched.tasks };
 }
 
 /**
@@ -333,35 +301,24 @@ export async function resolveWhatsAppTaskByTitle(
     return { ok: false, message: "You don't have any tasks on the board yet." };
   }
 
-  const ranked = rankTasksByTitleQuery(q, board, 0.38);
-  if (ranked.length === 0) {
+  const matched = resolveFromBoard(board, q);
+  if (matched.kind === "one") {
+    return { ok: true, shortId: matched.shortId };
+  }
+  if (matched.kind === "ambiguous") {
     return {
       ok: false,
-      message: formatTaskPickPrompt(
-        board.map((t) => ({ title: t.title })),
-        "I couldn't find that task."
-      ),
+      message: formatAmbiguousTaskPick(matched.tasks),
     };
   }
 
-  if (ranked.length >= 2) {
-    const top = scoreTaskTitleQuery(q, ranked[0].title, ranked[0].description);
-    const runner = scoreTaskTitleQuery(
-      q,
-      ranked[1].title,
-      ranked[1].description
-    );
-    if (Math.abs(top - runner) < 0.12) {
-      return {
-        ok: false,
-        message: formatAmbiguousTaskPick(
-          ranked.slice(0, 3).map((t) => ({ title: t.title }))
-        ),
-      };
-    }
-  }
-
-  return { ok: true, shortId: ranked[0].shortId };
+  return {
+    ok: false,
+    message: formatTaskPickPrompt(
+      board.map((t) => ({ title: t.title })),
+      "I couldn't find that task."
+    ),
+  };
 }
 
 /** Map server errors to safe WhatsApp copy — never leak stack traces or 500s. */

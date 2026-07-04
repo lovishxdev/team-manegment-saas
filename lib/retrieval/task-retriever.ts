@@ -7,7 +7,10 @@ import {
   parseEmbeddingJson,
   semanticScore,
 } from "@/lib/retrieval/embeddings";
-import { scoreTaskTitleQuery } from "@/lib/task-title-search";
+import {
+  scoreTaskTitleDirect,
+  scoreTaskTitleQuery,
+} from "@/lib/task-title-search";
 import {
   getActorMembership,
   ServiceError,
@@ -218,20 +221,32 @@ export async function retrieveTasksByQuery(
 
 /** Best single task match, or null if ambiguous / below threshold. */
 export async function resolveBestTaskMatch(
-  input: Omit<RetrieveTasksInput, "limit">
+  input: Omit<RetrieveTasksInput, "limit"> & { focusedQuery?: string }
 ): Promise<TaskRetrievalHit | null> {
-  const hits = await retrieveTasksByQuery({ ...input, limit: 3 });
+  const focused = (input.focusedQuery ?? input.query).trim();
+  const hits = await retrieveTasksByQuery({ ...input, query: focused, limit: 5 });
   if (hits.length === 0) return null;
 
   const top = hits[0];
   const runnerUp = hits[1];
+  const topDirect = scoreTaskTitleDirect(focused, top.title);
 
-  if (top.score < 0.42) return null;
+  if (topDirect >= 0.72) return top;
+
+  if (top.score < 0.42 && topDirect < 0.55) return null;
+
+  if (runnerUp) {
+    const runnerDirect = scoreTaskTitleDirect(focused, runnerUp.title);
+    if (topDirect >= 0.55 && topDirect - runnerDirect >= 0.1) {
+      return top;
+    }
+  }
 
   if (
     runnerUp &&
     top.score - runnerUp.score < 0.08 &&
-    runnerUp.score >= 0.4
+    runnerUp.score >= 0.4 &&
+    topDirect < 0.65
   ) {
     return null;
   }

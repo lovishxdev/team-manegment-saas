@@ -165,10 +165,11 @@ export function WhatsAppDemo() {
             {/* WhatsApp header */}
             <div className="lp-wa-gradient flex shrink-0 items-center gap-2.5 px-3.5 pb-2.5 pt-8">
               <Image
-                src="/euclis-logo.png"
+                src="/euclis-logo-64.webp"
                 alt="Euclis"
                 width={32}
                 height={32}
+                loading="lazy"
                 className="h-8 w-8 shrink-0 rounded-full bg-white object-cover ring-1 ring-white/30"
               />
               <div className="min-w-0 flex-1">

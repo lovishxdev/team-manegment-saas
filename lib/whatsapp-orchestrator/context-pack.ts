@@ -83,7 +83,7 @@ export function formatContextForPrompt(pack: OrchestratorContextPack): string {
       : pack.board_tasks
           .map(
             (t) =>
-              `- ${t.title} [${t.status.replace("_", " ")}, ${t.priority}]`
+              `- #${t.shortId} ${t.title} [${t.status.replace("_", " ")}, ${t.priority}]`
           )
           .join("\n");
 

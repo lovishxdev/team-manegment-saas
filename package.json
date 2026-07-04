@@ -13,6 +13,7 @@
     "backfill:usernames": "tsx scripts/backfill-usernames.ts",
     "backfill:task-embeddings": "tsx scripts/backfill-task-embeddings.ts",
     "seed:task-updates": "tsx scripts/seed-task-update-stress-test.ts",
+    "test:orchestrator": "tsx scripts/test-whatsapp-orchestrator.ts",
     "vercel": "vercel",
     "vercel:login": "vercel login",
     "vercel:deploy": "vercel --prod",

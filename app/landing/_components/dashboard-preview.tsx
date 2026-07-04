@@ -199,10 +199,11 @@ export function DashboardPreview({ recordingMode = false }: { recordingMode?: bo
         >
           <div className="flex items-center gap-2 px-1 pb-4">
             <Image
-              src="/euclis-logo.png"
+              src="/euclis-logo-64.webp"
               alt="Euclis"
               width={28}
               height={28}
+              loading="lazy"
               className="shrink-0 rounded-md shadow-sm ring-1 ring-line/80"
             />
             <span className="text-[13px] font-semibold tracking-tight">Euclis</span>

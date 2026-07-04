@@ -28,6 +28,7 @@ export type Complexity = z.infer<typeof ComplexitySchema>;
 export const TriageSlotsSchema = z.object({
   task_ref: z.string().optional(),
   task_title: z.string().optional(),
+  task_short_id: z.number().int().positive().optional(),
   body: z.string().optional(),
   status: z.enum(["TODO", "IN_PROGRESS", "DONE"]).optional(),
   title: z.string().optional(),

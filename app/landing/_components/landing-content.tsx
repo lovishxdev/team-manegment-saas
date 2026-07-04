@@ -10,6 +10,7 @@ import { WhatsAppDemo } from "./whatsapp-demo";
 import { FaqSection } from "@/components/seo/faq-section";
 import { MarketingFonts } from "@/components/fonts/marketing-fonts";
 import { HOME_FAQ } from "@/lib/seo/faq";
+import { HERO_BLUR_DATA_URL } from "./hero-blur";
 
 const KANBAN = {
   todo: "#f43f5e", // rose-500
@@ -46,10 +47,11 @@ export function LandingContent() {
             className="flex min-w-0 items-center gap-2 justify-self-start"
           >
             <Image
-              src="/euclis-logo.png"
+              src="/euclis-logo-64.webp"
               alt="Euclis"
-              width={28}
-              height={28}
+              width={32}
+              height={32}
+              priority
               className="shrink-0 rounded-md ring-1 ring-line/80 shadow-sm sm:h-8 sm:w-8"
             />
             <span className="truncate text-[15px] font-semibold tracking-tight text-ink sm:text-base">
@@ -90,10 +92,19 @@ export function LandingContent() {
           HERO — Netflix-style full-bleed photo (light, warm aesthetic)
           ============================================================ */}
       <section className="lp-hero lp-grain">
-        <div
-          className="lp-hero-photo"
-          style={{ backgroundImage: "url(/landingimg1.png)" }}
-        />
+        <div className="lp-hero-photo">
+          <Image
+            src="/landingimg1.webp"
+            alt=""
+            fill
+            priority
+            sizes="100vw"
+            quality={80}
+            placeholder="blur"
+            blurDataURL={HERO_BLUR_DATA_URL}
+            className="object-cover object-center"
+          />
+        </div>
         <div className="lp-hero-wash" />
 
         <div className="relative z-[1] mx-auto flex min-h-[100svh] max-w-6xl flex-col justify-between px-5 pb-12 pt-32 sm:px-8 sm:pb-16 sm:pt-36">
@@ -165,11 +176,17 @@ export function LandingContent() {
         className="relative overflow-hidden border-b border-line"
       >
         {/* Phone background photo — covers entire section, subtle wash on top */}
-        <div
-          aria-hidden
-          className="absolute inset-0 -z-20 bg-cover bg-center opacity-[0.32]"
-          style={{ backgroundImage: "url(/landing-phone.jpg)" }}
-        />
+        <div aria-hidden className="absolute inset-0 -z-20">
+          <Image
+            src="/landing-phone.webp"
+            alt=""
+            fill
+            sizes="100vw"
+            quality={75}
+            loading="lazy"
+            className="object-cover object-center opacity-[0.32]"
+          />
+        </div>
         <div
           aria-hidden
           className="absolute inset-0 -z-10"
@@ -414,10 +431,11 @@ export function LandingContent() {
         <div className="mx-auto flex max-w-7xl flex-col gap-6 px-5 py-10 sm:flex-row sm:items-center sm:justify-between sm:px-8">
           <div className="flex items-center gap-2.5">
             <Image
-              src="/euclis-logo.png"
+              src="/euclis-logo-64.webp"
               alt="Euclis"
               width={28}
               height={28}
+              loading="lazy"
               className="rounded-md ring-1 ring-line"
             />
             <div>

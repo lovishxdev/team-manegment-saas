@@ -89,7 +89,7 @@ export async function buildTaskContextPack(
       workspaceId: input.workspaceId,
       userId: input.userId,
       query,
-      limit: 3,
+      limit: 5,
     });
     if (hits.length === 0) {
       return {
@@ -102,6 +102,7 @@ export async function buildTaskContextPack(
       workspaceId: input.workspaceId,
       userId: input.userId,
       query,
+      focusedQuery: query,
     });
     if (!best && hits.length > 1) {
       return {

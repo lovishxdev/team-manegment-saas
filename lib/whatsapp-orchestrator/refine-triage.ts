@@ -1,4 +1,5 @@
 import type { OrchestratorContextPack } from "@/lib/whatsapp-orchestrator/context-pack";
+import { normalizeTriageSlots } from "@/lib/whatsapp-orchestrator/normalize-slots";
 import type { TriageResult, TriageSlots } from "@/lib/whatsapp-orchestrator/types";
 import {
   isAffirmationOnly,
@@ -9,16 +10,9 @@ import {
 const FOCUS_TASK =
   /\b(?:want to|wanna)\s+(?:work on|focus on)|\bwork on\b|\bfocus on\b|\bswitch to\b|\bstart (?:working )?on\b/i;
 
-const ASK_TASK =
-  /\bwhat'?s going on\b|\bwhat happened\b|\bwhat'?s the (?:status|update|latest)\b|\btell me about\b|\bhow is\b.*\bgoing\b|\bcurrent\b.*\bon\b/i;
-
 /** User wants to discuss a task — not post a progress note. */
 export function isFocusTaskMessage(text: string): boolean {
   return FOCUS_TASK.test(text.trim());
-}
-
-export function isAskTaskMessage(text: string): boolean {
-  return ASK_TASK.test(text.trim());
 }
 
 /** Only true when we should actually write a task update. */
@@ -40,7 +34,8 @@ export function shouldPostTaskUpdate(
 }
 
 /**
- * Code-owned corrections after LLM triage — prevents costly misroutes.
+ * Code-owned corrections after LLM triage — intent guards only, not title parsing.
+ * Task names come from triage slots; normalizeTriageSlots maps them to the board.
  */
 export function refineTriageResult(
   pack: OrchestratorContextPack,
@@ -48,30 +43,15 @@ export function refineTriageResult(
 ): TriageResult {
   const msg = pack.user_message.trim();
   const slots = { ...triage.slots };
+  let result = triage;
 
-  if (isAskTaskMessage(msg)) {
-    return {
-      ...triage,
-      intent: "ask_task",
-      complexity: "complex",
-      confidence: Math.max(triage.confidence, 0.88),
-      slots: { ...slots, query: msg },
-    };
-  }
-
-  if (isFocusTaskMessage(msg)) {
-    const taskRef =
-      slots.task_ref ||
-      msg.replace(
-        /.*(?:work on|focus on|switch to|start (?:working )?on)\s+/i,
-        ""
-      ).trim();
-    return {
+  if (isFocusTaskMessage(msg) && triage.intent === "post_update") {
+    result = {
       ...triage,
       intent: "read_task",
       complexity: "simple",
       confidence: Math.max(triage.confidence, 0.9),
-      slots: { ...slots, task_ref: taskRef || slots.task_ref },
+      slots,
     };
   }
 
@@ -79,7 +59,7 @@ export function refineTriageResult(
     /switch\s+(?:workspace\s+)?to\s+(.+?)(?:\s+then\b|$)/i
   );
   if (switchWs) {
-    return {
+    result = {
       ...triage,
       intent: "workspace_admin",
       complexity: "simple",
@@ -89,25 +69,26 @@ export function refineTriageResult(
   }
 
   if (
-    triage.intent === "post_update" &&
+    result.intent === "post_update" &&
     !shouldPostTaskUpdate(msg, pack.recent_turns, slots)
   ) {
     if (isFocusTaskMessage(msg)) {
-      return {
-        ...triage,
+      result = {
+        ...result,
         intent: "read_task",
         complexity: "simple",
         confidence: 0.9,
         slots,
       };
+    } else {
+      result = {
+        ...result,
+        intent: "unknown",
+        complexity: "complex",
+        confidence: Math.min(result.confidence, 0.5),
+      };
     }
-    return {
-      ...triage,
-      intent: "unknown",
-      complexity: "complex",
-      confidence: Math.min(triage.confidence, 0.5),
-    };
   }
 
-  return { ...triage, slots };
+  return normalizeTriageSlots(pack, { ...result, slots });
 }
