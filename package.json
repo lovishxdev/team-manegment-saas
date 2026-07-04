@@ -14,6 +14,7 @@
     "backfill:task-embeddings": "tsx scripts/backfill-task-embeddings.ts",
     "seed:task-updates": "tsx scripts/seed-task-update-stress-test.ts",
     "test:orchestrator": "tsx scripts/test-whatsapp-orchestrator.ts",
+    "check:tools": "tsx scripts/check-tool-registry.ts",
     "vercel": "vercel",
     "vercel:login": "vercel login",
     "vercel:deploy": "vercel --prod",

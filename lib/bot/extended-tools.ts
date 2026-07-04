@@ -23,11 +23,7 @@ import {
   setWorkspaceLinkPin,
   updateWorkspaceLink,
 } from "@/lib/services/links";
-import {
-  renderWhiteboardScreenshots,
-  uploadWhiteboardImages,
-  type ExcalidrawPersistedState,
-} from "@/lib/excalidraw-screenshots";
+import type { ExcalidrawPersistedState } from "@/lib/excalidraw-screenshots";
 import { getExcalidrawState } from "@/lib/services/workspace";
 import {
   getWorkspaceSummary,
@@ -512,6 +508,11 @@ export async function runExportWhiteboard(
   userId: string,
   channel: Channel
 ): Promise<{ text: string; images?: Buffer[] }> {
+  // Lazy import: the renderer is server-only + heavy (headless Chromium),
+  // and must not load when this module is used from scripts/tests.
+  const { renderWhiteboardScreenshots, uploadWhiteboardImages } = await import(
+    "@/lib/excalidraw-screenshots"
+  );
   const workspace = await getExcalidrawState(ctx.workspaceId, userId);
   const raw = workspace.excalidrawState;
   const state: ExcalidrawPersistedState =

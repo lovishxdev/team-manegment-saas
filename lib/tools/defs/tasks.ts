@@ -1,0 +1,656 @@
+import { z } from "zod";
+import type { TaskPriority, TaskStatus } from "@/lib/generated/prisma/client";
+import {
+  createTask,
+  getBoardState,
+  getTask,
+  updateTask,
+} from "@/lib/services/project";
+import { getRecentTaskUpdates } from "@/lib/services/task-updates";
+import {
+  runAddTaskUpdate,
+  runAskTask,
+  runBulkUpdateTasks,
+  runFindTask,
+  runListMyTasks,
+  runListTaskUpdates,
+  runSearchTasks,
+  runUnassignTask,
+  MAX_BULK_TASK_UPDATES,
+} from "@/lib/bot/extended-tools";
+import {
+  formatBoardState,
+  formatTaskDetail,
+  mapBoardSnapshot,
+} from "@/lib/channel-formatters";
+import { resolveWhatsAppTaskShortId } from "@/lib/whatsapp-tool-guard";
+import { resolveTaskUpdateBody } from "@/lib/whatsapp-task-context";
+import { stageDeleteTask } from "@/lib/whatsapp-pending";
+import { deleteTask } from "@/lib/services/project";
+import { revalidateUserWorkspaces } from "@/lib/revalidate-nav";
+import { workspaceUrl } from "@/lib/app-url";
+import { waWebhookLog } from "@/lib/whatsapp-webhook-log";
+import {
+  ok,
+  soft,
+  requireWorkspace,
+  type ToolContext,
+  type ToolDef,
+} from "@/lib/tools/types";
+import {
+  PRIORITIES,
+  STATUSES,
+  dueDateParam,
+  optionalNum,
+  optionalStr,
+  parseInputDueDate,
+  parseTagsInput,
+  resolveAssigneesHints,
+  resolveAssigneesUpdate,
+  str,
+  workspaceParam,
+} from "@/lib/tools/helpers";
+
+/**
+ * On WhatsApp the model rarely knows #N — resolve from the message, chat
+ * context, or board titles. On MCP the client always passes shortId.
+ */
+async function resolveShortIdForChannel(
+  input: Record<string, unknown>,
+  ctx: ToolContext
+): Promise<{ ok: true; shortId: number } | { ok: false; message: string }> {
+  const ws = requireWorkspace(ctx);
+  if (ctx.wa) {
+    return resolveWhatsAppTaskShortId(ws.workspaceId, input.shortId, ctx.wa.session);
+  }
+  const shortId = Number(input.shortId);
+  if (!Number.isInteger(shortId) || shortId < 1) {
+    return { ok: false, message: "A valid task shortId (#N) is required." };
+  }
+  return { ok: true, shortId };
+}
+
+const createTaskTool: ToolDef = {
+  name: "create_task",
+  waDescription: "Create a new task on the user's project board",
+  mcpDescription: "Create a new task on the project board",
+  inputShape: {
+    title: z
+      .string()
+      .min(1)
+      .describe(
+        "Short task title only (brief label, ideally under 80 characters)"
+      ),
+    description: z
+      .string()
+      .optional()
+      .describe(
+        "Longer details: bullet lists, paragraphs, requirements, keywords — put lengthy content here, not in title"
+      ),
+    category: z
+      .string()
+      .optional()
+      .describe(
+        "Task category (e.g. Marketing, Backend). Creates a custom category if needed. Only if clearly implied."
+      ),
+    priority: z
+      .enum(PRIORITIES)
+      .optional()
+      .describe("Priority, only if stated or strongly implied"),
+    dueDate: dueDateParam,
+    tags: z
+      .array(z.string())
+      .optional()
+      .describe("Free-form labels, e.g. marketing, v2"),
+    assignee: z
+      .string()
+      .optional()
+      .describe(
+        "Single assignee: 'me' for the sender, or part of a member's name/email"
+      ),
+    assignees: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "Multiple assignees: 'me', usernames, or parts of member names/emails"
+      ),
+    workspace: workspaceParam,
+  },
+  run: async (input, ctx) => {
+    const ws = requireWorkspace(ctx);
+    const task = await createTask({
+      workspaceId: ws.workspaceId,
+      title: str(input.title),
+      description: optionalStr(input.description),
+      category: optionalStr(input.category),
+      priority: input.priority as TaskPriority | undefined,
+      dueDate: parseInputDueDate(input.dueDate),
+      tags: parseTagsInput(input.tags),
+      assignees: resolveAssigneesHints(input.assignees, input.assignee, ctx.userId),
+      userId: ctx.userId,
+    });
+
+    if (ctx.wa) {
+      const session = ctx.wa.session;
+      session.createdTaskShortIds.push(task.shortId);
+      session.lastCreatedTask = {
+        shortId: task.shortId,
+        workspaceId: ws.workspaceId,
+        title: task.title,
+      };
+      revalidateUserWorkspaces(ctx.userId, ws.workspaceId);
+      waWebhookLog("task created", {
+        workspaceId: ws.workspaceId,
+        workspaceName: ws.workspaceName,
+        shortId: task.shortId,
+      });
+      return ok(
+        `Created *${task.title}*` +
+          (task.priority === "HIGH" ? " · high" : "") +
+          (task.dueDate
+            ? ` · due ${task.dueDate.toISOString().slice(0, 10)}`
+            : ""),
+        { shortId: task.shortId, title: task.title }
+      );
+    }
+
+    return ok(
+      `Created task #${task.shortId} "${task.title}" (${task.category.name}, ${task.priority}` +
+        (task.dueDate
+          ? `, due ${task.dueDate.toISOString().slice(0, 10)}`
+          : "") +
+        `) in workspace "${ws.workspaceName}".`,
+      { shortId: task.shortId, title: task.title }
+    );
+  },
+};
+
+const updateTaskTool: ToolDef = {
+  name: "update_task",
+  waDescription:
+    "Change any fields of an existing task referenced by its #N short ID. Only include fields the user wants changed.",
+  mcpDescription:
+    "Update any fields of an existing task, identified by its short ID (the #N number on the board). Only provided fields change.",
+  inputShape: {
+    shortId: z.number().int().positive().describe("Task short ID (the N in #N)"),
+    title: z.string().optional().describe("New title"),
+    description: z.string().optional().describe("New description"),
+    status: z.enum(STATUSES).optional().describe("New status"),
+    category: z
+      .string()
+      .optional()
+      .describe("New category name (creates it if missing)"),
+    priority: z.enum(PRIORITIES).optional().describe("New priority"),
+    dueDate: z
+      .string()
+      .optional()
+      .describe(
+        "Due date as YYYY-MM-DD (resolve relative dates first), or empty string to clear"
+      ),
+    tags: z
+      .array(z.string())
+      .optional()
+      .describe("Full replacement list of free-form labels"),
+    assignee: z
+      .string()
+      .optional()
+      .describe(
+        "Single assignee: 'me', a member name/email, or empty string to clear all assignees"
+      ),
+    assignees: z
+      .array(z.string())
+      .optional()
+      .describe("Full replacement list of assignees"),
+    workspace: workspaceParam,
+  },
+  run: async (input, ctx) => {
+    const ws = requireWorkspace(ctx);
+    const resolved = await resolveShortIdForChannel(input, ctx);
+    if (!resolved.ok) return soft(resolved.message);
+
+    const assigneeUpdate = resolveAssigneesUpdate(
+      input.assignees,
+      input.assignee,
+      ctx.userId
+    );
+    const task = await updateTask({
+      workspaceId: ws.workspaceId,
+      shortId: resolved.shortId,
+      userId: ctx.userId,
+      title: optionalStr(input.title),
+      description: optionalStr(input.description),
+      status: input.status as TaskStatus | undefined,
+      category: optionalStr(input.category),
+      priority: input.priority as TaskPriority | undefined,
+      dueDate: parseInputDueDate(input.dueDate),
+      tags: parseTagsInput(input.tags),
+      assignees: assigneeUpdate === undefined ? undefined : assigneeUpdate,
+    });
+
+    if (ctx.wa) {
+      revalidateUserWorkspaces(ctx.userId, ws.workspaceId);
+      const statusLabel =
+        task.status === "DONE"
+          ? "done"
+          : task.status === "IN_PROGRESS"
+            ? "in progress"
+            : "to do";
+      return ok(`Updated *${task.title}* → ${statusLabel}.`, {
+        shortId: task.shortId,
+        status: task.status,
+      });
+    }
+
+    return ok(
+      `Updated task #${task.shortId} "${task.title}": ${task.status}, ${task.category.name}, ${task.priority}` +
+        (task.dueDate
+          ? `, due ${task.dueDate.toISOString().slice(0, 10)}`
+          : "") +
+        ` (workspace "${ws.workspaceName}").`,
+      { shortId: task.shortId, status: task.status }
+    );
+  },
+};
+
+const readTaskTool: ToolDef = {
+  name: "read_task",
+  waDescription:
+    "Get full details for one task by #N short ID. Use when the user asks about a task or a specific field (tags, assignees, due date, status, description, etc.).",
+  mcpDescription:
+    "Get full details for one task by short ID (#N). Use when the user asks about a task or a specific field (tags, assignees, due date, status, description, priority, category, attachments). Answer only what they asked unless they wanted everything.",
+  inputShape: {
+    shortId: z.number().int().positive().describe("Task short ID (the N in #N)"),
+    workspace: workspaceParam,
+  },
+  run: async (input, ctx) => {
+    const ws = requireWorkspace(ctx);
+    const resolved = await resolveShortIdForChannel(input, ctx);
+    if (!resolved.ok) return soft(resolved.message);
+
+    const task = await getTask(ws.workspaceId, ctx.userId, resolved.shortId);
+    const recentUpdates = await getRecentTaskUpdates(
+      ws.workspaceId,
+      ctx.userId,
+      resolved.shortId
+    );
+    return ok(
+      formatTaskDetail(task, ws.workspaceName, ws.workspaceId, ctx.channel, recentUpdates),
+      { shortId: task.shortId, title: task.title }
+    );
+  },
+};
+
+const addTaskUpdateTool: ToolDef = {
+  name: "add_task_update",
+  waDescription:
+    "Post a progress note on a task. Use when the user reports status, blockers, or confirms they want something posted. shortId and body are optional — resolved from context and the user's message.",
+  mcpDescription:
+    "Post a team update on a task (#N) — blockers, questions, review notes. Not for editing the task description.",
+  inputShape: {
+    shortId: z.number().int().positive().describe("Task short ID (#N)"),
+    body: z.string().min(1).describe("Update message"),
+    workspace: workspaceParam,
+  },
+  waInputShape: {
+    shortId: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe(
+        "Task short ID if known. Omit when the task was just discussed — it will be inferred."
+      ),
+    body: z
+      .string()
+      .optional()
+      .describe("The note text. Omit to use the user's message verbatim."),
+    workspace: workspaceParam,
+  },
+  run: async (input, ctx) => {
+    const ws = requireWorkspace(ctx);
+    const resolved = await resolveShortIdForChannel(input, ctx);
+    if (!resolved.ok) return soft(resolved.message);
+
+    let body = str(input.body);
+    if (ctx.wa) {
+      body =
+        resolveTaskUpdateBody(
+          input.body,
+          ctx.wa.session.userMessage,
+          ctx.wa.session.conversationTurns
+        ) ?? "";
+      if (!body) return soft("What should the note say?");
+    } else if (!body) {
+      return soft("Update body is required.");
+    }
+
+    const message = await runAddTaskUpdate(
+      ws,
+      ctx.userId,
+      resolved.shortId,
+      body,
+      ctx.channel
+    );
+    if (ctx.wa) {
+      ctx.wa.session.lastDiscussedTaskShortId = resolved.shortId;
+      revalidateUserWorkspaces(ctx.userId, ws.workspaceId);
+    }
+    return ok(message, { shortId: resolved.shortId });
+  },
+};
+
+const listTaskUpdatesTool: ToolDef = {
+  name: "list_task_updates",
+  waDescription:
+    "List all team updates on a task (#N) — blockers, questions, and follow-ups. Use when the user asks what's happening or pending on a task.",
+  mcpDescription:
+    "List team updates on a task (#N) — blockers, questions, follow-ups. Use when the user asks what's happening or pending on a task.",
+  inputShape: {
+    shortId: z.number().int().positive().describe("Task short ID (#N)"),
+    limit: z
+      .number()
+      .int()
+      .positive()
+      .max(100)
+      .optional()
+      .describe("Max updates to return (default 50)"),
+    workspace: workspaceParam,
+  },
+  run: async (input, ctx) => {
+    const ws = requireWorkspace(ctx);
+    const resolved = await resolveShortIdForChannel(input, ctx);
+    if (!resolved.ok) return soft(resolved.message);
+    const message = await runListTaskUpdates(
+      ws,
+      ctx.userId,
+      resolved.shortId,
+      ctx.channel,
+      optionalNum(input.limit)
+    );
+    return ok(message, { shortId: resolved.shortId });
+  },
+};
+
+const deleteTaskTool: ToolDef = {
+  name: "delete_task",
+  waDescription:
+    "Permanently delete a task referenced by its #N short ID. Only when the user clearly asks for deletion.",
+  mcpDescription:
+    "Permanently delete a task by short ID (#N). ALWAYS call once without confirm to preview, show the user what will be deleted, and ask them to confirm. Only call again with confirm=true after explicit user confirmation.",
+  inputShape: {
+    shortId: z.number().int().positive().describe("Task short ID (#N)"),
+    confirm: z
+      .boolean()
+      .optional()
+      .describe(
+        "Set true only after the user explicitly confirms deletion in chat"
+      ),
+    workspace: workspaceParam,
+  },
+  waInputShape: {
+    shortId: z.number().int().positive().describe("Task short ID (the N in #N)"),
+    workspace: workspaceParam,
+  },
+  run: async (input, ctx) => {
+    const ws = requireWorkspace(ctx);
+    const resolved = await resolveShortIdForChannel(input, ctx);
+    if (!resolved.ok) return soft(resolved.message);
+
+    const existing = await getTask(ws.workspaceId, ctx.userId, resolved.shortId);
+
+    if (ctx.wa) {
+      // WhatsApp stages a Confirm/Cancel button flow instead of confirm=true.
+      await stageDeleteTask(ctx.wa.session.phone, ctx.userId, {
+        workspaceId: ws.workspaceId,
+        workspaceName: ws.workspaceName,
+        shortId: resolved.shortId,
+        taskTitle: existing.title,
+      });
+      ctx.wa.session.pendingDeleteShortId = resolved.shortId;
+      return ok(
+        `Ready to delete *${existing.title}*. I'll send Confirm / Cancel buttons next.`,
+        { staged: true, shortId: resolved.shortId }
+      );
+    }
+
+    if (input.confirm !== true) {
+      return ok(
+        `Delete task #${existing.shortId} "${existing.title}" from workspace "${ws.workspaceName}"?\n\n` +
+          `This cannot be undone. Ask the user to confirm, then call delete_task again with confirm=true.`,
+        { staged: true, shortId: existing.shortId }
+      );
+    }
+
+    const task = await deleteTask({
+      workspaceId: ws.workspaceId,
+      shortId: resolved.shortId,
+      userId: ctx.userId,
+    });
+    return ok(
+      `Deleted task #${task.shortId} "${task.title}" from workspace "${ws.workspaceName}".`,
+      { shortId: task.shortId }
+    );
+  },
+};
+
+const getBoardStateTool: ToolDef = {
+  name: "get_board_state",
+  waDescription: "Get all tasks on the board grouped by status",
+  mcpDescription: "Get the current project board: all tasks grouped by status",
+  inputShape: {
+    workspace: workspaceParam,
+  },
+  run: async (_input, ctx) => {
+    const ws = requireWorkspace(ctx);
+    const state = await getBoardState(ws.workspaceId, ctx.userId);
+    const body = formatBoardState(
+      {
+        workspaceId: ws.workspaceId,
+        workspaceName: ws.workspaceName,
+        board: mapBoardSnapshot(state.board),
+        totalTasks: state.totalTasks,
+      },
+      ctx.channel
+    );
+    if (ctx.channel === "mcp") {
+      return ok(`${body}\n\nOpen: ${workspaceUrl(ws.workspaceId)}`);
+    }
+    return ok(body);
+  },
+};
+
+const listMyTasksTool: ToolDef = {
+  name: "list_my_tasks",
+  waDescription: "List open tasks assigned to the user",
+  inputShape: {
+    status: z
+      .string()
+      .optional()
+      .describe(
+        "Filter: TODO, IN_PROGRESS, DONE, or OPEN (todo + in progress). Default OPEN."
+      ),
+    workspace: workspaceParam,
+  },
+  run: async (input, ctx) => {
+    const ws = requireWorkspace(ctx);
+    return ok(await runListMyTasks(ws, ctx.userId, input, ctx.channel));
+  },
+};
+
+const askTaskTool: ToolDef = {
+  name: "ask_task",
+  waDescription:
+    "Answer questions about a task: finds the task by description or #N, then includes the full update thread. Use for 'what's going on', 'what's wrong with X flow', status questions.",
+  mcpDescription:
+    "Answer questions about a task: semantic task match + full update thread. Best for status and 'what's wrong with X' questions.",
+  inputShape: {
+    query: z
+      .string()
+      .min(1)
+      .describe("The user's question or topic (e.g. Sign up with Google flow)"),
+    shortId: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Task #N if the user gave a number"),
+    workspace: workspaceParam,
+  },
+  run: async (input, ctx) => {
+    const ws = requireWorkspace(ctx);
+    const query = str(input.query);
+    if (!query) return soft("What would you like to know about the task?");
+    const shortId = optionalNum(input.shortId);
+
+    const message = await runAskTask(ws, ctx.userId, { query, shortId }, ctx.channel);
+
+    if (ctx.wa) {
+      const idMatch = message.match(/#(\d+)/);
+      if (idMatch) {
+        ctx.wa.session.lastDiscussedTaskShortId = Number(idMatch[1]);
+      } else if (shortId !== undefined && Number.isInteger(shortId)) {
+        ctx.wa.session.lastDiscussedTaskShortId = shortId;
+      }
+    }
+    return ok(message);
+  },
+};
+
+const findTaskTool: ToolDef = {
+  name: "find_task",
+  waDescription:
+    "Find a task by natural language (semantic + keyword). Use when the user describes a task without #N — e.g. product features, flows, or vague titles.",
+  mcpDescription:
+    "Find a task by natural language (semantic + keyword). Use when the user describes a task without #N.",
+  inputShape: {
+    query: z
+      .string()
+      .min(1)
+      .describe("What the user said — feature name, flow, or task topic"),
+    limit: z
+      .number()
+      .int()
+      .positive()
+      .max(10)
+      .optional()
+      .describe("Max matches to return (default 3)"),
+    workspace: workspaceParam,
+  },
+  run: async (input, ctx) => {
+    const ws = requireWorkspace(ctx);
+    const query = str(input.query);
+    if (!query) return soft("What task should I look for?");
+    return ok(
+      await runFindTask(ws, ctx.userId, query, ctx.channel, optionalNum(input.limit))
+    );
+  },
+};
+
+const searchTasksTool: ToolDef = {
+  name: "search_tasks",
+  waDescription:
+    "Search/filter tasks by title, tag, category, status, assignee, priority, or due date",
+  mcpDescription:
+    "Search tasks by title, tag, category, status, assignee, priority, or due date",
+  inputShape: {
+    query: z.string().optional().describe("Search title or description"),
+    tag: z.string().optional().describe("Exact tag label"),
+    category: z.string().optional().describe("Category name"),
+    status: z.string().optional().describe("TODO, IN_PROGRESS, DONE, or OPEN"),
+    assignee: z.string().optional().describe("Username or email of assignee"),
+    priority: z.enum(PRIORITIES).optional(),
+    dueBefore: z.string().optional().describe("Due on or before YYYY-MM-DD"),
+    dueAfter: z.string().optional().describe("Due on or after YYYY-MM-DD"),
+    workspace: workspaceParam,
+  },
+  run: async (input, ctx) => {
+    const ws = requireWorkspace(ctx);
+    return ok(await runSearchTasks(ws, ctx.userId, input, ctx.channel));
+  },
+};
+
+const bulkUpdateTasksTool: ToolDef = {
+  name: "bulk_update_tasks",
+  waDescription: `Update many tasks at once (max ${MAX_BULK_TASK_UPDATES}). Select by shortIds, shortId range, category, tag, or assignee.`,
+  mcpDescription: `Update many tasks at once (max ${MAX_BULK_TASK_UPDATES}). Select by shortIds, range, category, tag, or assignee.`,
+  inputShape: {
+    shortIds: z
+      .array(z.number().int().positive())
+      .optional()
+      .describe("Task short IDs (#N) to update"),
+    shortIdFrom: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Range start (inclusive), e.g. 1 for #1–#4 with shortIdTo 4"),
+    shortIdTo: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Range end (inclusive)"),
+    category: z.string().optional().describe("Only tasks in this category"),
+    tag: z.string().optional().describe("Only tasks with this tag"),
+    assignee: z
+      .string()
+      .optional()
+      .describe("Only tasks assigned to this member"),
+    assignedToMe: z
+      .boolean()
+      .optional()
+      .describe("Only tasks assigned to the sender"),
+    status: z.enum(STATUSES).optional().describe("New status to set"),
+    newCategory: z.string().optional().describe("Move tasks to this category"),
+    priority: z.enum(PRIORITIES).optional().describe("New priority"),
+    clearAssignees: z
+      .boolean()
+      .optional()
+      .describe("Remove all assignees from matched tasks"),
+    workspace: workspaceParam,
+  },
+  run: async (input, ctx) => {
+    const ws = requireWorkspace(ctx);
+    const message = await runBulkUpdateTasks(ws, ctx.userId, input, ctx.channel);
+    if (ctx.wa) revalidateUserWorkspaces(ctx.userId, ws.workspaceId);
+    return ok(message);
+  },
+};
+
+const unassignTaskTool: ToolDef = {
+  name: "unassign_task",
+  waDescription: "Remove all assignees from a task (#N)",
+  inputShape: {
+    shortId: z.number().int().positive().describe("Task short ID (#N)"),
+    workspace: workspaceParam,
+  },
+  run: async (input, ctx) => {
+    const ws = requireWorkspace(ctx);
+    const resolved = await resolveShortIdForChannel(input, ctx);
+    if (!resolved.ok) return soft(resolved.message);
+    const message = await runUnassignTask(
+      ws,
+      ctx.userId,
+      resolved.shortId,
+      ctx.channel
+    );
+    if (ctx.wa) revalidateUserWorkspaces(ctx.userId, ws.workspaceId);
+    return ok(message);
+  },
+};
+
+export const taskTools: ToolDef[] = [
+  createTaskTool,
+  updateTaskTool,
+  readTaskTool,
+  addTaskUpdateTool,
+  listTaskUpdatesTool,
+  deleteTaskTool,
+  getBoardStateTool,
+  listMyTasksTool,
+  askTaskTool,
+  findTaskTool,
+  searchTasksTool,
+  bulkUpdateTasksTool,
+  unassignTaskTool,
+];
