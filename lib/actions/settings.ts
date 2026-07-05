@@ -54,6 +54,40 @@ export async function updatePhoneAction(
   return { message: raw === "" ? "Phone number removed" : "Phone number saved" };
 }
 
+export async function updateMcpScopeAction(
+  _prev: SettingsState,
+  formData: FormData
+): Promise<SettingsState> {
+  const user = await requireUser();
+  const raw = String(formData.get("scope") ?? "").trim();
+  if (raw !== "context" && raw !== "full") {
+    return { error: "Invalid scope" };
+  }
+
+  const { prisma } = await import("@/lib/prisma");
+  const { invalidateMcpToken } = await import("@/lib/identity-cache");
+  const updated = await prisma.user.update({
+    where: { id: user.id },
+    data: { mcpScope: raw },
+    select: { mcpToken: true },
+  });
+  // Apply to already-issued OAuth credentials too, then drop the token cache
+  // so the change takes effect immediately.
+  await prisma.oAuthToken.updateMany({
+    where: { userId: user.id },
+    data: { scope: raw },
+  });
+  invalidateMcpToken(updated.mcpToken);
+
+  revalidatePath("/settings");
+  return {
+    message:
+      raw === "full"
+        ? "Agent scope set to full — connected agents can manage everything."
+        : "Agent scope set to context — connected agents can read, post updates, and use memory only.",
+  };
+}
+
 export async function deleteAccountAction(
   _prev: SettingsState,
   formData: FormData

@@ -2,6 +2,7 @@
 
 export type WorkspaceTab =
   | "board"
+  | "memory"
   | "links"
   | "assets"
   | "whiteboard"

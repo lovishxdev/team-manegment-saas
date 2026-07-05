@@ -12,6 +12,8 @@
     "prisma:migrate": "prisma migrate dev",
     "backfill:usernames": "tsx scripts/backfill-usernames.ts",
     "backfill:task-embeddings": "tsx scripts/backfill-task-embeddings.ts",
+    "backfill:memory": "tsx scripts/backfill-memory-capture.ts",
+    "test:memory": "tsx scripts/test-memory-layer.ts",
     "seed:task-updates": "tsx scripts/seed-task-update-stress-test.ts",
     "test:whatsapp": "tsx scripts/test-whatsapp-agent.ts",
     "check:tools": "tsx scripts/check-tool-registry.ts",

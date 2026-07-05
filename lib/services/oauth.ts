@@ -96,12 +96,19 @@ export async function createAuthorizationCode(input: {
 async function issueTokens(clientId: string, userId: string) {
   const token = randomToken(48);
   const refreshToken = randomToken(48);
+  // Tool scope is a user-level setting (Settings → agent access) copied onto
+  // each credential at issuance.
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { mcpScope: true },
+  });
   await prisma.oAuthToken.create({
     data: {
       token,
       refreshToken,
       clientId,
       userId,
+      scope: user?.mcpScope ?? "context",
       expiresAt: new Date(Date.now() + ACCESS_TOKEN_TTL_MS),
     },
   });
@@ -164,7 +171,7 @@ export async function exchangeRefreshToken(input: {
 /** Resolves an OAuth access token to a user id, or null. */
 export async function verifyOAuthAccessToken(
   bearerToken: string
-): Promise<{ userId: string; clientId: string } | null> {
+): Promise<{ userId: string; clientId: string; scope: string } | null> {
   const stored = await prisma.oAuthToken.findUnique({
     where: { token: bearerToken },
   });
@@ -175,5 +182,9 @@ export async function verifyOAuthAccessToken(
       .catch(() => {});
     return null;
   }
-  return { userId: stored.userId, clientId: stored.clientId };
+  return {
+    userId: stored.userId,
+    clientId: stored.clientId,
+    scope: stored.scope,
+  };
 }

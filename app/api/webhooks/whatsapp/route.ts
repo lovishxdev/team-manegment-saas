@@ -14,9 +14,11 @@ import {
 import { lastTaskShortIdFromTurns } from "@/lib/whatsapp-task-context";
 import { formatTaskRef } from "@/lib/whatsapp-task-ref";
 import {
+  getLastDiscussedTask,
   getRecentConversation,
   markWhatsAppChatInitiated,
   recordExchange,
+  setLastDiscussedTask,
   type ConversationTurn,
 } from "@/lib/services/conversation";
 import {
@@ -108,6 +110,10 @@ import {
   dispatchWhatsAppTool,
   whatsappAnthropicTools,
 } from "@/lib/tools/registry";
+import {
+  confirmSuggestedResolution,
+  dismissSuggestedResolution,
+} from "@/lib/memory/suggest";
 import type { WhatsAppSessionState } from "@/lib/tools/types";
 
 /**
@@ -131,6 +137,9 @@ const INQUIRY_TOOLS = new Set([
   "search_tasks",
   "workspace_summary",
   "read_asset",
+  "recall_memory",
+  "list_blockers",
+  "get_project_context",
 ]);
 
 const DENIED_MESSAGE =
@@ -216,6 +225,11 @@ Convert the user's message into tool calls when they want to act on their board:
 - bulk_update_tasks: when they want to update many tasks at once (e.g. mark #1–#4 done, move all Design tasks to in progress). Max ${MAX_BULK_TASK_UPDATES} per call.
 - unassign_task: when they want to clear all assignees from a specific task (#N)
 - export_whiteboard: when they want screenshots of the team whiteboard (up to 5 images sent in chat)
+- recall_memory: when they ask WHY something was decided, what happened with a topic, or project history ("why did we go with X", "what was decided about Y"). Answer from the returned records in your own words.
+- list_blockers: when they ask what's blocked, stuck, or waiting — workspace-wide or for one task.
+- record_decision: when they explicitly want something remembered ("log this decision", "note that we're blocked on the API keys"). Decisions/blockers in normal updates are captured automatically — use this only for explicit asks.
+- resolve_blocker: when they confirm a blocker is cleared. Get the event id from list_blockers/recall_memory first; never resolve without their clear confirmation.
+- get_project_context: when someone wants full background/context on a piece of work before starting it.
 
 Rules:
 - Images/documents sent directly in WhatsApp (not via this text tool) are saved as assets automatically. Caption text becomes comma-separated tags; #N in the caption attaches the file to task #N. Tell users they can tag on upload by adding a caption like "booth, banner" or "#42 booth".
@@ -798,6 +812,20 @@ async function handleInteractiveMessage(
       return;
     }
 
+    if (action.type === "memory_resolve_confirm") {
+      const reply = await confirmSuggestedResolution(action.eventId, userId);
+      await sendWhatsAppText(from, reply);
+      await recordExchange(userId, userText, reply).catch(() => {});
+      return;
+    }
+
+    if (action.type === "memory_resolve_dismiss") {
+      const reply = await dismissSuggestedResolution(action.eventId);
+      await sendWhatsAppText(from, reply);
+      await recordExchange(userId, userText, reply).catch(() => {});
+      return;
+    }
+
     if (!hasWorkspace) {
       await sendNoWorkspaceHint(from, userId, userText);
       return;
@@ -1033,7 +1061,11 @@ async function handleMessage(
 
   progress?.beginSlowPing(queued);
 
-  const lastDiscussedTaskShortId = lastTaskShortIdFromTurns(history);
+  // Persisted chat state first; mining previous replies is only a fallback
+  // for conversations that predate the state table.
+  const lastDiscussedTaskShortId =
+    (await getLastDiscussedTask(userId, activeCtx.workspaceId)) ??
+    lastTaskShortIdFromTurns(history);
 
   const session: WhatsAppSession = {
     phone: from,
@@ -1110,6 +1142,21 @@ async function handleMessage(
   } else if (session.workspacePickerSent) {
     await recordExchange(userId, text, "[workspace picker shown]").catch((err) =>
       console.error("Failed to record conversation:", err)
+    );
+  }
+
+  // Tools update session.lastDiscussedTaskShortId as they run; persist it so
+  // the next message resolves "post that" without re-parsing chat history.
+  if (
+    session.lastDiscussedTaskShortId &&
+    session.lastDiscussedTaskShortId !== lastDiscussedTaskShortId
+  ) {
+    await setLastDiscussedTask(
+      userId,
+      session.workspaceId,
+      session.lastDiscussedTaskShortId
+    ).catch((err) =>
+      console.error("Failed to persist chat state:", err)
     );
   }
 

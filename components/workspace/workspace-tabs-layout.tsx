@@ -9,6 +9,7 @@ import { WorkspaceToolbarSlotProvider } from "@/components/workspace/workspace-t
 
 const TAB_LABELS: Record<WorkspaceTab, string> = {
   board: "Overview",
+  memory: "Memory",
   links: "Links",
   assets: "Assets",
   whiteboard: "Whiteboard",
@@ -16,6 +17,7 @@ const TAB_LABELS: Record<WorkspaceTab, string> = {
 };
 
 function deriveTab(pathname: string): WorkspaceTab {
+  if (pathname.endsWith("/memory")) return "memory";
   if (pathname.endsWith("/links")) return "links";
   if (pathname.endsWith("/assets")) return "assets";
   if (pathname.endsWith("/settings")) return "settings";

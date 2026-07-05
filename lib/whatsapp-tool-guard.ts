@@ -56,6 +56,11 @@ export const KNOWN_WHATSAPP_ACTIONS = new Set([
   "bulk_update_tasks",
   "unassign_task",
   "export_whiteboard",
+  "recall_memory",
+  "list_blockers",
+  "record_decision",
+  "resolve_blocker",
+  "get_project_context",
 ]);
 
 export type WhatsAppToolSession = {

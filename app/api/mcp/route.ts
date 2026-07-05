@@ -1,8 +1,12 @@
 import { createMcpHandler, withMcpAuth } from "mcp-handler";
-import { getUserIdByMcpToken } from "@/lib/identity-cache";
+import { getMcpIdentityByToken } from "@/lib/identity-cache";
 import { verifyOAuthAccessToken } from "@/lib/services/oauth";
 import { ServiceError } from "@/lib/services/project";
-import { dispatchMcpTool, mcpTools } from "@/lib/tools/registry";
+import {
+  dispatchMcpTool,
+  mcpTools,
+  normalizeMcpScope,
+} from "@/lib/tools/registry";
 
 /**
  * Claude App Remote MCP connector (Streamable HTTP transport).
@@ -38,8 +42,11 @@ const handler = createMcpHandler(
         },
         async (input: Record<string, unknown>, extra) => {
           const userId = extra.authInfo!.extra!.userId as string;
+          const scope = normalizeMcpScope(
+            extra.authInfo!.extra!.toolScope as string | undefined
+          );
           try {
-            const result = await dispatchMcpTool(def, input ?? {}, userId);
+            const result = await dispatchMcpTool(def, input ?? {}, userId, scope);
             return text(result.message);
           } catch (err) {
             return toolError(err);
@@ -69,13 +76,13 @@ const authHandler = withMcpAuth(
     if (!bearerToken) return undefined;
 
     if (UUID_REGEX.test(bearerToken)) {
-      const userId = await getUserIdByMcpToken(bearerToken);
-      if (!userId) return undefined;
+      const identity = await getMcpIdentityByToken(bearerToken);
+      if (!identity) return undefined;
       return {
         token: bearerToken,
-        clientId: userId,
+        clientId: identity.userId,
         scopes: ["tasks:read", "tasks:write"],
-        extra: { userId },
+        extra: { userId: identity.userId, toolScope: identity.scope },
       };
     }
 
@@ -85,7 +92,7 @@ const authHandler = withMcpAuth(
       token: bearerToken,
       clientId: oauth.clientId,
       scopes: ["tasks:read", "tasks:write"],
-      extra: { userId: oauth.userId },
+      extra: { userId: oauth.userId, toolScope: oauth.scope },
     };
   },
   { required: true }

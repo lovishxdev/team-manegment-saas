@@ -11,24 +11,27 @@ import { createTtlCache } from "@/lib/ttl-cache";
  */
 const TTL_MS = 60_000;
 
-const byMcpToken = createTtlCache<string>(TTL_MS);
+export type McpIdentity = { userId: string; scope: string };
+
+const byMcpToken = createTtlCache<McpIdentity>(TTL_MS);
 const byPhone = createTtlCache<string>(TTL_MS);
 
-/** Resolve a personal MCP token to a user id (cached). */
-export async function getUserIdByMcpToken(
+/** Resolve a personal MCP token to a user id + tool scope (cached). */
+export async function getMcpIdentityByToken(
   token: string
-): Promise<string | null> {
+): Promise<McpIdentity | null> {
   const cached = byMcpToken.get(token);
   if (cached) return cached;
 
   const user = await prisma.user.findUnique({
     where: { mcpToken: token },
-    select: { id: true },
+    select: { id: true, mcpScope: true },
   });
   if (!user) return null;
 
-  byMcpToken.set(token, user.id);
-  return user.id;
+  const identity: McpIdentity = { userId: user.id, scope: user.mcpScope };
+  byMcpToken.set(token, identity);
+  return identity;
 }
 
 /** Resolve a WhatsApp phone number (E.164, no +) to a user id (cached). */

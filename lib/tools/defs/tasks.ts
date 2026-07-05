@@ -50,6 +50,23 @@ import {
   str,
   workspaceParam,
 } from "@/lib/tools/helpers";
+import { getOpenBlockersForTaskShortId } from "@/lib/services/memory";
+import { formatMemoryEvents } from "@/lib/tools/defs/memory";
+import { formatOpenBlockerNudge } from "@/lib/memory/suggest";
+
+/**
+ * Passive alerting: any agent touching a task sees its open blockers at the
+ * moment they're relevant (MCP is pull-based — there is no push channel).
+ * Returns "" when the task has none.
+ */
+async function openBlockerSection(
+  workspaceId: string,
+  shortId: number
+): Promise<string> {
+  const blockers = await getOpenBlockersForTaskShortId(workspaceId, shortId);
+  if (blockers.length === 0) return "";
+  return `\n\n⛔ Open blockers on this task:\n${formatMemoryEvents(blockers)}`;
+}
 
 /**
  * On WhatsApp the model rarely knows #N — resolve from the message, chat
@@ -267,14 +284,14 @@ const readTaskTool: ToolDef = {
     const resolved = await resolveShortIdForChannel(input, ctx);
     if (!resolved.ok) return soft(resolved.message);
 
-    const task = await getTask(ws.workspaceId, ctx.userId, resolved.shortId);
-    const recentUpdates = await getRecentTaskUpdates(
-      ws.workspaceId,
-      ctx.userId,
-      resolved.shortId
-    );
+    const [task, recentUpdates, blockerSection] = await Promise.all([
+      getTask(ws.workspaceId, ctx.userId, resolved.shortId),
+      getRecentTaskUpdates(ws.workspaceId, ctx.userId, resolved.shortId),
+      openBlockerSection(ws.workspaceId, resolved.shortId),
+    ]);
     return ok(
-      formatTaskDetail(task, ws.workspaceName, ws.workspaceId, ctx.channel, recentUpdates),
+      formatTaskDetail(task, ws.workspaceName, ws.workspaceId, ctx.channel, recentUpdates) +
+        blockerSection,
       { shortId: task.shortId, title: task.title }
     );
   },
@@ -334,8 +351,18 @@ const addTaskUpdateTool: ToolDef = {
     if (ctx.wa) {
       ctx.wa.session.lastDiscussedTaskShortId = resolved.shortId;
       revalidateUserWorkspaces(ctx.userId, ws.workspaceId);
+      return ok(message, { shortId: resolved.shortId });
     }
-    return ok(message, { shortId: resolved.shortId });
+
+    // MCP is pull-based: if this task has open blockers, ride the response
+    // the agent was already getting with a confirm-first resolution nudge.
+    const openBlockers = await getOpenBlockersForTaskShortId(
+      ws.workspaceId,
+      resolved.shortId
+    );
+    return ok(message + formatOpenBlockerNudge(openBlockers), {
+      shortId: resolved.shortId,
+    });
   },
 };
 
@@ -504,15 +531,18 @@ const askTaskTool: ToolDef = {
 
     const message = await runAskTask(ws, ctx.userId, { query, shortId }, ctx.channel);
 
-    if (ctx.wa) {
-      const idMatch = message.match(/#(\d+)/);
-      if (idMatch) {
-        ctx.wa.session.lastDiscussedTaskShortId = Number(idMatch[1]);
-      } else if (shortId !== undefined && Number.isInteger(shortId)) {
-        ctx.wa.session.lastDiscussedTaskShortId = shortId;
-      }
+    const idMatch = message.match(/#(\d+)/);
+    const resolvedShortId = idMatch ? Number(idMatch[1]) : shortId;
+
+    if (ctx.wa && resolvedShortId !== undefined) {
+      ctx.wa.session.lastDiscussedTaskShortId = resolvedShortId;
     }
-    return ok(message);
+
+    const blockerSection =
+      resolvedShortId !== undefined
+        ? await openBlockerSection(ws.workspaceId, resolvedShortId)
+        : "";
+    return ok(message + blockerSection);
   },
 };
 

@@ -25,6 +25,18 @@ enum TaskPriority {
   HIGH
 }
 
+enum MemoryEventKind {
+  DECISION
+  BLOCKER
+  DEPENDENCY
+  MILESTONE
+}
+
+enum MemoryEventStatus {
+  OPEN
+  RESOLVED
+}
+
 /// Identity (passwords, OAuth) lives in Supabase Auth (auth.users).
 /// This table is the app profile; its id mirrors auth.users.id, kept in
 /// sync by the handle_new_user trigger (supabase/setup.sql).
@@ -39,6 +51,9 @@ model User {
   whatsappChatInitiatedAt DateTime?
   /// User-level secret for the Claude App Remote MCP connector
   mcpToken      String  @unique @default(uuid()) @db.Uuid
+  /// Tool scope for the mcpToken credential: "context" (read + memory +
+  /// task updates, safe for coding agents) or "full" (complete registry).
+  mcpScope      String  @default("context")
   lastIpAddress String?
   createdAt     DateTime @default(now())
 
@@ -55,8 +70,10 @@ model User {
   createdLinks   WorkspaceLink[]
   oauthCodes     OAuthCode[]
   oauthTokens    OAuthToken[]
+  memoryEvents   MemoryEvent[]         @relation("AuthoredMemoryEvents")
   whatsappMessages WhatsAppMessage[]
   whatsappPendingActions WhatsAppPendingAction[]
+  whatsappChatState WhatsAppChatState?
 }
 
 model Workspace {
@@ -72,6 +89,7 @@ model Workspace {
   invites         WorkspaceInvite[]
   categories      WorkspaceCategory[]
   taskUpdates     TaskUpdate[]
+  memoryEvents    MemoryEvent[]
   lastActiveUsers User[]                @relation("LastActiveWorkspace")
 }
 
@@ -132,6 +150,7 @@ model Task {
   attachments Asset[]
   updates     TaskUpdate[]
   embedding   TaskEmbedding?
+  memoryEvents MemoryEvent[]
 
   @@unique([workspaceId, shortId])
   @@index([workspaceId, status])
@@ -180,7 +199,63 @@ model TaskUpdate {
   task      Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
   author    User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
   embedding TaskUpdateEmbedding?
+  memoryEvents MemoryEvent[] @relation("MemoryEventSource")
 
+  @@index([taskId, createdAt])
+  @@index([workspaceId, createdAt])
+}
+
+/// Structured decision-memory record — a discrete "moment worth remembering"
+/// (decision, blocker, dependency, milestone) extracted from team activity.
+/// Standalone by design: sourceUpdateId is optional provenance so memory can
+/// later ingest from sources other than Euclis task threads.
+model MemoryEvent {
+  id          String            @id @default(uuid()) @db.Uuid
+  workspaceId String            @db.Uuid
+  /// Optional — workspace-level decisions have no task.
+  taskId      String?           @db.Uuid
+  /// TaskUpdate this event was extracted from (provenance).
+  sourceUpdateId String?        @db.Uuid
+  kind        MemoryEventKind
+  /// OPEN is only meaningful for BLOCKER/DEPENDENCY; decisions and
+  /// milestones are created RESOLVED (they're facts, not open work).
+  status      MemoryEventStatus @default(OPEN)
+  /// One line: what happened.
+  summary     String
+  /// Why — the answer to a future "why was X decided".
+  reasoning   String?
+  authorId    String?           @db.Uuid
+
+  resolvedAt         DateTime?
+  resolvedByUpdateId String?   @db.Uuid
+  resolvedById       String?   @db.Uuid
+
+  /// Decisions evolve: a contradicting decision links the old one here
+  /// (never deleted) so recall can walk the "why it changed" chain.
+  supersededByEventId String?  @db.Uuid
+
+  /// Semantic index over summary+reasoning (same JSON-vector pattern as
+  /// TaskEmbedding). Null until the fire-and-forget embed job runs.
+  embedding   Json?
+  contentHash String?
+
+  /// Resolution-suggestion throttling (confirm-only flow, never auto-ask
+  /// more than twice, never again after a decline).
+  lastSuggestedAt        DateTime?
+  suggestionCount        Int       @default(0)
+  suggestionsSuppressed  Boolean   @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace    Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  task         Task?       @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  sourceUpdate TaskUpdate? @relation("MemoryEventSource", fields: [sourceUpdateId], references: [id], onDelete: SetNull)
+  author       User?       @relation("AuthoredMemoryEvents", fields: [authorId], references: [id], onDelete: SetNull)
+  supersededBy MemoryEvent?  @relation("MemoryEventSupersession", fields: [supersededByEventId], references: [id], onDelete: SetNull)
+  supersedes   MemoryEvent[] @relation("MemoryEventSupersession")
+
+  @@index([workspaceId, status, kind])
   @@index([taskId, createdAt])
   @@index([workspaceId, createdAt])
 }
@@ -280,6 +355,19 @@ model WhatsAppMessage {
   @@index([userId, createdAt])
 }
 
+/// Rolling WhatsApp chat state — the task the user last discussed, so
+/// follow-ups ("post that", "mark it done") resolve deterministically
+/// instead of being re-parsed out of previous bot replies.
+model WhatsAppChatState {
+  userId          String   @id @db.Uuid
+  /// Task shortId last referenced in chat; only valid within workspaceId.
+  lastTaskShortId Int?
+  workspaceId     String?  @db.Uuid
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
 /// Short-lived pending confirmation (e.g. delete task) — one per phone.
 model WhatsAppPendingAction {
   phone     String   @id
@@ -328,6 +416,8 @@ model OAuthToken {
   refreshToken String?   @unique
   clientId     String    @db.Uuid
   userId       String    @db.Uuid
+  /// Tool scope for this credential: "context" or "full" (see User.mcpScope).
+  scope        String    @default("context")
   expiresAt    DateTime
   createdAt    DateTime  @default(now())
 

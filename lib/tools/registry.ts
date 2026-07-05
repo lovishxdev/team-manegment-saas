@@ -11,6 +11,7 @@ import { workspaceTools } from "@/lib/tools/defs/workspace";
 import { memberTools } from "@/lib/tools/defs/members";
 import { assetTools } from "@/lib/tools/defs/assets";
 import { miscTools } from "@/lib/tools/defs/misc";
+import { memoryTools } from "@/lib/tools/defs/memory";
 import type {
   ToolContext,
   ToolDef,
@@ -29,6 +30,7 @@ export const ALL_TOOLS: ToolDef[] = [
   ...memberTools,
   ...assetTools,
   ...miscTools,
+  ...memoryTools,
 ];
 
 const TOOLS_BY_NAME = new Map(ALL_TOOLS.map((t) => [t.name, t]));
@@ -44,6 +46,55 @@ export function getToolDef(name: string): ToolDef | undefined {
 
 export function mcpTools(): ToolDef[] {
   return ALL_TOOLS.filter((t) => !t.whatsappOnly);
+}
+
+/**
+ * MCP credential tool scopes, enforced server-side (a prompt can't talk its
+ * way past them):
+ *  - "context": what a coding agent needs — read/query tools, the memory
+ *    layer, and posting updates. No deletes, no member/workspace admin.
+ *  - "full": the complete registry (Claude Desktop chat-style management).
+ * WhatsApp always gets the full registry — it's the conversational
+ * management channel and authenticates a human by phone.
+ */
+export type McpToolScope = "context" | "full";
+
+export const CONTEXT_SCOPE_TOOL_NAMES: ReadonlySet<string> = new Set([
+  // Read / query
+  "read_task",
+  "list_task_updates",
+  "get_board_state",
+  "list_my_tasks",
+  "ask_task",
+  "find_task",
+  "search_tasks",
+  "workspace_summary",
+  "list_workspaces",
+  "list_categories",
+  "list_workspace_members",
+  "list_assets",
+  "read_asset",
+  "list_links",
+  // Memory layer
+  "recall_memory",
+  "list_blockers",
+  "record_decision",
+  "resolve_blocker",
+  "get_project_context",
+  // Reflecting work back into Euclis
+  "add_task_update",
+]);
+
+export function isToolAllowedForScope(
+  toolName: string,
+  scope: McpToolScope
+): boolean {
+  if (scope === "full") return true;
+  return CONTEXT_SCOPE_TOOL_NAMES.has(toolName);
+}
+
+export function normalizeMcpScope(scope: string | undefined): McpToolScope {
+  return scope === "full" ? "full" : "context";
 }
 
 let cachedWhatsAppTools: Anthropic.Tool[] | null = null;
@@ -138,8 +189,21 @@ async function buildWhatsAppContext(
 export async function dispatchMcpTool(
   def: ToolDef,
   input: Record<string, unknown>,
-  userId: string
+  userId: string,
+  scope: McpToolScope = "full"
 ): Promise<ToolResult> {
+  if (!isToolAllowedForScope(def.name, scope)) {
+    return {
+      ok: false,
+      message:
+        `This credential has "context" scope: read/query tools, memory tools ` +
+        `(recall_memory, list_blockers, record_decision, resolve_blocker, ` +
+        `get_project_context), and add_task_update. Management actions like ` +
+        `${def.name} need a "full"-scope credential — the user can change the ` +
+        `scope in Euclis Settings.`,
+    };
+  }
+
   let workspace: ToolContext["workspace"] = null;
   if (def.needsWorkspace !== false) {
     const hint =

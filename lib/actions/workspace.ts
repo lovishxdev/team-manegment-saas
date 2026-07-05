@@ -42,6 +42,11 @@ import {
   createTaskUpdate,
   listTaskUpdates,
 } from "@/lib/services/task-updates";
+import {
+  listMemoryEvents,
+  resolveMemoryEvent,
+  type MemoryEventRow,
+} from "@/lib/services/memory";
 
 export type ActionState = { error?: string; workspaceId?: string };
 
@@ -482,6 +487,64 @@ export async function fetchTaskUpdatesAction(
     };
   } catch (err) {
     return { updates: [], error: errorMessage(err) };
+  }
+}
+
+export type MemoryEventView = {
+  id: string;
+  kind: string;
+  status: string;
+  summary: string;
+  reasoning: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+  authorLabel: string | null;
+  task: { shortId: number; title: string } | null;
+};
+
+function toMemoryEventView(e: MemoryEventRow): MemoryEventView {
+  return {
+    id: e.id,
+    kind: e.kind,
+    status: e.status,
+    summary: e.summary,
+    reasoning: e.reasoning,
+    createdAt: e.createdAt.toISOString(),
+    resolvedAt: e.resolvedAt ? e.resolvedAt.toISOString() : null,
+    authorLabel: e.author ? displayUser(e.author) : null,
+    task: e.task,
+  };
+}
+
+export async function fetchTaskMemoryAction(
+  workspaceId: string,
+  taskShortId: number
+): Promise<{ events: MemoryEventView[]; error?: string }> {
+  const user = await requireUser();
+  try {
+    const events = await listMemoryEvents({
+      workspaceId,
+      userId: user.id,
+      taskShortId,
+    });
+    return { events: events.map(toMemoryEventView) };
+  } catch (err) {
+    return { events: [], error: errorMessage(err) };
+  }
+}
+
+export async function resolveMemoryEventAction(
+  workspaceId: string,
+  eventId: string
+): Promise<ActionState> {
+  const user = await requireUser();
+  try {
+    await resolveMemoryEvent({ workspaceId, userId: user.id, eventId });
+    revalidatePath(`/w/${workspaceId}/memory`);
+    revalidatePath(`/w/${workspaceId}`);
+    return {};
+  } catch (err) {
+    return { error: errorMessage(err) };
   }
 }
 

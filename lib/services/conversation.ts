@@ -87,6 +87,37 @@ export async function recordExchange(
   }
 }
 
+/**
+ * Last task the user discussed, persisted across messages. Only trusted when
+ * it belongs to the active workspace and is within the conversation window —
+ * a task from yesterday must not silently receive today's "post that".
+ */
+export async function getLastDiscussedTask(
+  userId: string,
+  workspaceId: string | null
+): Promise<number | null> {
+  if (!workspaceId) return null;
+  const state = await prisma.whatsAppChatState.findUnique({
+    where: { userId },
+  });
+  if (!state?.lastTaskShortId) return null;
+  if (state.workspaceId !== workspaceId) return null;
+  if (state.updatedAt.getTime() < Date.now() - WINDOW_MS) return null;
+  return state.lastTaskShortId;
+}
+
+export async function setLastDiscussedTask(
+  userId: string,
+  workspaceId: string | null,
+  shortId: number | null
+): Promise<void> {
+  await prisma.whatsAppChatState.upsert({
+    where: { userId },
+    create: { userId, workspaceId, lastTaskShortId: shortId },
+    update: { workspaceId, lastTaskShortId: shortId },
+  });
+}
+
 /** Marks the first inbound WhatsApp message from this user (idempotent). */
 export async function markWhatsAppChatInitiated(userId: string): Promise<void> {
   const { count } = await prisma.user.updateMany({

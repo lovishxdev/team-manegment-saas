@@ -37,12 +37,28 @@ export async function runWhatsAppAgentLoop(
   let budgetExhausted = true;
   const messages = [...input.messages];
 
+  // Prompt caching: tool schemas are identical for every user and message
+  // (breakpoint on the last tool caches the whole block); the system prompt
+  // is stable per user per day. Together they are ~80–90% of input tokens.
+  const tools = input.tools.map((tool, i) =>
+    i === input.tools.length - 1
+      ? { ...tool, cache_control: { type: "ephemeral" as const } }
+      : tool
+  ) as Anthropic.ToolUnion[];
+  const system: Anthropic.TextBlockParam[] = [
+    {
+      type: "text",
+      text: input.systemPrompt,
+      cache_control: { type: "ephemeral" },
+    },
+  ];
+
   for (let turn = 0; turn < input.maxTurns; turn++) {
     const response = await input.anthropic.messages.create({
       model: input.model,
       max_tokens: input.maxTokens ?? 1024,
-      system: input.systemPrompt,
-      tools: input.tools,
+      system,
+      tools,
       messages,
     });
 

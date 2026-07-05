@@ -126,6 +126,16 @@ export function AppRealtimeSync({
               filter: wsScopedFilter,
             },
             refreshDebounced
+          )
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table: "MemoryEvent",
+              filter: wsScopedFilter,
+            },
+            refreshDebounced
           );
       }
 

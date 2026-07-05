@@ -13,6 +13,8 @@ export const BUTTON = {
     `demote_confirm_${userId}_${role}`,
   removeConfirm: (userId: string) => `remove_confirm_${userId}`,
   deleteAssetConfirm: (assetId: string) => `delete_asset_confirm_${assetId}`,
+  memoryResolveConfirm: (eventId: string) => `mem_resolve_${eventId}`,
+  memoryResolveDismiss: (eventId: string) => `mem_dismiss_${eventId}`,
 } as const;
 
 export function parseButtonId(id: string):
@@ -29,6 +31,8 @@ export function parseButtonId(id: string):
   | { type: "demote_confirm"; targetUserId: string; newRole: string }
   | { type: "remove_confirm"; targetUserId: string }
   | { type: "delete_asset_confirm"; assetId: string }
+  | { type: "memory_resolve_confirm"; eventId: string }
+  | { type: "memory_resolve_dismiss"; eventId: string }
   | null {
   if (id === BUTTON.menuBoard) return { type: "menu_board" };
   if (id === BUTTON.menuHelp) return { type: "menu_help" };
@@ -76,6 +80,20 @@ export function parseButtonId(id: string):
   );
   if (delAsset) {
     return { type: "delete_asset_confirm", assetId: delAsset[1] };
+  }
+
+  const memResolve = id.match(
+    /^mem_resolve_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i
+  );
+  if (memResolve) {
+    return { type: "memory_resolve_confirm", eventId: memResolve[1] };
+  }
+
+  const memDismiss = id.match(
+    /^mem_dismiss_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i
+  );
+  if (memDismiss) {
+    return { type: "memory_resolve_dismiss", eventId: memDismiss[1] };
   }
 
   return null;

@@ -14,6 +14,7 @@ import {
   type CategoryOption,
 } from "@/components/board/category-field";
 import { TaskUpdatesSection } from "@/components/board/task-updates-section";
+import { TaskMemorySection } from "@/components/board/task-memory-section";
 import { ui, tagColor } from "@/components/ui/ui";
 
 const STATUSES = ["TODO", "IN_PROGRESS", "DONE"] as const;
@@ -290,6 +291,12 @@ export function TaskDetailModal({
               />
             </div>
           </div>
+
+          <TaskMemorySection
+            workspaceId={workspaceId}
+            taskId={task.id}
+            taskShortId={task.shortId}
+          />
 
           <TaskUpdatesSection
             workspaceId={workspaceId}

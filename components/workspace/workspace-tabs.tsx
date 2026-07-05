@@ -11,6 +11,7 @@ type TabItem = {
 
 const TABS: TabItem[] = [
   { id: "board", label: "Overview", path: "" },
+  { id: "memory", label: "Memory", path: "/memory" },
   { id: "links", label: "Links", path: "/links" },
   { id: "assets", label: "Assets", path: "/assets" },
   { id: "whiteboard", label: "Whiteboard", path: "/whiteboard" },

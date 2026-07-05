@@ -6,6 +6,7 @@ import { CopyField } from "@/components/ui/copy-field";
 import { DeleteAccount } from "@/components/settings/delete-account";
 import { PhoneForm } from "@/components/settings/phone-form";
 import { UsernameForm } from "@/components/settings/username-form";
+import { McpScopeForm } from "@/components/settings/mcp-scope-form";
 import { WhatsAppBotNumber } from "@/components/whatsapp/whatsapp-bot-number";
 import { WhatsAppChatHistory } from "@/components/whatsapp/whatsapp-chat-history";
 import {
@@ -120,6 +121,16 @@ export default async function SettingsPage() {
             <li>In Claude, add a custom MCP connector and paste it as the server URL.</li>
             <li>Approve access when Claude redirects you to Euclis to sign in.</li>
           </ol>
+
+          <div className="mt-6 border-t border-line pt-5">
+            <h3 className="text-sm font-semibold text-ink">Agent access</h3>
+            <p className="mb-3 mt-1 text-sm text-ink-soft">
+              What connected agents (Claude, Cursor, and other MCP clients) are
+              allowed to do with your account. Enforced server-side on every
+              tool call.
+            </p>
+            <McpScopeForm currentScope={user.mcpScope} />
+          </div>
         </section>
 
         <DeleteAccount confirmLabel={user.email ?? "DELETE"} />

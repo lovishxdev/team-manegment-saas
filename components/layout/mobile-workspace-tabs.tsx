@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 const TABS = [
   { id: "board", label: "Overview", path: "" },
+  { id: "memory", label: "Memory", path: "/memory" },
   { id: "links", label: "Links", path: "/links" },
   { id: "assets", label: "Assets", path: "/assets" },
   { id: "whiteboard", label: "Whiteboard", path: "/whiteboard" },
@@ -18,7 +19,7 @@ const TABS = [
 export function MobileWorkspaceTabs() {
   const pathname = usePathname();
   const match = pathname.match(
-    /^\/w\/([^/]+)(?:\/(links|assets|whiteboard|settings))?/
+    /^\/w\/([^/]+)(?:\/(memory|links|assets|whiteboard|settings))?/
   );
   if (!match) return null;
 
