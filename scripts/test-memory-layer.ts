@@ -14,6 +14,7 @@ import {
   normalizeMcpScope,
 } from "../lib/tools/registry";
 import {
+  deriveDecisionFromMessage,
   formatMemoryEvent,
   formatMemoryEvents,
 } from "../lib/tools/defs/memory";
@@ -144,6 +145,31 @@ check(
   "memoryEventDocument combines summary + reasoning",
   memoryEventDocument({ summary: "A", reasoning: "B" }) === "A\nB" &&
     memoryEventDocument({ summary: "A", reasoning: null }) === "A"
+);
+
+// ── record_decision fallback (WhatsApp models may send empty args) ──────
+
+const derived = deriveDecisionFromMessage(
+  "log a decision: we're using Figma for all design handoffs because the contractor works there"
+);
+check(
+  "decision fallback strips prefix and splits 'because' into reasoning",
+  derived?.summary === "we're using Figma for all design handoffs" &&
+    derived?.reasoning === "the contractor works there",
+  JSON.stringify(derived)
+);
+
+check(
+  "decision fallback works without 'because'",
+  deriveDecisionFromMessage("note that decision - dark mode ships in v2")
+    ?.summary === "dark mode ships in v2" ||
+    deriveDecisionFromMessage("record decision: dark mode ships in v2")
+      ?.summary === "dark mode ships in v2"
+);
+
+check(
+  "decision fallback returns null for empty remainder",
+  deriveDecisionFromMessage("log a decision:") === null
 );
 
 // ── WhatsApp suggestion buttons ─────────────────────────────────────────

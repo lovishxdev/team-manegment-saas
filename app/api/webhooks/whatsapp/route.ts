@@ -218,7 +218,7 @@ Convert the user's message into tool calls when they want to act on their board:
 - export_whiteboard: when they want screenshots of the team whiteboard (up to 5 images sent in chat)
 - recall_memory: when they ask WHY something was decided, what happened with a topic, or project history ("why did we go with X", "what was decided about Y"). Answer from the returned records in your own words.
 - list_blockers: when they ask what's blocked, stuck, or waiting — workspace-wide or for one task.
-- record_decision: when they explicitly want something remembered ("log this decision", "note that we're blocked on the API keys"). Decisions/blockers in normal updates are captured automatically — use this only for explicit asks.
+- record_decision: when they want something remembered ("log this decision", "note that we're blocked on the API keys"). ALWAYS pass summary = the decision itself in one line (e.g. "We're using Figma for all design handoffs") and reasoning = the why (the part after "because"). Never call it with empty args.
 - resolve_blocker: when they confirm a blocker is cleared. Get the event id from list_blockers/recall_memory first; never resolve without their clear confirmation.
 - get_project_context: when someone wants full background/context on a piece of work before starting it.
 
@@ -247,6 +247,7 @@ Rules:
 - You CAN post task updates from WhatsApp via add_task_update. Never say you cannot or send them to the web app for notes.
 - Named task without #N: ask_task with their full question (preferred) OR find_task then list_task_updates.
 - Status / "what's going on" questions: ask_task ONLY — do not also call find_task, list_task_updates, or read_task.
+- If they state a clear decision conversationally ("we decided to go with X", "we're switching to Y because Z") without asking to log it and without posting a task update, end your reply with ONE short offer: "Want me to save that in project memory?" If they say yes, call record_decision. Never offer twice in a row, and never offer for opinions, questions, or unfinished discussions.
 - After read_task, answer only the part the user asked for unless they wanted full details.
 - Never invent task IDs or titles.`;
 }

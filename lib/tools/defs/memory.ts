@@ -129,10 +129,33 @@ const listBlockersTool: ToolDef = {
   },
 };
 
+/** "log a decision: we use X because Y" → summary "we use X", reasoning "Y". */
+export function deriveDecisionFromMessage(message: string): {
+  summary: string;
+  reasoning?: string;
+} | null {
+  const stripped = message
+    .replace(
+      /^(please\s+)?(log|record|note|save|add)\s+(a\s+|this\s+|that\s+)?(decision|blocker|dependency|milestone)\s*[:\-—]*\s*/i,
+      ""
+    )
+    .trim();
+  if (!stripped) return null;
+
+  const becauseSplit = stripped.split(/\s+because\s+/i);
+  if (becauseSplit.length >= 2) {
+    return {
+      summary: becauseSplit[0].trim(),
+      reasoning: becauseSplit.slice(1).join(" because ").trim(),
+    };
+  }
+  return { summary: stripped };
+}
+
 const recordDecisionTool: ToolDef = {
   name: "record_decision",
   waDescription:
-    'Record a decision, blocker, dependency, or milestone into project memory. Use when the user says "log this decision", "note that we\'re blocked on X", or states something clearly worth remembering.',
+    'Record a decision, blocker, dependency, or milestone into project memory. Use when the user says "log this decision", "note that we\'re blocked on X", or states something clearly worth remembering. summary = the decision itself (one line); put the "because …" part in reasoning. Omit summary to use the user\'s message verbatim.',
   mcpDescription:
     "Record a decision, blocker, dependency, or milestone into project memory (what + why + who). Call after a meaningful decision is made during work so future sessions can recall it.",
   inputShape: {
@@ -156,9 +179,40 @@ const recordDecisionTool: ToolDef = {
       .describe("Task this belongs to (#N); omit for workspace-level"),
     workspace: workspaceParam,
   },
+  waInputShape: {
+    summary: z
+      .string()
+      .optional()
+      .describe(
+        "The decision/blocker itself, one line. Omit to use the user's message."
+      ),
+    reasoning: z
+      .string()
+      .optional()
+      .describe("Why — the part after 'because', rationale, constraints"),
+    kind: z.enum(MEMORY_KINDS).optional().describe("Default DECISION"),
+    shortId: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Task this belongs to (#N); omit for workspace-level"),
+    workspace: workspaceParam,
+  },
   run: async (input, ctx) => {
     const ws = requireWorkspace(ctx);
-    const summary = str(input.summary);
+    let summary = str(input.summary);
+    let reasoning = optionalStr(input.reasoning);
+
+    // WhatsApp models sometimes call with empty args — fall back to the
+    // user's own message (same pattern as add_task_update).
+    if (!summary && ctx.wa) {
+      const derived = deriveDecisionFromMessage(ctx.wa.session.userMessage);
+      if (derived) {
+        summary = derived.summary;
+        reasoning = reasoning ?? derived.reasoning;
+      }
+    }
     if (!summary) return soft("What should the memory record say?");
 
     const kind = (optionalStr(input.kind) as MemoryEventKind | undefined) ?? "DECISION";
@@ -167,7 +221,7 @@ const recordDecisionTool: ToolDef = {
       userId: ctx.userId,
       kind,
       summary,
-      reasoning: optionalStr(input.reasoning),
+      reasoning,
       taskShortId: optionalNum(input.shortId),
     });
 

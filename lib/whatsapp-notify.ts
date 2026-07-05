@@ -78,3 +78,47 @@ export async function notifyBlockerDetected(input: {
     recipients.map((r) => sendWhatsAppText(r.phone as string, body))
   );
 }
+
+/**
+ * Close the loop: whoever flagged a blocker hears when it's cleared —
+ * without having to watch the thread. Skipped when they resolved it
+ * themselves. Same session-window constraints as the other pings.
+ */
+export async function notifyBlockerResolved(input: {
+  workspaceId: string;
+  authorUserId: string | null;
+  resolvedByUserId: string;
+  summary: string;
+  task: { shortId: number; title: string } | null;
+}): Promise<void> {
+  if (!input.authorUserId || input.authorUserId === input.resolvedByUserId) {
+    return;
+  }
+
+  const [author, resolver, workspace] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: input.authorUserId },
+      select: { phone: true },
+    }),
+    prisma.user.findUnique({
+      where: { id: input.resolvedByUserId },
+      select: { username: true },
+    }),
+    prisma.workspace.findUnique({
+      where: { id: input.workspaceId },
+      select: { name: true },
+    }),
+  ]);
+  if (!author?.phone) return;
+
+  const taskRef = input.task ? ` on ${formatTaskRef(input.task.title)}` : "";
+  const by = resolver ? ` by @${resolver.username}` : "";
+  const link = input.task
+    ? `\nOpen: ${taskUrl(input.workspaceId, input.task.shortId)}`
+    : "";
+  const body =
+    `✅ The blocker you flagged${taskRef} in *${workspace?.name ?? "your workspace"}* was resolved${by}:\n` +
+    `"${input.summary}"${link}`;
+
+  await sendWhatsAppText(author.phone, body);
+}

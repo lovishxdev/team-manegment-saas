@@ -287,7 +287,7 @@ export async function resolveMemoryEvent(input: {
     });
   }
 
-  return prisma.memoryEvent.update({
+  const resolved = await prisma.memoryEvent.update({
     where: { id: existing.id },
     data: {
       status: "RESOLVED",
@@ -297,6 +297,19 @@ export async function resolveMemoryEvent(input: {
     },
     select: eventSelect,
   });
+
+  scheduleBackgroundTask("blocker resolved notify", async () => {
+    const { notifyBlockerResolved } = await import("@/lib/whatsapp-notify");
+    await notifyBlockerResolved({
+      workspaceId: input.workspaceId,
+      authorUserId: resolved.author?.id ?? null,
+      resolvedByUserId: input.userId,
+      summary: resolved.summary,
+      task: resolved.task,
+    });
+  });
+
+  return resolved;
 }
 
 /** Mark a blocker as "don't suggest resolution again" after a decline. */
