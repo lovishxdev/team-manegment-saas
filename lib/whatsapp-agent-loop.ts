@@ -28,6 +28,29 @@ export type AgentLoopResult = {
   budgetExhausted: boolean;
 };
 
+/**
+ * Prompt caching: breakpoint on the LAST tool without defer_loading — the
+ * API rejects tools that set both defer_loading and cache_control, and
+ * deferred tool stubs are tiny anyway. No-op when every tool is deferred.
+ */
+export function applyToolCacheBreakpoint(
+  tools: (Anthropic.Tool | Anthropic.ToolUnion)[]
+): Anthropic.ToolUnion[] {
+  let lastCacheable = -1;
+  for (let i = tools.length - 1; i >= 0; i--) {
+    const t = tools[i] as { defer_loading?: boolean };
+    if (!t.defer_loading) {
+      lastCacheable = i;
+      break;
+    }
+  }
+  return tools.map((tool, i) =>
+    i === lastCacheable
+      ? { ...tool, cache_control: { type: "ephemeral" as const } }
+      : tool
+  ) as Anthropic.ToolUnion[];
+}
+
 export async function runWhatsAppAgentLoop(
   input: AgentLoopInput
 ): Promise<AgentLoopResult> {
@@ -37,14 +60,10 @@ export async function runWhatsAppAgentLoop(
   let budgetExhausted = true;
   const messages = [...input.messages];
 
-  // Prompt caching: tool schemas are identical for every user and message
-  // (breakpoint on the last tool caches the whole block); the system prompt
-  // is stable per user per day. Together they are ~80–90% of input tokens.
-  const tools = input.tools.map((tool, i) =>
-    i === input.tools.length - 1
-      ? { ...tool, cache_control: { type: "ephemeral" as const } }
-      : tool
-  ) as Anthropic.ToolUnion[];
+  // Prompt caching: tool schemas are identical for every user and message;
+  // the system prompt is stable per user per day. Together they are
+  // ~80–90% of input tokens.
+  const tools = applyToolCacheBreakpoint(input.tools);
   const system: Anthropic.TextBlockParam[] = [
     {
       type: "text",

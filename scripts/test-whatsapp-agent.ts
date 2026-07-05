@@ -18,6 +18,7 @@ import {
   isAffirmationOnly,
   isProgressReport,
 } from "../lib/whatsapp-task-context";
+import { applyToolCacheBreakpoint } from "../lib/whatsapp-agent-loop";
 
 let passed = 0;
 let failed = 0;
@@ -128,6 +129,43 @@ check(
 check("progress report detected", isProgressReport("I have started 2 reddit posts"));
 check("focus message is not a progress report", !isProgressReport("I want to work on seo queries"));
 check("affirmation detected", isAffirmationOnly("yes post that"));
+
+// ── Prompt-cache breakpoint vs deferred tools ───────────────────────────
+// The API rejects tools with both defer_loading and cache_control set.
+
+type TestTool = { name: string; defer_loading?: boolean; cache_control?: unknown };
+const mkTool = (name: string, defer?: boolean): TestTool =>
+  defer ? { name, defer_loading: true } : { name };
+
+const plain = applyToolCacheBreakpoint([
+  mkTool("a"),
+  mkTool("b"),
+] as never[]) as TestTool[];
+check(
+  "cache breakpoint lands on last tool when none deferred",
+  !plain[0].cache_control && Boolean(plain[1].cache_control)
+);
+
+const mixed = applyToolCacheBreakpoint([
+  mkTool("core"),
+  mkTool("deferred1", true),
+  mkTool("deferred2", true),
+] as never[]) as TestTool[];
+check(
+  "cache breakpoint skips deferred tools (lands on last non-deferred)",
+  Boolean(mixed[0].cache_control) &&
+    !mixed[1].cache_control &&
+    !mixed[2].cache_control
+);
+
+const allDeferred = applyToolCacheBreakpoint([
+  mkTool("d1", true),
+  mkTool("d2", true),
+] as never[]) as TestTool[];
+check(
+  "no cache breakpoint when every tool is deferred",
+  allDeferred.every((t) => !t.cache_control)
+);
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
