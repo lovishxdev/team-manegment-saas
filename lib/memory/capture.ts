@@ -6,6 +6,7 @@ import {
 } from "@/lib/services/memory";
 import { notifyBlockerDetected } from "@/lib/whatsapp-notify";
 import { suggestBlockerResolution } from "@/lib/memory/suggest";
+import { scheduleBackgroundTask } from "@/lib/background-task";
 
 /**
  * Quiet, after-the-fact memory capture: one cheap classifier call per task
@@ -279,7 +280,7 @@ export async function captureFromTaskUpdate(
 /** Fire-and-forget hook for createTaskUpdate — zero latency added to posting. */
 export function scheduleMemoryCapture(updateId: string): void {
   if (!memoryCaptureEnabled()) return;
-  void captureFromTaskUpdate(updateId).catch((err) =>
-    console.error("[memory] capture failed:", err)
+  scheduleBackgroundTask("memory capture", () =>
+    captureFromTaskUpdate(updateId)
   );
 }

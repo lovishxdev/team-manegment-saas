@@ -38,6 +38,35 @@ export function shortenFullPack(rawPack: string): string {
 const CAPABILITY_REFUSAL =
   /can'?t post|don'?t have a way|use the web app|unable to (?:post|add|update)/i;
 
+/** Read-only tools whose results the model answers from in its own words. */
+export const INQUIRY_TOOLS: ReadonlySet<string> = new Set([
+  "ask_task",
+  "read_task",
+  "list_task_updates",
+  "find_task",
+  "search_tasks",
+  "workspace_summary",
+  "read_asset",
+  "recall_memory",
+  "list_blockers",
+  "get_project_context",
+]);
+
+/**
+ * When the agent chained inquiry tools into a mutation (e.g. ask_task to
+ * resolve "Login page", then add_task_update), the inquiry output was
+ * intermediate context for the model — never show it to the user.
+ */
+export function pickReplyOutcomes(outcomes: ActionOutcome[]): ActionOutcome[] {
+  const hasMutation = outcomes.some(
+    (o) => o.message.trim() && !(o.action && INQUIRY_TOOLS.has(o.action))
+  );
+  if (!hasMutation) return outcomes;
+  return outcomes.filter(
+    (o) => !(o.action && INQUIRY_TOOLS.has(o.action))
+  );
+}
+
 export type GuardInput = {
   /** The reply about to be sent (model-composed or tool-assembled). */
   draft: string;

@@ -8,6 +8,7 @@ import "dotenv/config";
 import {
   guardWhatsAppReply,
   looksLikeFullPack,
+  pickReplyOutcomes,
   shortenFullPack,
 } from "../lib/whatsapp-reply-guard";
 import {
@@ -92,6 +93,30 @@ check(
   !looksLikeFullPack(
     guardWhatsAppReply({ draft: pack, toolFallback: pack, actionResults: [] })
   )
+);
+
+// "Login page" → ask_task (lookup) → add_task_update (mutation): the user
+// must see only the posted confirmation, never the intermediate task dump.
+const chained = pickReplyOutcomes([
+  {
+    action: "ask_task",
+    ok: true,
+    message:
+      "• *Login Page Redesign* · Landing Page Site\nMatch: 87%\nStatus: TODO · General · MEDIUM",
+  },
+  { action: "add_task_update", ok: true, message: "Posted on *Login Page Redesign*." },
+]);
+check(
+  "inquiry-then-mutation drops the intermediate lookup output",
+  chained.length === 1 && chained[0].action === "add_task_update"
+);
+
+const inquiryOnly = pickReplyOutcomes([
+  { action: "ask_task", ok: true, message: "*Login Page Redesign* status…" },
+]);
+check(
+  "pure inquiry outcomes are kept",
+  inquiryOnly.length === 1 && inquiryOnly[0].action === "ask_task"
 );
 
 const longDraft = "a".repeat(5000);

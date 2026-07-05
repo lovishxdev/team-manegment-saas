@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { scheduleBackgroundTask } from "@/lib/background-task";
 import {
   embedText,
   embeddingsEnabled,
@@ -71,8 +72,8 @@ export async function indexTaskEmbedding(taskId: string): Promise<void> {
 /** Fire-and-forget indexing — never block task writes on embed latency. */
 export function scheduleTaskEmbeddingIndex(taskId: string): void {
   if (!embeddingsEnabled()) return;
-  void indexTaskEmbedding(taskId).catch((err) =>
-    console.error("[retrieval] task index failed:", err)
+  scheduleBackgroundTask("retrieval task index", () =>
+    indexTaskEmbedding(taskId)
   );
 }
 

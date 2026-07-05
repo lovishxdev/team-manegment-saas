@@ -4,6 +4,7 @@ import {
   embeddingsEnabled,
   hashContent,
 } from "@/lib/retrieval/embeddings";
+import { scheduleBackgroundTask } from "@/lib/background-task";
 
 export function buildUpdateIndexDocument(update: {
   body: string;
@@ -59,8 +60,8 @@ export async function indexTaskUpdateEmbedding(
 
 export function scheduleTaskUpdateEmbeddingIndex(taskUpdateId: string): void {
   if (!embeddingsEnabled()) return;
-  void indexTaskUpdateEmbedding(taskUpdateId).catch((err) =>
-    console.error("[retrieval] update index failed:", err)
+  scheduleBackgroundTask("retrieval update index", () =>
+    indexTaskUpdateEmbedding(taskUpdateId)
   );
 }
 

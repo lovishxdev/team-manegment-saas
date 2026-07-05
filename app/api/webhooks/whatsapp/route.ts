@@ -69,7 +69,11 @@ import {
   mapBoardSnapshot,
 } from "@/lib/channel-formatters";
 import { formatWhatsAppUserReply } from "@/lib/whatsapp-voice";
-import { guardWhatsAppReply } from "@/lib/whatsapp-reply-guard";
+import {
+  guardWhatsAppReply,
+  INQUIRY_TOOLS,
+  pickReplyOutcomes,
+} from "@/lib/whatsapp-reply-guard";
 import { workspaceUrl } from "@/lib/app-url";
 import { getAppOrigin } from "@/lib/app-origin";
 import { isWhatsAppGreeting } from "@/lib/whatsapp-bot";
@@ -127,20 +131,6 @@ import type { WhatsAppSessionState } from "@/lib/tools/types";
 /** One capable model runs the whole conversation — no triage router. */
 const WHATSAPP_AGENT_MODEL =
   process.env.WHATSAPP_AGENT_MODEL?.trim() || "claude-sonnet-4-5";
-
-/** Read-only tools whose results the model should answer from in its own words. */
-const INQUIRY_TOOLS = new Set([
-  "ask_task",
-  "read_task",
-  "list_task_updates",
-  "find_task",
-  "search_tasks",
-  "workspace_summary",
-  "read_asset",
-  "recall_memory",
-  "list_blockers",
-  "get_project_context",
-]);
 
 const DENIED_MESSAGE =
   "This number isn't linked yet. Sign in at Euclis → Settings → WhatsApp, add your phone, then message me again.";
@@ -1111,8 +1101,11 @@ async function handleMessage(
     "Tell me what to add or change on your board — or send *menu*.";
 
   if (withMessage.length > 0) {
+    // Inquiry outputs that only served to resolve a task for a mutation are
+    // intermediate context — the user gets the confirmation, not the lookup.
+    const replyOutcomes = pickReplyOutcomes(actionResults);
     const toolFallback = formatWhatsAppUserReply(
-      actionResults,
+      replyOutcomes,
       budgetExhausted,
       null
     );

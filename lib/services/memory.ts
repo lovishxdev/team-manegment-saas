@@ -14,6 +14,7 @@ import {
   semanticScore,
 } from "@/lib/retrieval/embeddings";
 import { scoreTaskTitleQuery } from "@/lib/task-title-search";
+import { scheduleBackgroundTask } from "@/lib/background-task";
 
 export const MAX_MEMORY_SUMMARY = 500;
 export const MAX_MEMORY_REASONING = 2000;
@@ -112,8 +113,8 @@ export async function indexMemoryEventEmbedding(eventId: string): Promise<void> 
 
 export function scheduleMemoryEventEmbeddingIndex(eventId: string): void {
   if (!embeddingsEnabled()) return;
-  void indexMemoryEventEmbedding(eventId).catch((err) =>
-    console.error("[memory] event embed failed:", err)
+  scheduleBackgroundTask("memory event embed", () =>
+    indexMemoryEventEmbedding(eventId)
   );
 }
 
