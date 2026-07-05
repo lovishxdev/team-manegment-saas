@@ -15,10 +15,8 @@ import {
   resolveTaskFromBoard,
   scoreTaskTitleDirect,
 } from "../lib/task-title-search";
-import {
-  isAffirmationOnly,
-  isProgressReport,
-} from "../lib/whatsapp-task-context";
+import { whatsappAnthropicTools } from "../lib/tools/registry";
+import { formatWhatsAppUserReply } from "../lib/whatsapp-voice";
 import { applyToolCacheBreakpoint } from "../lib/whatsapp-agent-loop";
 
 let passed = 0;
@@ -119,6 +117,28 @@ check(
   inquiryOnly.length === 1 && inquiryOnly[0].action === "ask_task"
 );
 
+// Reply assembly must pass tool copy through untouched — final copy lives in
+// the tool handlers, not in a rewriting layer.
+check(
+  "single success passes through verbatim",
+  formatWhatsAppUserReply(
+    [{ action: "create_task", ok: true, message: "Added *Review Q3 Budget* (high priority)." }],
+    false,
+    null
+  ) === "Added *Review Q3 Budget* (high priority)."
+);
+check(
+  "mixed outcomes get ✓/✗ assembly without rewriting",
+  formatWhatsAppUserReply(
+    [
+      { action: "create_task", ok: true, message: "Added *A*." },
+      { action: "update_task", ok: false, message: "I couldn't find that task on your board." },
+    ],
+    false,
+    null
+  ).startsWith("✓ Added *A*.\n✗ I couldn't find that task on your board.")
+);
+
 const longDraft = "a".repeat(5000);
 check(
   "guard caps replies under the WhatsApp limit",
@@ -149,11 +169,26 @@ check(
   `got ${resolved.kind}`
 );
 
-// ── Progress / affirmation heuristics (used by add_task_update tool) ────
+// ── add_task_update contract: the MODEL owns NL understanding ───────────
+// No regex classifies progress reports; the schema forces the model to pass
+// the update text explicitly, so "just uploaded the files" etc. work by
+// contract, not by verb list.
 
-check("progress report detected", isProgressReport("I have started 2 reddit posts"));
-check("focus message is not a progress report", !isProgressReport("I want to work on seo queries"));
-check("affirmation detected", isAffirmationOnly("yes post that"));
+const addUpdate = whatsappAnthropicTools().find(
+  (t) => t.name === "add_task_update"
+)!;
+const addUpdateSchema = addUpdate.input_schema as {
+  required?: string[];
+  properties?: Record<string, unknown>;
+};
+check(
+  "add_task_update requires body from the model (no NL mining in code)",
+  (addUpdateSchema.required ?? []).includes("body")
+);
+check(
+  "add_task_update keeps shortId optional (resolved from chat state)",
+  !(addUpdateSchema.required ?? []).includes("shortId")
+);
 
 // ── Prompt-cache breakpoint vs deferred tools ───────────────────────────
 // The API rejects tools with both defer_loading and cache_control set.

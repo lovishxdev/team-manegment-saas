@@ -1,6 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { ActionOutcome } from "@/lib/channel-formatters";
-import { classifyActionOutcome } from "@/lib/whatsapp-action-outcome";
 import {
   getClientToolUses,
   runClientToolUses,
@@ -14,10 +13,11 @@ export type AgentLoopInput = {
   tools: Anthropic.Tool[] | Anthropic.ToolUnion[];
   messages: Anthropic.MessageParam[];
   maxTurns: number;
+  /** Structured result — ok comes from the tool handler, not string matching. */
   runTool: (
     name: string,
     input: Record<string, unknown>
-  ) => Promise<string>;
+  ) => Promise<{ ok: boolean; message: string }>;
   onProgress?: (action: string, result: string) => void | Promise<void>;
 };
 
@@ -109,13 +109,17 @@ export async function runWhatsAppAgentLoop(
         toolUse.name,
         toolUse.input as Record<string, unknown>
       );
-      const outcome = classifyActionOutcome(toolUse.name, result);
+      const outcome: ActionOutcome = {
+        ok: result.ok,
+        message: result.message,
+        action: toolUse.name,
+      };
       actionResults.push(outcome);
-      await input.onProgress?.(toolUse.name, result);
+      await input.onProgress?.(toolUse.name, result.message);
       return {
         toolUseId: toolUse.id,
         action: toolUse.name,
-        result,
+        result: result.message,
         outcome,
       };
     });

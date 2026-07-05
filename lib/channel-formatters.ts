@@ -308,6 +308,8 @@ export function formatTaskDetail(
   })();
 
   if (channel === "whatsapp") {
+    // No deep link here — the agent composes answers from this, and links in
+    // intermediate context leak into replies. Board view keeps its link.
     return (
       `*${formatTaskRef(task.title)}*\n` +
       `Workspace: ${workspaceName}\n` +
@@ -322,8 +324,7 @@ export function formatTaskDetail(
       `Updated: ${task.updatedAt.toISOString().slice(0, 10)}\n` +
       `Description:\n${description}\n` +
       updatesBlock +
-      `\nAttachments (${task.attachments.length}):\n${attachmentLines.join("\n")}\n\n` +
-      `Open: ${url}`
+      `\nAttachments (${task.attachments.length}):\n${attachmentLines.join("\n")}`
     );
   }
 
@@ -359,104 +360,6 @@ export type ActionOutcome = {
   message: string;
   action?: string;
 };
-
-function stripDonePrefix(message: string): string {
-  return message.replace(/^Done\.\s*/i, "").trim();
-}
-
-/** Read-only tools whose raw output should not be pasted to users when the model summarizes. */
-const INQUIRY_ACTIONS = new Set([
-  "read_task",
-  "list_task_updates",
-  "get_board_state",
-  "find_task",
-  "ask_task",
-  "search_tasks",
-  "list_my_tasks",
-  "list_assets",
-  "read_asset",
-  "list_links",
-  "workspace_summary",
-  "list_workspace_members",
-  "list_categories",
-  "list_workspaces",
-]);
-
-export function formatActionSummary(
-  outcomes: ActionOutcome[],
-  budgetExhausted: boolean,
-  channel: Channel,
-  assistantNote?: string | null
-): string {
-  const withMessage = outcomes.filter((o) => o.message.trim());
-  const successes = withMessage.filter((o) => o.ok);
-  const failures = withMessage.filter((o) => !o.ok);
-  const note = assistantNote?.trim();
-
-  const inquiryOnly =
-    successes.length > 0 &&
-    failures.length === 0 &&
-    successes.every((o) => o.action && INQUIRY_ACTIONS.has(o.action));
-
-  if (inquiryOnly && note) {
-    return note;
-  }
-
-  if (inquiryOnly && successes.length === 1 && !budgetExhausted) {
-    return stripDonePrefix(successes[0].message);
-  }
-
-  if (withMessage.length === 0 && !note) {
-    return channel === "whatsapp"
-      ? "Tell me what to add or change — or send *menu*."
-      : "No actions were taken.";
-  }
-
-  let header: string;
-  if (failures.length === 0 && !budgetExhausted) {
-    header =
-      channel === "whatsapp"
-        ? "All set:"
-        : "Done. Here's what happened:";
-  } else if (successes.length === 0) {
-    header =
-      channel === "whatsapp"
-        ? "Couldn't do that:"
-        : "I couldn't complete that:";
-  } else {
-    header = budgetExhausted
-      ? "Got part of it (ran out of steps):"
-      : channel === "whatsapp"
-        ? "Partially done:"
-        : "Partially done — some steps couldn't be completed:";
-  }
-
-  const lines: string[] = [];
-  for (const o of successes) {
-    lines.push(channel === "whatsapp" ? `✓ ${stripDonePrefix(o.message)}` : `✅ ${stripDonePrefix(o.message)}`);
-  }
-  for (const o of failures) {
-    lines.push(channel === "whatsapp" ? `✗ ${o.message}` : `❌ ${o.message}`);
-  }
-
-  let body =
-    lines.length > 0 ? `${header}\n\n${lines.join("\n")}` : header;
-
-  if (budgetExhausted) {
-    body += "\n\nSend any remaining steps as a new message and I'll continue.";
-  } else if (failures.length > 0) {
-    body +=
-      channel === "whatsapp"
-        ? "\n\nFix the ✗ lines and try again."
-        : "\n\nFix the failed items and try again.";
-  }
-
-  if (note) {
-    body += `\n\n${note}`;
-  }
-
-  return body;
-}
 
 export type AssetRow = {
   url: string;
@@ -579,7 +482,7 @@ export function formatTaskSearchResults(
 ): string {
   if (tasks.length === 0) {
     return channel === "whatsapp"
-      ? `No matching tasks in *${workspaceName}*.`
+      ? "Nothing matched that — try the task name or say *what's on the board*."
       : `No matching tasks in "${workspaceName}".`;
   }
 

@@ -84,7 +84,7 @@ const attachAssetToTaskTool: ToolDef = {
     const name = assetFileName(asset.url);
     return ok(
       ctx.channel === "whatsapp"
-        ? `Attached "${name}" to ${formatTaskRef(task.title)} in ${ws.workspaceName}.`
+        ? `Attached "${name}" to ${formatTaskRef(task.title)}.`
         : `Attached "${name}" to task #${task.shortId} "${task.title}" in workspace "${ws.workspaceName}".`
     );
   },
@@ -197,7 +197,7 @@ const deleteAssetTool: ToolDef = {
       await stageDeleteAsset(ctx.wa.session.phone, ctx.userId, pending);
       ctx.wa.session.pendingDeleteAsset = true;
       return ok(
-        `Ready to delete file "${pending.fileName}". I'll send Confirm / Cancel buttons next.`,
+        `I'll delete file "${pending.fileName}" — tap Confirm below.`,
         { staged: true }
       );
     }
@@ -249,7 +249,7 @@ const addLinkTool: ToolDef = {
     if (ctx.wa) {
       revalidateUserWorkspaces(ctx.userId, ws.workspaceId);
       return ok(
-        `Saved link *${link.title}* in *${ws.workspaceName}*${link.pinned ? " (pinned)" : ""}:\n${link.url}` +
+        `Saved link *${link.title}*${link.pinned ? " (pinned)" : ""}:\n${link.url}` +
           (link.description ? `\n_${link.description}_` : "")
       );
     }

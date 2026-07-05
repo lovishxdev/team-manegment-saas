@@ -191,7 +191,7 @@ const demoteMemberTool: ToolDef = {
       });
       ctx.wa.session.pendingDemote = true;
       return ok(
-        `Ready to demote @${displayUser(target.user)} from ${formatMemberRole(target.role)} to ${formatMemberRole(newRole)}. I'll send Confirm / Cancel buttons next.`,
+        `I'll demote @${displayUser(target.user)} from ${formatMemberRole(target.role)} to ${formatMemberRole(newRole)} — tap Confirm below.`,
         { staged: true }
       );
     }
@@ -240,7 +240,7 @@ const removeMemberTool: ToolDef = {
       await stageRemoveMember(ctx.wa.session.phone, ctx.userId, pending);
       ctx.wa.session.pendingRemoveMember = true;
       return ok(
-        `Ready to remove @${pending.targetLabel} from ${ws.workspaceName}. I'll send Confirm / Cancel buttons next.`,
+        `I'll remove @${pending.targetLabel} from ${ws.workspaceName} — tap Confirm below.`,
         { staged: true }
       );
     }

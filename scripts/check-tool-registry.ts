@@ -38,7 +38,7 @@ const expectations: Record<string, { required: string[]; props: string[] }> = {
     props: ["title", "description", "category", "priority", "dueDate", "tags", "assignee", "assignees", "workspace"],
   },
   update_task: { required: ["shortId"], props: ["shortId", "status", "priority"] },
-  add_task_update: { required: [], props: ["shortId", "body", "workspace"] },
+  add_task_update: { required: ["body"], props: ["shortId", "body", "workspace"] },
   ask_task: { required: ["query"], props: ["query", "shortId", "workspace"] },
   get_board_state: { required: [], props: ["workspace"] },
   show_workspace_picker: { required: [], props: [] },

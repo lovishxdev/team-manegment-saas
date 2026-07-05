@@ -24,7 +24,7 @@ import {
   mapBoardSnapshot,
 } from "@/lib/channel-formatters";
 import { resolveWhatsAppTaskShortId } from "@/lib/whatsapp-tool-guard";
-import { resolveTaskUpdateBody } from "@/lib/whatsapp-task-context";
+import { formatChatDate } from "@/lib/whatsapp-voice";
 import { stageDeleteTask } from "@/lib/whatsapp-pending";
 import { deleteTask } from "@/lib/services/project";
 import { revalidateUserWorkspaces } from "@/lib/revalidate-nav";
@@ -161,12 +161,12 @@ const createTaskTool: ToolDef = {
         workspaceName: ws.workspaceName,
         shortId: task.shortId,
       });
+      const hints = [
+        task.priority === "HIGH" ? "high priority" : "",
+        task.dueDate ? `due ${formatChatDate(task.dueDate)}` : "",
+      ].filter(Boolean);
       return ok(
-        `Created *${task.title}*` +
-          (task.priority === "HIGH" ? " · high" : "") +
-          (task.dueDate
-            ? ` · due ${task.dueDate.toISOString().slice(0, 10)}`
-            : ""),
+        `Added *${task.title}*${hints.length ? ` (${hints.join(", ")})` : ""}.`,
         { shortId: task.shortId, title: task.title }
       );
     }
@@ -300,7 +300,7 @@ const readTaskTool: ToolDef = {
 const addTaskUpdateTool: ToolDef = {
   name: "add_task_update",
   waDescription:
-    "Post a progress note on a task. Use when the user reports status, blockers, or confirms they want something posted. shortId and body are optional — resolved from context and the user's message.",
+    "Post a progress note on a task. Use when the user reports status, progress, or blockers ('I started…', 'just uploaded the files', 'blocked on X') or confirms posting something you offered. ALWAYS pass body.",
   mcpDescription:
     "Post a team update on a task (#N) — blockers, questions, review notes. Not for editing the task description.",
   inputShape: {
@@ -319,8 +319,10 @@ const addTaskUpdateTool: ToolDef = {
       ),
     body: z
       .string()
-      .optional()
-      .describe("The note text. Omit to use the user's message verbatim."),
+      .min(1)
+      .describe(
+        "The update text — the user's words verbatim, or the exact text you offered if they confirmed posting it."
+      ),
     workspace: workspaceParam,
   },
   run: async (input, ctx) => {
@@ -328,17 +330,11 @@ const addTaskUpdateTool: ToolDef = {
     const resolved = await resolveShortIdForChannel(input, ctx);
     if (!resolved.ok) return soft(resolved.message);
 
-    let body = str(input.body);
-    if (ctx.wa) {
-      body =
-        resolveTaskUpdateBody(
-          input.body,
-          ctx.wa.session.userMessage,
-          ctx.wa.session.conversationTurns
-        ) ?? "";
-      if (!body) return soft("What should the note say?");
-    } else if (!body) {
-      return soft("Update body is required.");
+    const body = str(input.body);
+    if (!body) {
+      return soft(
+        "What should the note say? Reply with the text and I'll post it."
+      );
     }
 
     const message = await runAddTaskUpdate(
@@ -435,7 +431,7 @@ const deleteTaskTool: ToolDef = {
       });
       ctx.wa.session.pendingDeleteShortId = resolved.shortId;
       return ok(
-        `Ready to delete *${existing.title}*. I'll send Confirm / Cancel buttons next.`,
+        `I'll delete *${existing.title}* — tap Confirm below.`,
         { staged: true, shortId: resolved.shortId }
       );
     }

@@ -1,12 +1,13 @@
 import type { ConversationTurn } from "@/lib/services/conversation";
 
-/** User reporting progress — task name optional when context is clear. */
-export const PROGRESS_REPORT =
-  /^(?:i\s+)?(?:have\s+)?(?:just\s+)?(?:started|finished|completed|blocked|shipped|deployed|sent|posted|published|wrote|made|done with)\b/i;
-
-export function isProgressReport(text: string): boolean {
-  return PROGRESS_REPORT.test(text.trim());
-}
+/**
+ * Deterministic helpers for task identity + user-facing pick prompts.
+ *
+ * Natural-language understanding (is this a progress report? what should the
+ * update say?) belongs to the agent model, which sees the full conversation.
+ * Code here only extracts explicit structure (#N ids, bold titles) and
+ * formats questions back to the user.
+ */
 
 /** Last #N mentioned in recent chat (assistant or user), newest first. */
 export function lastTaskShortIdFromTurns(
@@ -64,49 +65,4 @@ export function formatAmbiguousTaskPick(
   tasks: { title: string }[]
 ): string {
   return formatTaskPickPrompt(tasks, "A few tasks could match — which one?");
-}
-
-const AFFIRMATION =
-  /^(yes|yeah|yep|yup|sure|ok|okay|do it|post it|go ahead|please do|sounds good)\b/i;
-
-export function isAffirmationOnly(text: string): boolean {
-  const t = text.trim();
-  if (!t) return false;
-  return AFFIRMATION.test(t) || /^yes[,.\s!]*i want to\b/i.test(t);
-}
-
-/** Body for add_task_update when the model omits it but intent is clear. */
-export function resolveTaskUpdateBody(
-  toolBody: unknown,
-  userMessage: string,
-  turns: ConversationTurn[]
-): string {
-  const fromTool = String(toolBody ?? "").trim();
-  if (fromTool) return fromTool;
-
-  const user = userMessage.trim();
-  if (user && !isAffirmationOnly(user)) return user;
-
-  if (user && isAffirmationOnly(user)) {
-    for (let i = turns.length - 1; i >= 0; i--) {
-      if (turns[i].role !== "assistant") continue;
-      const offered = turns[i].content.match(
-        /(?:want to post|should i post|post)\s+(?:that\s+)?(.+?)\?/i
-      );
-      if (offered?.[1]) {
-        let text = offered[1].trim();
-        text = text.replace(/^that\s+you['']ve\s+/i, "I've ");
-        text = text.replace(/^you['']ve\s+/i, "I've ");
-        text = text.replace(/\s+on it\.?$/i, "");
-        return text;
-      }
-    }
-    for (let i = turns.length - 1; i >= 0; i--) {
-      if (turns[i].role !== "user") continue;
-      const prev = turns[i].content.trim();
-      if (prev && !isAffirmationOnly(prev)) return prev;
-    }
-  }
-
-  return "";
 }

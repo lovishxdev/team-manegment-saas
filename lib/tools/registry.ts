@@ -112,6 +112,12 @@ export type WhatsAppDispatchDeps = {
   session: WhatsAppSessionState;
 };
 
+/** Structured tool outcome — success comes from the handler, never guessed from strings. */
+export type WhatsAppToolOutcome = {
+  ok: boolean;
+  message: string;
+};
+
 /**
  * Execute a tool on the WhatsApp channel. Replaces the webhook's 577-line
  * executeAction switch: workspace resolution + session threading + error
@@ -121,21 +127,25 @@ export async function dispatchWhatsAppTool(
   action: string,
   input: Record<string, unknown>,
   deps: WhatsAppDispatchDeps
-): Promise<string> {
+): Promise<WhatsAppToolOutcome> {
   const def = TOOLS_BY_NAME.get(action);
   if (!def) {
-    return "I don't know how to do that yet. Try creating a task, updating one, or asking about the board.";
+    return {
+      ok: false,
+      message:
+        "I don't know how to do that yet. Try creating a task, updating one, or asking about the board.",
+    };
   }
 
   const preflight = validateWhatsAppToolInput(action, input, deps.session);
-  if (!preflight.ok) return preflight.message;
+  if (!preflight.ok) return { ok: false, message: preflight.message };
 
   try {
     const ctx = await buildWhatsAppContext(def, input, deps);
     const result = await def.run(input, ctx);
-    return result.message;
+    return { ok: result.ok, message: result.message };
   } catch (err) {
-    return formatToolExecutionError(err);
+    return { ok: false, message: formatToolExecutionError(err) };
   }
 }
 

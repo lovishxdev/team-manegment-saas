@@ -480,9 +480,8 @@ export async function runAddTaskUpdate(
     shortId,
     body,
   });
-  const who = displayUser(created.author);
   if (channel === "whatsapp") {
-    return `Posted on ${formatTaskRef(created.taskTitle)} in ${ctx.workspaceName} as @${who}.`;
+    return `Posted on ${formatTaskRef(created.taskTitle)}.`;
   }
   return `Posted update on task #${created.taskShortId} "${created.taskTitle}" in workspace "${ctx.workspaceName}".`;
 }

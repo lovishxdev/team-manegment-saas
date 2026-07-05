@@ -30,16 +30,3 @@ export function formatTaskListLine(
     : formatTaskRef(title);
 }
 
-/** Humanize legacy tool strings that still lead with #N. */
-export function stripLeadingTaskId(text: string): string {
-  return text
-    .replace(/^Created\s+#\d+\s+/i, "")
-    .replace(/^Updated\s+#\d+\s+/i, "")
-    .replace(/^Ready to delete\s+#\d+\s+/i, "Ready to delete ")
-    .replace(/^Deleted\s+#\d+\s+/i, "Deleted ")
-    .replace(/^Posted update on\s+#\d+\s+/i, "Posted on ")
-    .replace(/^Posted on\s+#\d+\s+/i, "Posted on ")
-    .replace(/Attached\s+"([^"]+)"\s+to\s+#\d+\s+/i, 'Attached "$1" to ')
-    .replace(/Delete\s+\*#\d+\*\s+/i, "Delete ")
-    .replace(/Update\s+\*#\d+\*\s+/i, "Update ");
-}

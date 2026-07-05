@@ -9,8 +9,6 @@ import {
 import {
   formatAmbiguousTaskPick,
   formatTaskPickPrompt,
-  isProgressReport,
-  resolveTaskUpdateBody,
   taskTitleHintsFromTurns,
   lastTaskShortIdFromTurns,
 } from "@/lib/whatsapp-task-context";
@@ -120,14 +118,6 @@ async function matchTaskFromContext(
     return { kind: "none", tasks: [] };
   }
 
-  if (isProgressReport(session.userMessage)) {
-    const fromHistory = resolveShortIdHint(undefined, session);
-    if (fromHistory) {
-      const hit = board.find((t) => t.shortId === fromHistory);
-      if (hit) return { kind: "one", shortId: fromHistory };
-    }
-  }
-
   const hintQueries = taskTitleHintsFromTurns(session.conversationTurns);
   for (const hint of hintQueries) {
     const matched = resolveFromBoard(board, hint);
@@ -193,14 +183,8 @@ export function validateWhatsAppToolInput(
       break;
     }
     case "add_task_update": {
-      const body = resolveTaskUpdateBody(
-        input.body,
-        session.userMessage,
-        session.conversationTurns
-      );
-      if (!body) {
-        return { ok: false, message: "What should the note say?" };
-      }
+      // Body comes from the model (required in the schema); the handler
+      // asks for it if somehow missing — no NL mining here.
       break;
     }
     case "ask_task": {
