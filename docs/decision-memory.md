@@ -116,6 +116,17 @@ Scope lives on the credential (`User.mcpScope`, copied to OAuth tokens at
 issuance). WhatsApp always has the full registry — it authenticates a human
 by phone and is the conversational management channel.
 
+**Per-connection workspace confinement:** scope and workspace are chosen
+once on the OAuth consent screen and live on the credential
+(`OAuthToken.scope` + `OAuthToken.workspaceId`), so each connection is
+independent: a Cursor connection approved for "one workspace" is context
+scope + strictly confined (calls naming any other workspace are rejected in
+`dispatchMcpTool`), while a Claude connection approved for "all workspaces"
+is full scope + free — the two never fight. The personal bearer token uses
+the account-level equivalents (`User.mcpScope`, `User.mcpWorkspaceId`,
+Settings → Personal token). The rules snippet is installable with one
+command: `curl -fsSL <origin>/api/agent-rules >> AGENTS.md`.
+
 ## Onboarding a project with history
 
 - `npm run backfill:memory [workspaceId]` — runs the capture classifier over

@@ -44,7 +44,6 @@ import {
   runWhatsAppAgentLoop,
   type AgentLoopResult,
 } from "@/lib/whatsapp-agent-loop";
-import { buildWhatsAppHaikuTools } from "@/lib/whatsapp-tool-search";
 import {
   enqueueInboundMessage,
   ensureQueueProcessed,
@@ -74,6 +73,7 @@ import {
   INQUIRY_TOOLS,
   pickReplyOutcomes,
 } from "@/lib/whatsapp-reply-guard";
+import { recordUndoable } from "@/lib/services/action-log";
 import { workspaceUrl } from "@/lib/app-url";
 import { getAppOrigin } from "@/lib/app-origin";
 import { isWhatsAppGreeting } from "@/lib/whatsapp-bot";
@@ -171,6 +171,7 @@ Voice examples:
 - User: "I started 2 reddit posts" (after discussing a task) → add_task_update with body = their words; leave final text empty.
 - User: "Just uploaded the design files to the task" → this is a PROGRESS REPORT, not a file upload. Call add_task_update with their words. A text message can never upload or attach files — only actual image/document messages do.
 - User: "what's going on with the login redesign" → call ask_task, then WRITE the answer yourself: 2–5 short sentences leading with what they asked (status, blocker, latest), specific facts from the thread only.
+- User: "undo that" / "no, revert it" / "that was a mistake" → call undo_last_action; leave final text empty. Repeat if they want to undo more. Never claim something was undone without calling it.
 - Bad: "Marked #1 as done" or "You've got #1 Seo Queries" — never use #N in user-facing text; use *task titles*.
 - Good tool outcomes: "Added *Return From Gym*." / "Updated *Seo Queries* → done." / board lists *Title* · status
 
@@ -242,6 +243,8 @@ Rules:
 - If the message is NOT an actionable board request (greetings, questions, chit-chat), do not call a tool. Reply with one warm, brief sentence — not a feature list.
 - Task description = stable requirements/spec. Task updates = chronological team notes.
 - Progress reports ("I started…", "blocked on…", "finished…", "just uploaded/fixed/sent…") on the task you just discussed → add_task_update with body = their message (verbatim). When someone says they uploaded/added/sent files IN A TEXT MESSAGE, that is a progress report to post — never claim files were attached, and never mention captions or tags.
+- Decision statements are NOT progress reports: "we're switching to X", "we decided Y", "actually we'll use Z instead", "going with A because B" → record_decision (workspace-level; add shortId only if they name a specific task), NOT add_task_update — even if a task was just discussed. Only post a decision as a task update when they explicitly say to post/note it on the task.
+- When you're genuinely unsure how to route a message — progress note vs decision, or WHICH task it belongs to — do NOT guess. Ask ONE short question instead, e.g. "Post that on *Login page redesign*, or save it as a project decision?" Then act on their answer. Asking once beats writing to the wrong place; but don't ask when the routing is obvious.
 - If you offered to post an update and they confirm ("yes", "post that") → add_task_update with body = the exact text you offered, phrased in their first person.
 - If you offered to post an update and they say yes / "post that" → add_task_update immediately with the text you offered (or their earlier message).
 - You CAN post task updates from WhatsApp via add_task_update. Never say you cannot or send them to the web app for notes.
@@ -922,6 +925,7 @@ async function handleInteractiveMessage(
     }
 
     if (action.type === "task_start" || action.type === "task_done") {
+      const before = await getTask(ctx.workspaceId, userId, action.shortId);
       const task = await updateTask({
         workspaceId: ctx.workspaceId,
         shortId: action.shortId,
@@ -936,6 +940,19 @@ async function handleInteractiveMessage(
             ? "in progress"
             : "to do";
       const reply = `Updated ${formatTaskRef(task.title)} → ${statusLabel}.`;
+      recordUndoable({
+        userId,
+        workspaceId: ctx.workspaceId,
+        channel: "whatsapp",
+        tool: "update_task",
+        summary: reply,
+        inverse: {
+          kind: "restore_task",
+          taskId: task.id,
+          taskTitle: task.title,
+          prev: { status: before.status },
+        },
+      });
       await sendWhatsAppText(from, reply);
       await recordExchange(userId, userText, reply).catch(() => {});
       return;
@@ -1086,7 +1103,7 @@ async function handleMessage(
       anthropic: new Anthropic(),
       model: WHATSAPP_AGENT_MODEL,
       systemPrompt: buildSystemPrompt(activeCtx.workspaceName),
-      tools: buildWhatsAppHaikuTools(TOOLS) ?? TOOLS,
+      tools: TOOLS,
       messages: [...history, { role: "user" as const, content: text }],
       maxTurns: MAX_TOOL_TURNS,
       runTool: (name, input) => executeAction(userId, name, input, session),

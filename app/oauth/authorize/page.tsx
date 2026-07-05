@@ -108,6 +108,16 @@ export default async function AuthorizePage({
     return <ErrorCard message="The redirect URI is not registered for this client." />;
   }
 
+  const memberships = await prisma.workspaceMembership.findMany({
+    where: { userId: user.id },
+    include: { workspace: { select: { id: true, name: true } } },
+    orderBy: { joinedAt: "desc" },
+  });
+  const workspaces = memberships.map((m) => ({
+    id: m.workspace.id,
+    name: m.workspace.name,
+  }));
+
   return (
     <main className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-sm rounded-lg border border-line bg-card p-8">
@@ -123,31 +133,90 @@ export default async function AuthorizePage({
         </h1>
         <p className="mt-3 text-center text-sm text-ink-soft">
           <span className="font-medium text-ink">{client.name}</span> wants to
-          access your workspaces as{" "}
+          access Euclis as{" "}
           <span className="font-medium text-ink">@{displayUser(user)}</span>.
         </p>
 
-        <ul className="mt-5 space-y-2 rounded-md border border-line bg-paper-deep p-4 text-sm text-ink-soft">
-          <li>· View your task boards</li>
-          <li>· Create and update tasks</li>
-          <li>· Delete tasks</li>
-        </ul>
+        <form action={approveAuthorizationAction} className="mt-6">
+          <input type="hidden" name="client_id" value={clientId} />
+          <input type="hidden" name="redirect_uri" value={redirectUri} />
+          <input type="hidden" name="code_challenge" value={codeChallenge} />
+          {state && <input type="hidden" name="state" value={state} />}
 
-        <div className="mt-6 flex flex-col gap-2">
-          <form action={approveAuthorizationAction}>
-            <input type="hidden" name="client_id" value={clientId} />
-            <input type="hidden" name="redirect_uri" value={redirectUri} />
-            <input type="hidden" name="code_challenge" value={codeChallenge} />
-            {state && <input type="hidden" name="state" value={state} />}
-            <button className={`w-full ${ui.btnPrimary}`}>Allow access</button>
-          </form>
-          <form action={denyAuthorizationAction}>
-            <input type="hidden" name="client_id" value={clientId} />
-            <input type="hidden" name="redirect_uri" value={redirectUri} />
-            {state && <input type="hidden" name="state" value={state} />}
-            <button className={`w-full ${ui.btnSecondary}`}>Deny</button>
-          </form>
-        </div>
+          <fieldset className="flex flex-col gap-2">
+            <legend className="mb-2 text-xs font-medium text-ink-soft">
+              What can this connection do?
+            </legend>
+
+            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-line px-3.5 py-3 text-sm transition-colors hover:bg-paper-deep/40">
+              <input
+                type="radio"
+                name="mode"
+                value="workspace"
+                defaultChecked
+                className="mt-0.5 accent-ink"
+              />
+              <span>
+                <span className="block font-medium text-ink">
+                  One workspace (coding agents)
+                </span>
+                <span className="mt-0.5 block text-xs text-ink-faint">
+                  Read the board, use project memory, post updates — strictly
+                  confined to the workspace below. No deletes or member
+                  management.
+                </span>
+              </span>
+            </label>
+
+            {workspaces.length > 0 ? (
+              <select
+                name="workspace_id"
+                defaultValue={workspaces[0].id}
+                className={`w-full ${ui.select}`}
+              >
+                {workspaces.map((ws) => (
+                  <option key={ws.id} value={ws.id}>
+                    {ws.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <p className="rounded-md border border-dashed border-line px-3 py-2 text-xs text-ink-faint">
+                You have no workspaces yet — only the all-workspace option will
+                work.
+              </p>
+            )}
+
+            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-line px-3.5 py-3 text-sm transition-colors hover:bg-paper-deep/40">
+              <input
+                type="radio"
+                name="mode"
+                value="all"
+                className="mt-0.5 accent-ink"
+              />
+              <span>
+                <span className="block font-medium text-ink">
+                  All workspaces (chat &amp; management)
+                </span>
+                <span className="mt-0.5 block text-xs text-ink-faint">
+                  Full access: create/delete tasks, manage members and
+                  workspaces. For chat-style use (e.g. the Claude app).
+                </span>
+              </span>
+            </label>
+          </fieldset>
+
+          <button className={`mt-5 w-full ${ui.btnPrimary}`}>
+            Allow access
+          </button>
+        </form>
+
+        <form action={denyAuthorizationAction} className="mt-2">
+          <input type="hidden" name="client_id" value={clientId} />
+          <input type="hidden" name="redirect_uri" value={redirectUri} />
+          {state && <input type="hidden" name="state" value={state} />}
+          <button className={`w-full ${ui.btnSecondary}`}>Deny</button>
+        </form>
       </div>
     </main>
   );

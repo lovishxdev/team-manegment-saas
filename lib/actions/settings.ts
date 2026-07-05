@@ -66,16 +66,12 @@ export async function updateMcpScopeAction(
 
   const { prisma } = await import("@/lib/prisma");
   const { invalidateMcpToken } = await import("@/lib/identity-cache");
+  // Only governs the personal-token connection; OAuth connections chose
+  // their own scope on the consent screen and keep it.
   const updated = await prisma.user.update({
     where: { id: user.id },
     data: { mcpScope: raw },
     select: { mcpToken: true },
-  });
-  // Apply to already-issued OAuth credentials too, then drop the token cache
-  // so the change takes effect immediately.
-  await prisma.oAuthToken.updateMany({
-    where: { userId: user.id },
-    data: { scope: raw },
   });
   invalidateMcpToken(updated.mcpToken);
 
@@ -83,8 +79,41 @@ export async function updateMcpScopeAction(
   return {
     message:
       raw === "full"
-        ? "Agent scope set to full — connected agents can manage everything."
-        : "Agent scope set to context — connected agents can read, post updates, and use memory only.",
+        ? "Personal token scope set to full."
+        : "Personal token scope set to context (read, memory, updates only).",
+  };
+}
+
+export async function updateMcpWorkspaceAction(
+  _prev: SettingsState,
+  formData: FormData
+): Promise<SettingsState> {
+  const user = await requireUser();
+  const raw = String(formData.get("workspaceId") ?? "").trim();
+
+  const { prisma } = await import("@/lib/prisma");
+  const { invalidateMcpToken } = await import("@/lib/identity-cache");
+
+  if (raw !== "") {
+    const membership = await prisma.workspaceMembership.findUnique({
+      where: { userId_workspaceId: { userId: user.id, workspaceId: raw } },
+    });
+    if (!membership) return { error: "You're not a member of that workspace" };
+  }
+
+  const updated = await prisma.user.update({
+    where: { id: user.id },
+    data: { mcpWorkspaceId: raw === "" ? null : raw },
+    select: { mcpToken: true },
+  });
+  invalidateMcpToken(updated.mcpToken);
+
+  revalidatePath("/settings");
+  return {
+    message:
+      raw === ""
+        ? "Pin removed — the personal-token connection can access all workspaces."
+        : "Pinned. The personal-token connection is confined to that workspace.",
   };
 }
 

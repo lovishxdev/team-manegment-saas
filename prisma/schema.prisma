@@ -54,6 +54,10 @@ model User {
   /// Tool scope for the mcpToken credential: "context" (read + memory +
   /// task updates, safe for coding agents) or "full" (complete registry).
   mcpScope      String  @default("context")
+  /// When set, ALL MCP tool calls are pinned to this workspace — the
+  /// workspace parameter is rejected if it points anywhere else.
+  mcpWorkspaceId String?    @db.Uuid
+  mcpWorkspace   Workspace? @relation("McpPinnedWorkspace", fields: [mcpWorkspaceId], references: [id], onDelete: SetNull)
   lastIpAddress String?
   createdAt     DateTime @default(now())
 
@@ -74,6 +78,7 @@ model User {
   whatsappMessages WhatsAppMessage[]
   whatsappPendingActions WhatsAppPendingAction[]
   whatsappChatState WhatsAppChatState?
+  botActions BotActionLog[]
 }
 
 model Workspace {
@@ -91,6 +96,7 @@ model Workspace {
   taskUpdates     TaskUpdate[]
   memoryEvents    MemoryEvent[]
   lastActiveUsers User[]                @relation("LastActiveWorkspace")
+  mcpPinnedUsers  User[]                @relation("McpPinnedWorkspace")
 }
 
 /// Per-workspace task categories (defaults + custom labels).
@@ -355,6 +361,29 @@ model WhatsAppMessage {
   @@index([userId, createdAt])
 }
 
+/// Journal of reversible bot actions — powers "undo that" in chat.
+/// Each row stores a typed inverse payload (lib/services/action-log.ts);
+/// undo executes the inverse and stamps undoneAt. Rows expire by window,
+/// not deletion, so the journal doubles as a recent-action audit trail.
+model BotActionLog {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  workspaceId String    @db.Uuid
+  /// "whatsapp" | "mcp"
+  channel     String
+  tool        String
+  /// User-facing line describing the original action, e.g. Added *X*
+  summary     String
+  /// Typed inverse payload — see UndoInverse union in the service.
+  inverse     Json
+  undoneAt    DateTime?
+  createdAt   DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, workspaceId, createdAt])
+}
+
 /// Rolling WhatsApp chat state — the task the user last discussed, so
 /// follow-ups ("post that", "mark it done") resolve deterministically
 /// instead of being re-parsed out of previous bot replies.
@@ -403,6 +432,10 @@ model OAuthCode {
   redirectUri   String
   /// PKCE S256 challenge
   codeChallenge String
+  /// Connection choices made on the consent screen, carried onto the token:
+  scope         String   @default("context")
+  /// Workspace this connection is confined to; null = all workspaces.
+  workspaceId   String?  @db.Uuid
   expiresAt     DateTime
   createdAt     DateTime @default(now())
 
@@ -418,6 +451,10 @@ model OAuthToken {
   userId       String    @db.Uuid
   /// Tool scope for this credential: "context" or "full" (see User.mcpScope).
   scope        String    @default("context")
+  /// Workspace this connection is confined to; null = all workspaces.
+  /// Chosen once on the consent screen — a coding agent pinned here can
+  /// never act in (or even see context from) another workspace.
+  workspaceId  String?   @db.Uuid
   expiresAt    DateTime
   createdAt    DateTime  @default(now())
 

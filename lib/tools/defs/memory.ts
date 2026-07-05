@@ -14,6 +14,7 @@ import {
   requireWorkspace,
   type ToolDef,
 } from "@/lib/tools/types";
+import { scheduleDecisionSupersessionCheck } from "@/lib/memory/capture";
 import { optionalNum, optionalStr, str, workspaceParam } from "@/lib/tools/helpers";
 
 /**
@@ -225,7 +226,22 @@ const recordDecisionTool: ToolDef = {
       taskShortId: optionalNum(input.shortId),
     });
 
+    // Explicitly recorded decisions may contradict an earlier one — capture
+    // handles this for update-sourced events; do the same check here.
+    if (kind === "DECISION") {
+      scheduleDecisionSupersessionCheck(event.id);
+    }
+
     const kindLabel = kind.toLowerCase();
+    if (ctx.wa) {
+      // Human-facing confirmation (deterministic mutation reply) — no ids,
+      // no bracket notation.
+      return ok(
+        `Saved to project memory 📌\n*${event.summary}*` +
+          (event.reasoning ? `\nWhy: ${event.reasoning}` : ""),
+        { eventId: event.id }
+      );
+    }
     return ok(
       `Recorded ${kindLabel} in project memory:\n${formatMemoryEvent(event)}`,
       { eventId: event.id }

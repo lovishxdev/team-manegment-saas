@@ -78,6 +78,9 @@ export async function createAuthorizationCode(input: {
   userId: string;
   redirectUri: string;
   codeChallenge: string;
+  /** Connection choices from the consent screen. */
+  scope: string;
+  workspaceId: string | null;
 }) {
   const code = randomToken(32);
   await prisma.oAuthCode.create({
@@ -87,28 +90,36 @@ export async function createAuthorizationCode(input: {
       userId: input.userId,
       redirectUri: input.redirectUri,
       codeChallenge: input.codeChallenge,
+      scope: input.scope,
+      workspaceId: input.workspaceId,
       expiresAt: new Date(Date.now() + CODE_TTL_MS),
     },
   });
   return code;
 }
 
-async function issueTokens(clientId: string, userId: string) {
+/**
+ * Scope + workspace confinement are per-CONNECTION, decided once on the
+ * consent screen and carried from the code onto every token (including
+ * refreshes) — a Cursor connection pinned to one workspace stays pinned
+ * for its lifetime, while a Claude chat connection can be all-workspace.
+ */
+async function issueTokens(input: {
+  clientId: string;
+  userId: string;
+  scope: string;
+  workspaceId: string | null;
+}) {
   const token = randomToken(48);
   const refreshToken = randomToken(48);
-  // Tool scope is a user-level setting (Settings → agent access) copied onto
-  // each credential at issuance.
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { mcpScope: true },
-  });
   await prisma.oAuthToken.create({
     data: {
       token,
       refreshToken,
-      clientId,
-      userId,
-      scope: user?.mcpScope ?? "context",
+      clientId: input.clientId,
+      userId: input.userId,
+      scope: input.scope,
+      workspaceId: input.workspaceId,
       expiresAt: new Date(Date.now() + ACCESS_TOKEN_TTL_MS),
     },
   });
@@ -149,7 +160,12 @@ export async function exchangeAuthorizationCode(input: {
     throw new OAuthError("invalid_grant", "PKCE verification failed");
   }
 
-  return issueTokens(stored.clientId, stored.userId);
+  return issueTokens({
+    clientId: stored.clientId,
+    userId: stored.userId,
+    scope: stored.scope,
+    workspaceId: stored.workspaceId,
+  });
 }
 
 /** refresh_token grant with rotation. */
@@ -165,13 +181,21 @@ export async function exchangeRefreshToken(input: {
   }
 
   await prisma.oAuthToken.delete({ where: { token: stored.token } });
-  return issueTokens(stored.clientId, stored.userId);
+  return issueTokens({
+    clientId: stored.clientId,
+    userId: stored.userId,
+    scope: stored.scope,
+    workspaceId: stored.workspaceId,
+  });
 }
 
 /** Resolves an OAuth access token to a user id, or null. */
-export async function verifyOAuthAccessToken(
-  bearerToken: string
-): Promise<{ userId: string; clientId: string; scope: string } | null> {
+export async function verifyOAuthAccessToken(bearerToken: string): Promise<{
+  userId: string;
+  clientId: string;
+  scope: string;
+  workspaceId: string | null;
+} | null> {
   const stored = await prisma.oAuthToken.findUnique({
     where: { token: bearerToken },
   });
@@ -186,5 +210,6 @@ export async function verifyOAuthAccessToken(
     userId: stored.userId,
     clientId: stored.clientId,
     scope: stored.scope,
+    workspaceId: stored.workspaceId,
   };
 }

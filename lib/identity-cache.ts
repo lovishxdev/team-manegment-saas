@@ -11,12 +11,16 @@ import { createTtlCache } from "@/lib/ttl-cache";
  */
 const TTL_MS = 60_000;
 
-export type McpIdentity = { userId: string; scope: string };
+export type McpIdentity = {
+  userId: string;
+  scope: string;
+  workspaceId: string | null;
+};
 
 const byMcpToken = createTtlCache<McpIdentity>(TTL_MS);
 const byPhone = createTtlCache<string>(TTL_MS);
 
-/** Resolve a personal MCP token to a user id + tool scope (cached). */
+/** Resolve a personal MCP token to user id + scope + workspace pin (cached). */
 export async function getMcpIdentityByToken(
   token: string
 ): Promise<McpIdentity | null> {
@@ -25,11 +29,15 @@ export async function getMcpIdentityByToken(
 
   const user = await prisma.user.findUnique({
     where: { mcpToken: token },
-    select: { id: true, mcpScope: true },
+    select: { id: true, mcpScope: true, mcpWorkspaceId: true },
   });
   if (!user) return null;
 
-  const identity: McpIdentity = { userId: user.id, scope: user.mcpScope };
+  const identity: McpIdentity = {
+    userId: user.id,
+    scope: user.mcpScope,
+    workspaceId: user.mcpWorkspaceId,
+  };
   byMcpToken.set(token, identity);
   return identity;
 }

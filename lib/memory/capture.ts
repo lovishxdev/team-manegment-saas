@@ -284,3 +284,98 @@ export function scheduleMemoryCapture(updateId: string): void {
     captureFromTaskUpdate(updateId)
   );
 }
+
+const SUPERSEDE_TOOL: Anthropic.Tool = {
+  name: "record_supersession",
+  description: "Report whether the new decision replaces an earlier one.",
+  input_schema: {
+    type: "object",
+    properties: {
+      supersedes_event_id: {
+        type: "string",
+        description:
+          "Id of the earlier decision the new one replaces/contradicts, or 'none'. Only when they genuinely decide the same question differently — related-but-compatible decisions are 'none'.",
+      },
+    },
+    required: ["supersedes_event_id"],
+  },
+};
+
+/**
+ * Supersession check for decisions recorded via record_decision (capture
+ * handles it inline for update-sourced events): one cheap call comparing the
+ * new decision against the workspace's current decisions. Old decision is
+ * linked as superseded, never deleted.
+ */
+export async function checkDecisionSupersession(eventId: string): Promise<void> {
+  if (!memoryCaptureEnabled()) return;
+
+  const event = await prisma.memoryEvent.findUnique({
+    where: { id: eventId },
+    select: {
+      id: true,
+      workspaceId: true,
+      kind: true,
+      summary: true,
+      reasoning: true,
+    },
+  });
+  if (!event || event.kind !== "DECISION") return;
+
+  const candidates = await prisma.memoryEvent.findMany({
+    where: {
+      workspaceId: event.workspaceId,
+      kind: "DECISION",
+      supersededByEventId: null,
+      id: { not: event.id },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 20,
+    select: { id: true, summary: true, reasoning: true },
+  });
+  if (candidates.length === 0) return;
+
+  const anthropic = new Anthropic();
+  const res = await anthropic.messages.create({
+    model: CAPTURE_MODEL,
+    max_tokens: 200,
+    system:
+      "You compare a NEW project decision against existing recorded decisions and report if the new one replaces/contradicts one of them. Be conservative: only match when they decide the SAME question differently.",
+    messages: [
+      {
+        role: "user",
+        content: [
+          `NEW decision: ${event.summary}${event.reasoning ? ` (why: ${event.reasoning})` : ""}`,
+          ``,
+          `Existing decisions:`,
+          ...candidates.map(
+            (c) =>
+              `- id=${c.id}: ${c.summary}${c.reasoning ? ` (why: ${c.reasoning})` : ""}`
+          ),
+        ].join("\n"),
+      },
+    ],
+    tools: [SUPERSEDE_TOOL],
+    tool_choice: { type: "tool", name: "record_supersession" },
+  });
+
+  const toolUse = res.content.find(
+    (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
+  );
+  const targetId = (toolUse?.input as { supersedes_event_id?: string })
+    ?.supersedes_event_id;
+  if (!targetId || targetId === "none") return;
+  if (!candidates.some((c) => c.id === targetId)) return;
+
+  await prisma.memoryEvent.update({
+    where: { id: targetId },
+    data: { supersededByEventId: event.id },
+  });
+}
+
+export function scheduleDecisionSupersessionCheck(eventId: string): void {
+  if (!memoryCaptureEnabled()) return;
+  scheduleBackgroundTask("decision supersession check", () =>
+    checkDecisionSupersession(eventId)
+  );
+}

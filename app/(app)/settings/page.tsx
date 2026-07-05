@@ -7,6 +7,9 @@ import { DeleteAccount } from "@/components/settings/delete-account";
 import { PhoneForm } from "@/components/settings/phone-form";
 import { UsernameForm } from "@/components/settings/username-form";
 import { McpScopeForm } from "@/components/settings/mcp-scope-form";
+import { McpWorkspaceForm } from "@/components/settings/mcp-workspace-form";
+import { AddToCursor } from "@/components/settings/add-to-cursor";
+import { prisma } from "@/lib/prisma";
 import { WhatsAppBotNumber } from "@/components/whatsapp/whatsapp-bot-number";
 import { WhatsAppChatHistory } from "@/components/whatsapp/whatsapp-chat-history";
 import {
@@ -28,6 +31,13 @@ export default async function SettingsPage() {
   const whatsAppHistory = showWhatsAppHistory
     ? await listWhatsAppChatHistory(user.id)
     : [];
+  const workspaces = (
+    await prisma.workspaceMembership.findMany({
+      where: { userId: user.id },
+      include: { workspace: { select: { id: true, name: true } } },
+      orderBy: { joinedAt: "desc" },
+    })
+  ).map((m) => ({ id: m.workspace.id, name: m.workspace.name }));
 
   return (
       <main className="mx-auto w-full max-w-2xl">
@@ -104,32 +114,48 @@ export default async function SettingsPage() {
 
         <section className="mb-6 rounded-2xl bg-paper p-6 shadow-sm">
           <h2 className="font-display text-base font-semibold">
-            Claude App connector
+            AI agent connectors
           </h2>
-          <p className="mb-4 mt-1 text-sm text-ink-soft">
-            In Claude, open <span className="text-ink">Settings → Connectors</span>
-            , choose <span className="text-ink">Add custom connector</span>, and
-            paste the URL below. Claude will sign you in with your Euclis account.
-            No bearer token or API key needed.
+          <p className="mb-5 mt-1 text-sm text-ink-soft">
+            Connect Claude, Cursor, or any MCP client to your Euclis account.
+            Both sign you in with your Euclis login — no tokens to copy. When
+            you approve a connection you choose what it can reach: one
+            workspace (for coding agents) or all workspaces (for chat).
           </p>
-          <p className="mb-2 text-xs font-medium text-ink-soft">
-            Connector URL
+
+          <h3 className="text-sm font-semibold text-ink">Cursor</h3>
+          <p className="mb-3 mt-1 text-sm text-ink-soft">
+            One click adds Euclis to Cursor so coding agents can pull project
+            context (decisions, blockers) and post updates while they work.
           </p>
-          <CopyField value={mcpConnectorUrl} secret={false} />
-          <ol className="mt-4 list-decimal space-y-1.5 pl-5 text-xs text-ink-faint">
-            <li>Copy the URL above.</li>
-            <li>In Claude, add a custom MCP connector and paste it as the server URL.</li>
-            <li>Approve access when Claude redirects you to Euclis to sign in.</li>
-          </ol>
+          <AddToCursor mcpUrl={mcpConnectorUrl} />
 
           <div className="mt-6 border-t border-line pt-5">
-            <h3 className="text-sm font-semibold text-ink">Agent access</h3>
+            <h3 className="text-sm font-semibold text-ink">Claude App</h3>
             <p className="mb-3 mt-1 text-sm text-ink-soft">
-              What connected agents (Claude, Cursor, and other MCP clients) are
-              allowed to do with your account. Enforced server-side on every
-              tool call.
+              In Claude, open <span className="text-ink">Settings → Connectors</span>
+              , choose <span className="text-ink">Add custom connector</span>, and
+              paste the URL below.
             </p>
-            <McpScopeForm currentScope={user.mcpScope} />
+            <CopyField value={mcpConnectorUrl} secret={false} />
+          </div>
+
+          <div className="mt-6 border-t border-line pt-5">
+            <h3 className="text-sm font-semibold text-ink">
+              Personal token (manual setup)
+            </h3>
+            <p className="mb-3 mt-1 text-sm text-ink-soft">
+              If you connect with the bearer token instead of signing in, these
+              settings define what that connection can do. Enforced server-side
+              on every tool call.
+            </p>
+            <McpWorkspaceForm
+              workspaces={workspaces}
+              currentWorkspaceId={user.mcpWorkspaceId}
+            />
+            <div className="mt-4">
+              <McpScopeForm currentScope={user.mcpScope} />
+            </div>
           </div>
         </section>
 

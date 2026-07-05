@@ -25,6 +25,11 @@ import {
 } from "@/lib/channel-formatters";
 import { resolveWhatsAppTaskShortId } from "@/lib/whatsapp-tool-guard";
 import { formatChatDate } from "@/lib/whatsapp-voice";
+import {
+  buildTaskSnapshot,
+  recordUndoable,
+  undoLastAction,
+} from "@/lib/services/action-log";
 import { stageDeleteTask } from "@/lib/whatsapp-pending";
 import { deleteTask } from "@/lib/services/project";
 import { revalidateUserWorkspaces } from "@/lib/revalidate-nav";
@@ -165,12 +170,26 @@ const createTaskTool: ToolDef = {
         task.priority === "HIGH" ? "high priority" : "",
         task.dueDate ? `due ${formatChatDate(task.dueDate)}` : "",
       ].filter(Boolean);
-      return ok(
-        `Added *${task.title}*${hints.length ? ` (${hints.join(", ")})` : ""}.`,
-        { shortId: task.shortId, title: task.title }
-      );
+      const message = `Added *${task.title}*${hints.length ? ` (${hints.join(", ")})` : ""}.`;
+      recordUndoable({
+        userId: ctx.userId,
+        workspaceId: ws.workspaceId,
+        channel: "whatsapp",
+        tool: "create_task",
+        summary: message,
+        inverse: { kind: "delete_task", taskId: task.id, taskTitle: task.title },
+      });
+      return ok(message, { shortId: task.shortId, title: task.title });
     }
 
+    recordUndoable({
+      userId: ctx.userId,
+      workspaceId: ws.workspaceId,
+      channel: "mcp",
+      tool: "create_task",
+      summary: `Created task #${task.shortId} "${task.title}"`,
+      inverse: { kind: "delete_task", taskId: task.id, taskTitle: task.title },
+    });
     return ok(
       `Created task #${task.shortId} "${task.title}" (${task.category.name}, ${task.priority}` +
         (task.dueDate
@@ -225,6 +244,22 @@ const updateTaskTool: ToolDef = {
     const resolved = await resolveShortIdForChannel(input, ctx);
     if (!resolved.ok) return soft(resolved.message);
 
+    // Snapshot the fields about to change so "undo that" can restore them.
+    const before = await getTask(ws.workspaceId, ctx.userId, resolved.shortId);
+    const prevSnapshot = buildTaskSnapshot(
+      {
+        title: before.title,
+        description: before.description,
+        status: before.status,
+        priority: before.priority,
+        dueDate: before.dueDate,
+        tags: before.tags,
+        categoryId: before.categoryId,
+        assigneeIds: before.assignees.map((a) => a.userId),
+      },
+      input
+    );
+
     const assigneeUpdate = resolveAssigneesUpdate(
       input.assignees,
       input.assignee,
@@ -252,11 +287,39 @@ const updateTaskTool: ToolDef = {
           : task.status === "IN_PROGRESS"
             ? "in progress"
             : "to do";
-      return ok(`Updated *${task.title}* → ${statusLabel}.`, {
+      const message = `Updated *${task.title}* → ${statusLabel}.`;
+      recordUndoable({
+        userId: ctx.userId,
+        workspaceId: ws.workspaceId,
+        channel: "whatsapp",
+        tool: "update_task",
+        summary: message,
+        inverse: {
+          kind: "restore_task",
+          taskId: task.id,
+          taskTitle: task.title,
+          prev: prevSnapshot,
+        },
+      });
+      return ok(message, {
         shortId: task.shortId,
         status: task.status,
       });
     }
+
+    recordUndoable({
+      userId: ctx.userId,
+      workspaceId: ws.workspaceId,
+      channel: "mcp",
+      tool: "update_task",
+      summary: `Updated task #${task.shortId} "${task.title}"`,
+      inverse: {
+        kind: "restore_task",
+        taskId: task.id,
+        taskTitle: task.title,
+        prev: prevSnapshot,
+      },
+    });
 
     return ok(
       `Updated task #${task.shortId} "${task.title}": ${task.status}, ${task.category.name}, ${task.priority}` +
@@ -337,17 +400,29 @@ const addTaskUpdateTool: ToolDef = {
       );
     }
 
-    const message = await runAddTaskUpdate(
+    const posted = await runAddTaskUpdate(
       ws,
       ctx.userId,
       resolved.shortId,
       body,
       ctx.channel
     );
+    recordUndoable({
+      userId: ctx.userId,
+      workspaceId: ws.workspaceId,
+      channel: ctx.wa ? "whatsapp" : "mcp",
+      tool: "add_task_update",
+      summary: posted.message,
+      inverse: {
+        kind: "delete_update",
+        updateId: posted.updateId,
+        taskTitle: posted.taskTitle,
+      },
+    });
     if (ctx.wa) {
       ctx.wa.session.lastDiscussedTaskShortId = resolved.shortId;
       revalidateUserWorkspaces(ctx.userId, ws.workspaceId);
-      return ok(message, { shortId: resolved.shortId });
+      return ok(posted.message, { shortId: resolved.shortId });
     }
 
     // MCP is pull-based: if this task has open blockers, ride the response
@@ -356,7 +431,7 @@ const addTaskUpdateTool: ToolDef = {
       ws.workspaceId,
       resolved.shortId
     );
-    return ok(message + formatOpenBlockerNudge(openBlockers), {
+    return ok(posted.message + formatOpenBlockerNudge(openBlockers), {
       shortId: resolved.shortId,
     });
   },
@@ -665,7 +740,27 @@ const unassignTaskTool: ToolDef = {
   },
 };
 
+const undoLastActionTool: ToolDef = {
+  name: "undo_last_action",
+  waDescription:
+    "Undo the most recent change I made in this chat (task created or edited, note posted, link saved). Use when the user says undo, revert, or that the last change was a mistake. Repeat to undo earlier changes.",
+  mcpDescription:
+    "Undo the caller's most recent bot-made change in this workspace (task created/edited, update posted, link saved). Only reverts changes from the last hour.",
+  inputShape: {
+    workspace: workspaceParam,
+  },
+  run: async (_input, ctx) => {
+    const ws = requireWorkspace(ctx);
+    const result = await undoLastAction(ctx.userId, ws.workspaceId);
+    if (ctx.wa && result.ok) {
+      revalidateUserWorkspaces(ctx.userId, ws.workspaceId);
+    }
+    return result.ok ? ok(result.message) : soft(result.message);
+  },
+};
+
 export const taskTools: ToolDef[] = [
+  undoLastActionTool,
   createTaskTool,
   updateTaskTool,
   readTaskTool,

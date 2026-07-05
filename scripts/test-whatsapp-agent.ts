@@ -15,8 +15,9 @@ import {
   resolveTaskFromBoard,
   scoreTaskTitleDirect,
 } from "../lib/task-title-search";
-import { whatsappAnthropicTools } from "../lib/tools/registry";
+import { mcpTools, whatsappAnthropicTools } from "../lib/tools/registry";
 import { formatWhatsAppUserReply } from "../lib/whatsapp-voice";
+import { buildTaskSnapshot } from "../lib/services/action-log";
 import { applyToolCacheBreakpoint } from "../lib/whatsapp-agent-loop";
 
 let passed = 0;
@@ -190,41 +191,73 @@ check(
   !(addUpdateSchema.required ?? []).includes("shortId")
 );
 
-// ── Prompt-cache breakpoint vs deferred tools ───────────────────────────
-// The API rejects tools with both defer_loading and cache_control set.
+// ── Prompt-cache breakpoint ──────────────────────────────────────────────
+// Every tool ships its full schema (no deferral — the model must never
+// guess argument shapes); the breakpoint on the last tool caches the block.
 
-type TestTool = { name: string; defer_loading?: boolean; cache_control?: unknown };
-const mkTool = (name: string, defer?: boolean): TestTool =>
-  defer ? { name, defer_loading: true } : { name };
-
-const plain = applyToolCacheBreakpoint([
-  mkTool("a"),
-  mkTool("b"),
+type TestTool = { name: string; cache_control?: unknown };
+const cached = applyToolCacheBreakpoint([
+  { name: "a" },
+  { name: "b" },
 ] as never[]) as TestTool[];
 check(
-  "cache breakpoint lands on last tool when none deferred",
-  !plain[0].cache_control && Boolean(plain[1].cache_control)
+  "cache breakpoint lands on the last tool",
+  !cached[0].cache_control && Boolean(cached[1].cache_control)
+);
+check(
+  "all registry tools expose full schemas (no defer_loading anywhere)",
+  whatsappAnthropicTools().every(
+    (t) => !(t as { defer_loading?: boolean }).defer_loading
+  )
 );
 
-const mixed = applyToolCacheBreakpoint([
-  mkTool("core"),
-  mkTool("deferred1", true),
-  mkTool("deferred2", true),
-] as never[]) as TestTool[];
+// ── Undo: journaled inverses, model only decides WHEN ───────────────────
+
 check(
-  "cache breakpoint skips deferred tools (lands on last non-deferred)",
-  Boolean(mixed[0].cache_control) &&
-    !mixed[1].cache_control &&
-    !mixed[2].cache_control
+  "undo_last_action exists on both channels",
+  whatsappAnthropicTools().some((t) => t.name === "undo_last_action") &&
+    mcpTools().some((t) => t.name === "undo_last_action")
 );
 
-const allDeferred = applyToolCacheBreakpoint([
-  mkTool("d1", true),
-  mkTool("d2", true),
-] as never[]) as TestTool[];
+const snapshot = buildTaskSnapshot(
+  {
+    title: "Login Page Redesign",
+    description: null,
+    status: "TODO",
+    priority: "MEDIUM",
+    dueDate: null,
+    tags: ["ui"],
+    categoryId: "cat-1",
+    assigneeIds: ["u1"],
+  },
+  { status: "DONE", priority: "HIGH" }
+);
 check(
-  "no cache breakpoint when every tool is deferred",
-  allDeferred.every((t) => !t.cache_control)
+  "snapshot captures only fields being changed",
+  snapshot.status === "TODO" &&
+    snapshot.priority === "MEDIUM" &&
+    snapshot.title === undefined &&
+    snapshot.tags === undefined &&
+    snapshot.assigneeIds === undefined
+);
+
+const assigneeSnapshot = buildTaskSnapshot(
+  {
+    title: "T",
+    description: null,
+    status: "TODO",
+    priority: "MEDIUM",
+    dueDate: new Date("2026-07-10T12:00:00Z"),
+    tags: [],
+    categoryId: "c",
+    assigneeIds: ["u1", "u2"],
+  },
+  { assignee: "someone", dueDate: "" }
+);
+check(
+  "snapshot captures assignees and due date when changing",
+  JSON.stringify(assigneeSnapshot.assigneeIds) === '["u1","u2"]' &&
+    assigneeSnapshot.dueDate === "2026-07-10T12:00:00.000Z"
 );
 
 console.log(`\n${passed} passed, ${failed} failed`);

@@ -59,6 +59,7 @@ export const KNOWN_WHATSAPP_ACTIONS = new Set([
   "record_decision",
   "resolve_blocker",
   "get_project_context",
+  "undo_last_action",
 ]);
 
 export type WhatsAppToolSession = {

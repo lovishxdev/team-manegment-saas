@@ -473,17 +473,18 @@ export async function runAddTaskUpdate(
   shortId: number,
   body: string,
   channel: Channel
-): Promise<string> {
+): Promise<{ message: string; updateId: string; taskTitle: string }> {
   const created = await createTaskUpdate({
     workspaceId: ctx.workspaceId,
     userId,
     shortId,
     body,
   });
-  if (channel === "whatsapp") {
-    return `Posted on ${formatTaskRef(created.taskTitle)}.`;
-  }
-  return `Posted update on task #${created.taskShortId} "${created.taskTitle}" in workspace "${ctx.workspaceName}".`;
+  const message =
+    channel === "whatsapp"
+      ? `Posted on ${formatTaskRef(created.taskTitle)}.`
+      : `Posted update on task #${created.taskShortId} "${created.taskTitle}" in workspace "${ctx.workspaceName}".`;
+  return { message, updateId: created.id, taskTitle: created.taskTitle };
 }
 
 export async function runListTaskUpdates(

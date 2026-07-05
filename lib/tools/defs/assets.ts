@@ -18,6 +18,7 @@ import {
   runUpdateLink,
 } from "@/lib/bot/extended-tools";
 import { formatAssetList, formatLinkList } from "@/lib/channel-formatters";
+import { recordUndoable } from "@/lib/services/action-log";
 import { formatTaskRef } from "@/lib/whatsapp-task-ref";
 import { stageDeleteAsset } from "@/lib/whatsapp-pending";
 import { revalidateUserWorkspaces } from "@/lib/revalidate-nav";
@@ -246,17 +247,23 @@ const addLinkTool: ToolDef = {
       description: optionalStr(input.description),
       pinned: input.pinned === true,
     });
+    const message = ctx.wa
+      ? `Saved link *${link.title}*${link.pinned ? " (pinned)" : ""}:\n${link.url}` +
+        (link.description ? `\n_${link.description}_` : "")
+      : `Added link "${link.title}"${link.pinned ? " (pinned)" : ""} to workspace "${ws.workspaceName}": ${link.url}` +
+        (link.description ? `\nNote: ${link.description}` : "");
+    recordUndoable({
+      userId: ctx.userId,
+      workspaceId: ws.workspaceId,
+      channel: ctx.wa ? "whatsapp" : "mcp",
+      tool: "add_link",
+      summary: ctx.wa ? `Saved link *${link.title}*` : `Added link "${link.title}"`,
+      inverse: { kind: "delete_link", linkId: link.id, linkTitle: link.title },
+    });
     if (ctx.wa) {
       revalidateUserWorkspaces(ctx.userId, ws.workspaceId);
-      return ok(
-        `Saved link *${link.title}*${link.pinned ? " (pinned)" : ""}:\n${link.url}` +
-          (link.description ? `\n_${link.description}_` : "")
-      );
     }
-    return ok(
-      `Added link "${link.title}"${link.pinned ? " (pinned)" : ""} to workspace "${ws.workspaceName}": ${link.url}` +
-        (link.description ? `\nNote: ${link.description}` : "")
-    );
+    return ok(message);
   },
 };
 

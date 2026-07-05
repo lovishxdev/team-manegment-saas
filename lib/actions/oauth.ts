@@ -22,6 +22,8 @@ export async function approveAuthorizationAction(formData: FormData) {
   const redirectUri = String(formData.get("redirect_uri") ?? "");
   const codeChallenge = String(formData.get("code_challenge") ?? "");
   const state = formData.get("state");
+  const mode = String(formData.get("mode") ?? "workspace");
+  const workspaceIdRaw = String(formData.get("workspace_id") ?? "").trim();
 
   // Re-validate everything server-side; hidden form fields are untrusted.
   const client = await getClient(clientId);
@@ -29,11 +31,33 @@ export async function approveAuthorizationAction(formData: FormData) {
     redirect("/oauth/authorize?error=invalid_request");
   }
 
+  // Connection choice: one workspace + context tools (coding agents), or
+  // all workspaces + full tools (chat/management).
+  let scope = "full";
+  let workspaceId: string | null = null;
+  if (mode !== "all") {
+    const { prisma } = await import("@/lib/prisma");
+    const membership = workspaceIdRaw
+      ? await prisma.workspaceMembership.findUnique({
+          where: {
+            userId_workspaceId: { userId: user.id, workspaceId: workspaceIdRaw },
+          },
+        })
+      : null;
+    if (!membership) {
+      redirect("/oauth/authorize?error=invalid_request");
+    }
+    scope = "context";
+    workspaceId = workspaceIdRaw;
+  }
+
   const code = await createAuthorizationCode({
     clientId,
     userId: user.id,
     redirectUri,
     codeChallenge,
+    scope,
+    workspaceId,
   });
 
   redirect(

@@ -42,11 +42,20 @@ const handler = createMcpHandler(
         },
         async (input: Record<string, unknown>, extra) => {
           const userId = extra.authInfo!.extra!.userId as string;
-          const scope = normalizeMcpScope(
-            extra.authInfo!.extra!.toolScope as string | undefined
-          );
+          const credential = {
+            scope: normalizeMcpScope(
+              extra.authInfo!.extra!.toolScope as string | undefined
+            ),
+            workspaceId:
+              (extra.authInfo!.extra!.workspaceId as string | null) ?? null,
+          };
           try {
-            const result = await dispatchMcpTool(def, input ?? {}, userId, scope);
+            const result = await dispatchMcpTool(
+              def,
+              input ?? {},
+              userId,
+              credential
+            );
             return text(result.message);
           } catch (err) {
             return toolError(err);
@@ -82,7 +91,11 @@ const authHandler = withMcpAuth(
         token: bearerToken,
         clientId: identity.userId,
         scopes: ["tasks:read", "tasks:write"],
-        extra: { userId: identity.userId, toolScope: identity.scope },
+        extra: {
+          userId: identity.userId,
+          toolScope: identity.scope,
+          workspaceId: identity.workspaceId,
+        },
       };
     }
 
@@ -92,7 +105,11 @@ const authHandler = withMcpAuth(
       token: bearerToken,
       clientId: oauth.clientId,
       scopes: ["tasks:read", "tasks:write"],
-      extra: { userId: oauth.userId, toolScope: oauth.scope },
+      extra: {
+        userId: oauth.userId,
+        toolScope: oauth.scope,
+        workspaceId: oauth.workspaceId,
+      },
     };
   },
   { required: true }

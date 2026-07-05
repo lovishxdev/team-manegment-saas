@@ -17,7 +17,7 @@ WhatsApp message (Meta webhook)
   ▼
 Single agent loop            lib/whatsapp-agent-loop.ts
   model: WHATSAPP_AGENT_MODEL (default claude-sonnet-4-5)
-  tools: all 39 from the shared registry (tool-search deferral for rare ones)
+  tools: full registry with complete schemas (like MCP — no deferral)
   prompt caching: tools + system cached (~90% off repeated input)
   │
   ▼
@@ -95,7 +95,6 @@ description — never add a regex layer.
 | `WHATSAPP_AGENT_MODEL` | Agent model (default `claude-sonnet-4-5`; set `claude-haiku-4-5` to trade quality for cost) |
 | `ANTHROPIC_API_KEY` | Agent |
 | `OPENROUTER_API_KEY` / `OPENAI_API_KEY` | Embeddings for ask_task RAG only |
-| `WHATSAPP_TOOL_SEARCH` | `0` disables deferred tool loading |
 | `WHATSAPP_WEBHOOK_DEBUG` | `1` for verbose webhook logs |
 
 Retired (no longer read): `WHATSAPP_ORCHESTRATOR`, `WHATSAPP_JUDGE`,

@@ -59,16 +59,26 @@ function RulesSnippetSection() {
         Coding-agent rules snippet
       </h2>
       <p className="mb-3 mt-1 text-sm text-ink-soft">
-        Drop this into your repo&apos;s <code className="rounded bg-paper-deep px-1 py-0.5 font-mono text-xs">.cursor/rules</code>{" "}
-        or <code className="rounded bg-paper-deep px-1 py-0.5 font-mono text-xs">AGENTS.md</code>.
-        Agents connected to Euclis via MCP will pull relevant decisions and
+        Run this once in each repo — it appends the rules to{" "}
+        <code className="rounded bg-paper-deep px-1 py-0.5 font-mono text-xs">AGENTS.md</code>{" "}
+        so agents connected to Euclis via MCP pull relevant decisions and
         blockers before starting work, and record what they did after.
       </p>
-      <CopyField value={CODING_AGENT_RULES_SNIPPET} secret={false} />
+      <RulesInstallCommand />
       <pre className="mt-3 max-h-72 overflow-auto rounded-lg border border-line bg-paper-deep/50 p-4 font-mono text-xs leading-relaxed text-ink-soft">
         {CODING_AGENT_RULES_SNIPPET}
       </pre>
     </section>
+  );
+}
+
+async function RulesInstallCommand() {
+  const { getAppBaseUrl } = await import("@/lib/app-url");
+  return (
+    <CopyField
+      value={`curl -fsSL ${getAppBaseUrl()}/api/agent-rules >> AGENTS.md`}
+      secret={false}
+    />
   );
 }
 

@@ -196,21 +196,27 @@ async function buildWhatsAppContext(
  * Execute a tool on the MCP channel. The MCP route calls this from a thin
  * generated registration — no per-tool handler code there anymore.
  */
+export type McpCredential = {
+  scope: McpToolScope;
+  /** Workspace this connection is confined to; null = all workspaces. */
+  workspaceId: string | null;
+};
+
 export async function dispatchMcpTool(
   def: ToolDef,
   input: Record<string, unknown>,
   userId: string,
-  scope: McpToolScope = "full"
+  credential: McpCredential = { scope: "full", workspaceId: null }
 ): Promise<ToolResult> {
-  if (!isToolAllowedForScope(def.name, scope)) {
+  if (!isToolAllowedForScope(def.name, credential.scope)) {
     return {
       ok: false,
       message:
         `This credential has "context" scope: read/query tools, memory tools ` +
         `(recall_memory, list_blockers, record_decision, resolve_blocker, ` +
         `get_project_context), and add_task_update. Management actions like ` +
-        `${def.name} need a "full"-scope credential — the user can change the ` +
-        `scope in Euclis Settings.`,
+        `${def.name} aren't available on this connection — reconnect and ` +
+        `choose "All workspaces" on the Euclis consent screen for full access.`,
     };
   }
 
@@ -220,8 +226,39 @@ export async function dispatchMcpTool(
       typeof input.workspace === "string" && input.workspace.trim()
         ? input.workspace.trim()
         : undefined;
-    const ctx = await resolveUserWorkspaceContext(userId, hint);
-    workspace = { workspaceId: ctx.workspaceId, workspaceName: ctx.workspaceName };
+
+    if (credential.workspaceId) {
+      // Confined connection (chosen once on the consent screen): every call
+      // runs in that workspace; requests for any other are rejected. The
+      // agent never has a reason to think about other workspaces.
+      const pin = await resolvePinnedWorkspace(userId, credential.workspaceId);
+      if (!pin) {
+        return {
+          ok: false,
+          message:
+            "The workspace this connection was approved for no longer exists " +
+            "(or your membership was removed). Reconnect Euclis and pick a " +
+            "workspace again.",
+        };
+      }
+      if (
+        hint &&
+        hint !== pin.workspaceId &&
+        hint.toLowerCase() !== pin.workspaceName.toLowerCase()
+      ) {
+        return {
+          ok: false,
+          message:
+            `This connection only has access to the "${pin.workspaceName}" workspace. ` +
+            `Work within it, or ask the user to create a separate connection for other workspaces.`,
+        };
+      }
+      workspace = pin;
+    } else {
+      // All-workspace connection (chat/management): resolve as usual.
+      const ctx = await resolveUserWorkspaceContext(userId, hint);
+      workspace = { workspaceId: ctx.workspaceId, workspaceName: ctx.workspaceName };
+    }
   }
 
   return def.run(input, {
@@ -229,6 +266,23 @@ export async function dispatchMcpTool(
     channel: "mcp",
     workspace,
   });
+}
+
+/** Validates the pinned workspace still exists and the user is a member. */
+async function resolvePinnedWorkspace(
+  userId: string,
+  workspaceId: string
+): Promise<{ workspaceId: string; workspaceName: string } | null> {
+  const { prisma } = await import("@/lib/prisma");
+  const membership = await prisma.workspaceMembership.findUnique({
+    where: { userId_workspaceId: { userId, workspaceId } },
+    include: { workspace: { select: { id: true, name: true } } },
+  });
+  if (!membership) return null;
+  return {
+    workspaceId: membership.workspace.id,
+    workspaceName: membership.workspace.name,
+  };
 }
 
 export { ServiceError };
