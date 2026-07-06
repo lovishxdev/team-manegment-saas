@@ -12,7 +12,7 @@ import { LinksContentSkeleton } from "@/components/ui/tab-content-skeleton";
 
 function SeedChecklist() {
   return (
-    <div className="rounded-xl border border-dashed border-line-strong bg-paper p-8">
+    <div className="flex flex-col items-center rounded-xl border border-dashed border-line/80 bg-paper px-8 py-14 text-center shadow-[0_1px_3px_rgba(26,26,26,0.04)]">
       <p className="font-display text-lg text-ink">No project memory yet.</p>
       <p className="mt-1 max-w-2xl text-sm text-ink-soft">
         Memory builds itself: when someone posts a task update that contains a

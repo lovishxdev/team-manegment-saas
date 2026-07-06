@@ -27,7 +27,11 @@ import {
   formatMemberRole,
 } from "@/lib/services/workspace";
 import { displayUser } from "@/lib/username";
-import { MAX_BATCH_INVITES } from "@/lib/services/invites";
+import {
+  formatInviteMembersResult,
+  inviteMembersToWorkspace,
+  MAX_BATCH_INVITES,
+} from "@/lib/services/invites";
 import {
   runDeleteAssetConfirmed,
   runRemoveMemberConfirmed,
@@ -95,6 +99,7 @@ import {
   consumeContinueMessage,
   getPendingDelete,
   getPendingDemote,
+  getPendingInviteMembers,
   getPendingRemoveMember,
   getPendingDeleteAsset,
   peekContinueMessage,
@@ -196,7 +201,7 @@ Convert the user's message into tool calls when they want to act on their board:
 - list_links: when they ask what links, bookmarks, or URLs are saved. Call only list_links — do not call add_link in the same turn unless they also asked to save a new link.
 - show_workspace_picker: when they want to choose or switch workspace, ask which workspace they're on, or pick a different board — but NOT when they already named a specific workspace to act on (use the workspace parameter on other tools instead). Sends an interactive picker to the chat.
 - update_asset_tags: when they want to tag an already-uploaded file/photo (e.g. "tag the last photo booth, marketing" or "remove tag draft from banner.png"). ALWAYS call this tool for tagging requests — never say you cannot tag files.
-- invite_members: when they want to add teammates by username, email, or phone (up to ${MAX_BATCH_INVITES} people in one message). Leaders/sub-leaders only.
+- invite_members: when they want to add teammates by username, email, or phone (up to ${MAX_BATCH_INVITES} people in one message). Copy each identifier EXACTLY as the user wrote it — never fix spelling or guess. This stages a preview + Confirm/Cancel button flow; never claim invites were sent until they confirm. Leaders/sub-leaders only.
 - list_workspace_members: when they ask who is on the team or who is in the workspace
 - create_invite_link: when they want a generic shareable invite link (not directed at a specific person)
 - promote_member: when they want to promote someone to sub-leader or leader (leader only)
@@ -604,6 +609,19 @@ async function sendPostActionFollowUps(
         { header: "Confirm demotion", footer: "Leader action" }
       ).catch(() => {});
     }
+  } else if (session.pendingInviteMembers) {
+    const pending = await getPendingInviteMembers(from, userId);
+    if (pending) {
+      await sendWhatsAppButtons(
+        from,
+        `Send ${pending.identifiers.length === 1 ? "this invite" : `these ${pending.identifiers.length} invites`} to *${pending.workspaceName}*?`,
+        [
+          { id: BUTTON.inviteSendConfirm, title: "📨 Send invites" },
+          { id: BUTTON.deleteCancel, title: "✖ Cancel" },
+        ],
+        { header: "Confirm invites", footer: "Check names in the list above" }
+      ).catch(() => {});
+    }
   } else if (session.pendingDeleteShortId) {
     const pending = await getPendingDelete(from, userId);
     if (pending) {
@@ -803,6 +821,29 @@ async function handleInteractiveMessage(
     if (action.type === "delete_cancel") {
       await clearPending(from);
       const reply = "Cancelled.";
+      await sendWhatsAppText(from, reply);
+      await recordExchange(userId, userText, reply).catch(() => {});
+      return;
+    }
+
+    if (action.type === "invite_send_confirm") {
+      const pending = await getPendingInviteMembers(from, userId);
+      if (!pending) {
+        const reply =
+          "That invite confirmation expired. Ask me to invite them again.";
+        await sendWhatsAppText(from, reply);
+        await recordExchange(userId, userText, reply).catch(() => {});
+        return;
+      }
+
+      const result = await inviteMembersToWorkspace({
+        workspaceId: pending.workspaceId,
+        inviterUserId: userId,
+        identifiers: pending.identifiers,
+      });
+      await clearPending(from);
+      revalidateUserWorkspaces(userId, pending.workspaceId);
+      const reply = formatInviteMembersResult(result, "whatsapp");
       await sendWhatsAppText(from, reply);
       await recordExchange(userId, userText, reply).catch(() => {});
       return;
@@ -1086,6 +1127,7 @@ async function handleMessage(
     pendingDemote: false,
     pendingRemoveMember: false,
     pendingDeleteAsset: false,
+    pendingInviteMembers: false,
     whiteboardImages: null,
     lastCreatedTask: null,
     workspacePickerSent: false,

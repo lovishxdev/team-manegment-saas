@@ -1,5 +1,7 @@
+import { cookies } from "next/headers";
 import { requireUser } from "@/lib/auth";
 import { AppShell } from "@/components/layout/app-shell";
+import { SIDEBAR_COOKIE } from "@/components/layout/sidebar-context";
 import { displayUser } from "@/lib/username";
 
 /**
@@ -12,7 +14,8 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const user = await requireUser();
+  const [user, cookieStore] = await Promise.all([requireUser(), cookies()]);
+  const sidebarCollapsed = cookieStore.get(SIDEBAR_COOKIE)?.value === "1";
 
   return (
     <AppShell
@@ -20,6 +23,7 @@ export default async function AppLayout({
       userLabel={displayUser(user)}
       userPhone={user.phone}
       whatsappChatCached={Boolean(user.whatsappChatInitiatedAt)}
+      sidebarCollapsed={sidebarCollapsed}
     >
       {children}
     </AppShell>

@@ -24,7 +24,9 @@ const KIND_LABELS: Record<string, string> = {
 };
 
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
+  // Explicit locale so the server and browser render the same string
+  // (a mismatch like "Jul 5" vs "5 Jul" breaks React hydration).
+  return new Date(iso).toLocaleDateString("en-GB", {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -59,8 +61,8 @@ export function MemoryEventCard({
 
   return (
     <div
-      className={`rounded-xl border bg-paper p-4 shadow-sm ${
-        isOpen ? "border-red-200" : "border-line"
+      className={`rounded-xl border bg-paper p-4 shadow-[0_1px_3px_rgba(26,26,26,0.04)] transition-[border-color,box-shadow] duration-200 hover:shadow-[0_4px_16px_rgba(26,26,26,0.06)] ${
+        isOpen ? "border-red-200" : "border-line hover:border-line-strong"
       }`}
     >
       <div className="flex flex-wrap items-center gap-2">

@@ -4,8 +4,8 @@ import {
 } from "@/lib/services/workspace";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
 import { SidebarAccount } from "@/components/layout/sidebar-account";
+import { SidebarContent } from "@/components/layout/sidebar-content";
 import { AppRealtimeSync } from "@/components/layout/app-realtime-sync";
-import { SHELL_SIDEBAR_X } from "@/components/layout/app-shell-shared";
 
 /** Sidebar nav + realtime subscriptions — streamed after the shell frame paints. */
 export async function AppShellSidebar({
@@ -28,15 +28,13 @@ export async function AppShellSidebar({
   return (
     <>
       <AppRealtimeSync userId={userId} workspaceIds={workspaceIds} />
-      <div
-        className={`mt-8 flex min-h-0 flex-1 flex-col overflow-hidden ${SHELL_SIDEBAR_X}`}
-      >
+      <SidebarContent>
         <SidebarNav workspaces={workspaceNavData} />
 
-        <div className="mt-auto shrink-0 pt-6">
+        <div className="mt-auto shrink-0 border-t border-line/60 pt-4">
           <SidebarAccount userId={userId} userLabel={userLabel} />
         </div>
-      </div>
+      </SidebarContent>
     </>
   );
 }

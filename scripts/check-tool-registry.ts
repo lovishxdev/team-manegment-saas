@@ -24,6 +24,8 @@ for (const name of KNOWN_WHATSAPP_ACTIONS) {
   }
 }
 for (const name of KNOWN_TOOL_NAMES) {
+  const def = ALL_TOOLS.find((t) => t.name === name);
+  if (def?.webOnly) continue;
   if (!KNOWN_WHATSAPP_ACTIONS.has(name)) {
     console.log(`✗ registry tool not in legacy set: ${name}`);
     failed++;
@@ -84,14 +86,25 @@ if (priority?.enum?.join(",") === "LOW,MEDIUM,HIGH" && priority.description) {
   failed++;
 }
 
-// 4. WhatsApp-only tools excluded from MCP surface.
-import { mcpTools } from "../lib/tools/registry";
+// 4. WhatsApp-only / web-only tools excluded from MCP surface.
+import { mcpTools, webChatTools } from "../lib/tools/registry";
 const mcp = mcpTools();
 if (mcp.some((t) => t.name === "show_workspace_picker")) {
   console.log("✗ whatsappOnly tool leaked into MCP surface");
   failed++;
+} else if (mcp.some((t) => t.name === "get_app_navigation")) {
+  console.log("✗ webOnly tool leaked into MCP surface");
+  failed++;
 } else {
-  console.log(`✓ MCP surface: ${mcp.length} tools (picker excluded)`);
+  console.log(`✓ MCP surface: ${mcp.length} tools (channel-specific excluded)`);
+}
+
+const web = webChatTools();
+if (!web.some((t) => t.name === "get_app_navigation")) {
+  console.log("✗ get_app_navigation missing from web chat surface");
+  failed++;
+} else {
+  console.log(`✓ Web chat surface: ${web.length} tools (includes navigation)`);
 }
 
 console.log(failed === 0 ? "\nAll registry checks passed." : `\n${failed} FAILURES`);

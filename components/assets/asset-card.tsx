@@ -37,7 +37,7 @@ export function AssetCard({
   }
 
   return (
-    <div className="group overflow-hidden rounded-lg border border-line bg-card transition hover:border-line-strong">
+    <div className="group overflow-hidden rounded-xl border border-line bg-paper shadow-[0_1px_3px_rgba(26,26,26,0.04)] transition-[border-color,box-shadow] duration-200 hover:border-line-strong hover:shadow-[0_4px_16px_rgba(26,26,26,0.06)]">
       <a href={asset.url} target="_blank" rel="noreferrer" className="block">
         {isImage ? (
           // eslint-disable-next-line @next/next/no-img-element

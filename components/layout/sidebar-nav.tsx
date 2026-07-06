@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { GripVertical } from "lucide-react";
+import { useCreateWorkspaceModal } from "@/components/layout/create-workspace-modal-provider";
+import { ui } from "@/components/ui/ui";
 
 type WorkspaceEntry = {
   id: string;
@@ -10,22 +12,8 @@ type WorkspaceEntry = {
   openTasks: number;
 };
 
-function Chevron({ open }: { open: boolean }) {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      className={`h-3.5 w-3.5 shrink-0 text-ink-faint transition ${open ? "rotate-180" : ""}`}
-      stroke="currentColor"
-      strokeWidth="1.5"
-    >
-      <path d="M4 6l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function NavIcon({ name }: { name: "dashboard" | "workspaces" }) {
-  const cls = "h-5 w-5 shrink-0";
+function NavIcon({ name }: { name: "dashboard" | "settings" }) {
+  const cls = "h-[17px] w-[17px] shrink-0";
   switch (name) {
     case "dashboard":
       return (
@@ -36,11 +24,11 @@ function NavIcon({ name }: { name: "dashboard" | "workspaces" }) {
           <rect x="10.5" y="10.5" width="5.5" height="5.5" rx="1.2" />
         </svg>
       );
-    case "workspaces":
+    case "settings":
       return (
         <svg viewBox="0 0 18 18" fill="none" className={cls} stroke="currentColor" strokeWidth="1.4">
-          <rect x="2.5" y="5" width="13" height="10" rx="1.5" />
-          <path d="M6.5 5V3.8A1.3 1.3 0 0 1 7.8 2.5h2.4a1.3 1.3 0 0 1 1.3 1.3V5M2.5 9h13" />
+          <circle cx="9" cy="9" r="2.25" />
+          <path d="M9 1.5v1.5M9 15v1.5M1.5 9H3M15 9h1.5M3.4 3.4l1.06 1.06M13.54 13.54l1.06 1.06M3.4 14.6l1.06-1.06M13.54 4.46l1.06-1.06" />
         </svg>
       );
   }
@@ -48,128 +36,12 @@ function NavIcon({ name }: { name: "dashboard" | "workspaces" }) {
 
 function Badge({ count }: { count: number }) {
   return (
-    <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-orange-400 px-1 text-[10px] font-semibold leading-none text-white">
+    <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-ink/90 px-1 font-mono text-[10px] font-medium leading-none text-white">
       {count}
     </span>
   );
 }
 
-function itemCls(active: boolean) {
-  return `flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] transition ${
-    active
-      ? "bg-paper font-medium text-ink shadow-sm"
-      : "text-ink-soft hover:bg-paper/50 hover:text-ink"
-  }`;
-}
-
-function subItemCls(active: boolean) {
-  return `flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-xl px-2.5 h-9 text-[15px] leading-5 transition ${
-    active
-      ? "bg-paper font-medium text-ink shadow-sm"
-      : "text-ink-soft hover:bg-paper/50 hover:text-ink"
-  }`;
-}
-
-/** Icon column offset: px-3 (12px) + half of 20px icon = 22px */
-const TREE_X = 22;
-const ROW_H = 42;
-const MID_Y = ROW_H / 2;
-/** Horizontal branch at vertically centered label text */
-const BRANCH_Y = MID_Y;
-/** Vertical run before the bend — sets curve radius */
-const CURVE_DEPTH = 7;
-const JOIN_Y = BRANCH_Y - CURVE_DEPTH;
-/** X where the curved branch ends — no horizontal tail into the label */
-const BRANCH_END = 9;
-const LABEL_GAP = 6;
-const WS_PAD = TREE_X + BRANCH_END + LABEL_GAP;
-/** Bleed into the next row so adjacent SVG segments meet without a gap */
-const TRUNK_BLEED = 1;
-
-type ConnectorKind = "branch" | "trunk";
-
-function TreeConnector({
-  x,
-  kind,
-  trunkDown,
-}: {
-  x: number;
-  kind: ConnectorKind;
-  trunkDown: boolean;
-}) {
-  const branchCurve = `Q 1 ${BRANCH_Y} ${BRANCH_END} ${BRANCH_Y}`;
-  const svgH =
-    kind === "branch" && !trunkDown
-      ? BRANCH_Y + 2
-      : trunkDown
-        ? ROW_H + TRUNK_BLEED
-        : ROW_H;
-
-  let d = "";
-  if (kind === "trunk" && trunkDown) {
-    d = `M 1 0 V ${ROW_H + TRUNK_BLEED}`;
-  } else if (kind === "branch") {
-    d = trunkDown
-      ? `M 1 0 V ${ROW_H + TRUNK_BLEED} M 1 ${JOIN_Y} ${branchCurve}`
-      : `M 1 0 V ${JOIN_Y} ${branchCurve}`;
-  }
-
-  if (!d) return null;
-
-  return (
-    <svg
-      aria-hidden
-      className="pointer-events-none absolute top-0 overflow-visible"
-      style={{ left: x - 1 }}
-      width={BRANCH_END + 2}
-      height={svgH}
-      viewBox={`0 0 ${BRANCH_END + 2} ${svgH}`}
-      fill="none"
-    >
-      <path
-        d={d}
-        stroke="currentColor"
-        strokeWidth="1"
-        strokeLinecap="butt"
-        strokeLinejoin="round"
-        className="text-line-strong"
-      />
-    </svg>
-  );
-}
-
-function TreeMenu({ children }: { children: React.ReactNode }) {
-  return <ul className="relative mt-1.5 list-none">{children}</ul>;
-}
-
-type TreeConnectorSpec = {
-  x: number;
-  kind: ConnectorKind;
-  trunkDown: boolean;
-};
-
-function TreeMenuItem({
-  children,
-  connectors,
-  padLeft,
-}: {
-  children: React.ReactNode;
-  connectors: TreeConnectorSpec[];
-  padLeft: number;
-}) {
-  return (
-    <li className="relative h-[42px] overflow-visible">
-      {connectors.map((c, i) => (
-        <TreeConnector key={i} {...c} />
-      ))}
-      <div className="flex h-[42px] items-center pr-2" style={{ paddingLeft: padLeft }}>
-        {children}
-      </div>
-    </li>
-  );
-}
-
-/** Active workspace id from the URL — section tabs live in the page header. */
 function useActiveWorkspaceId(): string | undefined {
   const pathname = usePathname();
   const match = pathname.match(/^\/w\/([^/]+)/);
@@ -179,76 +51,87 @@ function useActiveWorkspaceId(): string | undefined {
 export function SidebarNav({ workspaces }: { workspaces: WorkspaceEntry[] }) {
   const pathname = usePathname();
   const activeWorkspaceId = useActiveWorkspaceId();
+  const { open: openCreateWorkspace } = useCreateWorkspaceModal();
   const onDashboard = pathname === "/dashboard";
-  const [workspacesOpen, setWorkspacesOpen] = useState(
-    Boolean(activeWorkspaceId) || onDashboard
-  );
+  const onSettings = pathname === "/settings";
 
   return (
-    <nav className="flex min-h-0 flex-1 flex-col gap-1">
-      <Link href="/dashboard" className={itemCls(onDashboard)}>
-        <NavIcon name="dashboard" />
-        <span className="flex-1">Dashboard</span>
-      </Link>
-
-      <div className="flex min-h-0 flex-1 flex-col">
+    <nav className="flex min-h-0 flex-1 flex-col pb-4">
+      <div className="shrink-0 pb-3">
         <button
           type="button"
-          onClick={() => setWorkspacesOpen((v) => !v)}
-          className={`${itemCls(false)} w-full shrink-0`}
+          onClick={openCreateWorkspace}
+          className="flex h-9 w-full items-center gap-2 rounded-lg border border-line-strong/70 bg-paper px-3 text-sm text-ink-soft shadow-sm transition hover:border-line-strong hover:text-ink"
         >
-          <NavIcon name="workspaces" />
-          <span className="flex-1 text-left">Workspaces</span>
-          <Chevron open={workspacesOpen} />
+          <svg viewBox="0 0 16 16" fill="none" className="h-4 w-4 shrink-0" stroke="currentColor" strokeWidth="1.5">
+            <path d="M8 3v10M3 8h10" strokeLinecap="round" />
+          </svg>
+          <span className="truncate">New workspace</span>
         </button>
+      </div>
 
-        {workspacesOpen && (
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
-            <TreeMenu>
-            {workspaces.length === 0 ? (
-              <TreeMenuItem
-                connectors={[
-                  {
-                    x: TREE_X,
-                    kind: "branch",
-                    trunkDown: false,
-                  },
-                ]}
-                padLeft={WS_PAD}
-              >
-                <p className="text-sm text-ink-faint">No workspaces yet</p>
-              </TreeMenuItem>
-            ) : (
-              workspaces.map((ws, wsIndex) => {
-                const hasWsBelow = wsIndex < workspaces.length - 1;
+      <div className="flex flex-col gap-0.5">
+        <Link
+          href="/dashboard"
+          className={`${ui.navItem} ${onDashboard ? ui.navItemActive : ""}`}
+        >
+          <NavIcon name="dashboard" />
+          <span className="flex-1">Dashboard</span>
+        </Link>
+
+        <Link
+          href="/settings"
+          className={`${ui.navItem} ${onSettings ? ui.navItemActive : ""}`}
+        >
+          <NavIcon name="settings" />
+          <span className="flex-1">Settings</span>
+        </Link>
+      </div>
+
+      <div className="mt-4 flex min-h-0 flex-1 flex-col">
+        <div className="mb-1.5 flex items-center justify-between px-2.5">
+          <span className="font-mono text-[10px] font-medium uppercase tracking-wider text-ink-faint">
+            Workspaces
+          </span>
+          <button
+            type="button"
+            onClick={openCreateWorkspace}
+            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-ink-faint transition hover:bg-white/70 hover:text-ink"
+            title="New workspace"
+            aria-label="New workspace"
+          >
+            <svg viewBox="0 0 16 16" fill="none" className="h-3.5 w-3.5" stroke="currentColor" strokeWidth="1.5">
+              <path d="M8 3v10M3 8h10" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pt-1 pr-2.5">
+          {workspaces.length === 0 ? (
+            <p className="px-2.5 py-2 text-sm text-ink-faint">No workspaces yet</p>
+          ) : (
+            <ul className="flex flex-col gap-0.5 pb-5">
+              {workspaces.map((ws) => {
                 const isActive = ws.id === activeWorkspaceId;
-
                 return (
-                  <TreeMenuItem
-                    key={ws.id}
-                    connectors={[
-                      {
-                        x: TREE_X,
-                        kind: "branch",
-                        trunkDown: hasWsBelow,
-                      },
-                    ]}
-                    padLeft={WS_PAD}
-                  >
+                  <li key={ws.id}>
                     <Link
                       href={`/w/${ws.id}`}
-                      className={subItemCls(isActive)}
+                      className={`${ui.navSubItem} ${isActive ? ui.navSubItemActive : ""}`}
                     >
+                      <GripVertical
+                        className="h-4 w-4 shrink-0 text-ink-faint"
+                        strokeWidth={1.75}
+                      />
                       <span className="flex-1 truncate">{ws.name}</span>
                       {ws.openTasks > 0 ? <Badge count={ws.openTasks} /> : null}
                     </Link>
-                  </TreeMenuItem>
+                  </li>
                 );
-              })
-            )}
-            </TreeMenu>
-          </div>
-        )}
+              })}
+            </ul>
+          )}
+        </div>
       </div>
     </nav>
   );

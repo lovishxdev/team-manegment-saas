@@ -48,7 +48,11 @@ import {
   type MemoryEventRow,
 } from "@/lib/services/memory";
 
-export type ActionState = { error?: string; workspaceId?: string };
+export type ActionState = {
+  error?: string;
+  workspaceId?: string;
+  inviteId?: string;
+};
 
 function errorMessage(err: unknown): string {
   return err instanceof ServiceError ? err.message : "Something went wrong";
@@ -65,6 +69,25 @@ export async function createWorkspaceAction(
   const workspace = await createWorkspace(user.id, name);
   refreshUserWorkspaces(user.id, workspace.id);
   return { workspaceId: workspace.id };
+}
+
+export async function createWorkspaceWithInviteAction(
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const user = await requireUser();
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) return { error: "Workspace name is required" };
+
+  const workspace = await createWorkspace(user.id, name);
+  refreshUserWorkspaces(user.id, workspace.id);
+
+  try {
+    const invite = await createInvite(workspace.id, user.id);
+    return { workspaceId: workspace.id, inviteId: invite.id };
+  } catch (err) {
+    return { workspaceId: workspace.id, error: errorMessage(err) };
+  }
 }
 
 export async function createTaskAction(

@@ -37,6 +37,12 @@ export type DeleteAssetPending = {
   fileName: string;
 };
 
+export type InviteMembersPending = {
+  workspaceId: string;
+  workspaceName: string;
+  identifiers: string[];
+};
+
 export async function stageDeleteTask(
   phone: string,
   userId: string,
@@ -75,6 +81,14 @@ export async function stageDeleteAsset(
   data: DeleteAssetPending
 ): Promise<void> {
   await upsertPending(phone, userId, "delete_asset", data);
+}
+
+export async function stageInviteMembers(
+  phone: string,
+  userId: string,
+  data: InviteMembersPending
+): Promise<void> {
+  await upsertPending(phone, userId, "invite_members", data);
 }
 
 async function upsertPending(
@@ -121,6 +135,14 @@ export async function getPendingDeleteAsset(
 ): Promise<DeleteAssetPending | null> {
   const row = await loadPending(phone, userId, "delete_asset");
   return row ? (row.payload as DeleteAssetPending) : null;
+}
+
+export async function getPendingInviteMembers(
+  phone: string,
+  userId: string
+): Promise<InviteMembersPending | null> {
+  const row = await loadPending(phone, userId, "invite_members");
+  return row ? (row.payload as InviteMembersPending) : null;
 }
 
 export async function consumeContinueMessage(

@@ -13,6 +13,7 @@ export const BUTTON = {
     `demote_confirm_${userId}_${role}`,
   removeConfirm: (userId: string) => `remove_confirm_${userId}`,
   deleteAssetConfirm: (assetId: string) => `delete_asset_confirm_${assetId}`,
+  inviteSendConfirm: "invite_send_confirm",
   memoryResolveConfirm: (eventId: string) => `mem_resolve_${eventId}`,
   memoryResolveDismiss: (eventId: string) => `mem_dismiss_${eventId}`,
 } as const;
@@ -31,6 +32,7 @@ export function parseButtonId(id: string):
   | { type: "demote_confirm"; targetUserId: string; newRole: string }
   | { type: "remove_confirm"; targetUserId: string }
   | { type: "delete_asset_confirm"; assetId: string }
+  | { type: "invite_send_confirm" }
   | { type: "memory_resolve_confirm"; eventId: string }
   | { type: "memory_resolve_dismiss"; eventId: string }
   | null {
@@ -39,6 +41,7 @@ export function parseButtonId(id: string):
   if (id === BUTTON.menuAdd) return { type: "menu_add" };
   if (id === BUTTON.menuSwitch) return { type: "menu_switch" };
   if (id === BUTTON.deleteCancel) return { type: "delete_cancel" };
+  if (id === BUTTON.inviteSendConfirm) return { type: "invite_send_confirm" };
 
   const start = id.match(/^task_start_(\d+)$/);
   if (start) return { type: "task_start", shortId: Number(start[1]) };

@@ -5,13 +5,14 @@ import {
   validateWhatsAppToolInput,
 } from "@/lib/whatsapp-tool-guard";
 import { waWebhookLog } from "@/lib/whatsapp-webhook-log";
-import { toAnthropicTools } from "@/lib/tools/anthropic";
+import { toAnthropicTool, toAnthropicTools } from "@/lib/tools/anthropic";
 import { taskTools } from "@/lib/tools/defs/tasks";
 import { workspaceTools } from "@/lib/tools/defs/workspace";
 import { memberTools } from "@/lib/tools/defs/members";
 import { assetTools } from "@/lib/tools/defs/assets";
 import { miscTools } from "@/lib/tools/defs/misc";
 import { memoryTools } from "@/lib/tools/defs/memory";
+import { navigationTools } from "@/lib/tools/defs/navigation";
 import type {
   ToolContext,
   ToolDef,
@@ -31,6 +32,7 @@ export const ALL_TOOLS: ToolDef[] = [
   ...assetTools,
   ...miscTools,
   ...memoryTools,
+  ...navigationTools,
 ];
 
 const TOOLS_BY_NAME = new Map(ALL_TOOLS.map((t) => [t.name, t]));
@@ -45,7 +47,30 @@ export function getToolDef(name: string): ToolDef | undefined {
 }
 
 export function mcpTools(): ToolDef[] {
-  return ALL_TOOLS.filter((t) => !t.whatsappOnly);
+  return ALL_TOOLS.filter((t) => !t.whatsappOnly && !t.webOnly);
+}
+
+/** In-app floating chat — context-scope tools plus web navigation. */
+export function webChatTools(): ToolDef[] {
+  return ALL_TOOLS.filter(
+    (t) =>
+      !t.whatsappOnly &&
+      (CONTEXT_SCOPE_TOOL_NAMES.has(t.name) || t.webOnly === true)
+  );
+}
+
+let cachedWebChatTools: Anthropic.Tool[] | null = null;
+
+export function webChatAnthropicTools(): Anthropic.Tool[] {
+  if (!cachedWebChatTools) {
+    cachedWebChatTools = webChatTools().map((def) =>
+      toAnthropicTool({
+        ...def,
+        waDescription: def.mcpDescription ?? def.waDescription,
+      })
+    );
+  }
+  return cachedWebChatTools;
 }
 
 /**
@@ -102,7 +127,9 @@ let cachedWhatsAppTools: Anthropic.Tool[] | null = null;
 /** Anthropic tool schemas for the WhatsApp agent, generated from Zod. */
 export function whatsappAnthropicTools(): Anthropic.Tool[] {
   if (!cachedWhatsAppTools) {
-    cachedWhatsAppTools = toAnthropicTools(ALL_TOOLS);
+    cachedWhatsAppTools = toAnthropicTools(
+      ALL_TOOLS.filter((t) => !t.webOnly)
+    );
   }
   return cachedWhatsAppTools;
 }
@@ -283,6 +310,66 @@ async function resolvePinnedWorkspace(
     workspaceId: membership.workspace.id,
     workspaceName: membership.workspace.name,
   };
+}
+
+export type WebChatSession = {
+  pathname: string;
+  workspaceId: string | null;
+  workspaceName: string | null;
+};
+
+export async function dispatchWebChatTool(
+  action: string,
+  input: Record<string, unknown>,
+  userId: string,
+  session: WebChatSession
+): Promise<ToolResult> {
+  const def = TOOLS_BY_NAME.get(action);
+  if (!def || def.whatsappOnly) {
+    return {
+      ok: false,
+      message: "That action isn't available in the app chat.",
+    };
+  }
+  if (!CONTEXT_SCOPE_TOOL_NAMES.has(def.name) && !def.webOnly) {
+    return {
+      ok: false,
+      message:
+        "That management action isn't available here — use workspace settings or WhatsApp for full control.",
+    };
+  }
+
+  try {
+    let workspace: ToolContext["workspace"] = null;
+    if (def.needsWorkspace !== false) {
+      const hint =
+        typeof input.workspace === "string" && input.workspace.trim()
+          ? input.workspace.trim()
+          : undefined;
+
+      if (session.workspaceId && session.workspaceName && !hint) {
+        workspace = {
+          workspaceId: session.workspaceId,
+          workspaceName: session.workspaceName,
+        };
+      } else {
+        const ctx = await resolveUserWorkspaceContext(userId, hint);
+        workspace = {
+          workspaceId: ctx.workspaceId,
+          workspaceName: ctx.workspaceName,
+        };
+      }
+    }
+
+    return await def.run(input, {
+      userId,
+      channel: "web",
+      workspace,
+      web: session,
+    });
+  } catch (err) {
+    return { ok: false, message: formatToolExecutionError(err) };
+  }
 }
 
 export { ServiceError };

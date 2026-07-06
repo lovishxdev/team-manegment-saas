@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { WorkspaceTabsLayout } from "@/components/workspace/workspace-tabs-layout";
+import { WorkspaceBreadcrumbName } from "@/components/workspace/workspace-breadcrumb-name";
 import { WorkspaceTitle } from "@/components/workspace/workspace-title";
 import { WorkspaceHeaderActionsLoader } from "@/components/workspace/workspace-header-actions-loader";
 
@@ -7,7 +8,7 @@ function TitleSkeleton() {
   return (
     <div
       aria-hidden
-      className="mt-5 h-12 w-64 max-w-full animate-pulse rounded-lg bg-paper-deep/70 sm:h-14 sm:w-80"
+      className="h-9 w-64 max-w-full animate-pulse rounded-lg bg-paper-deep/70 sm:w-80"
     />
   );
 }
@@ -32,6 +33,15 @@ function HeaderActionsSkeleton() {
   );
 }
 
+function BreadcrumbNameSkeleton() {
+  return (
+    <span
+      aria-hidden
+      className="inline-block h-3 w-20 animate-pulse rounded bg-paper-deep/70"
+    />
+  );
+}
+
 /**
  * Shared workspace chrome (tabs + breadcrumb) lives here so tab clicks update
  * instantly from the URL while each page streams its own content via Suspense.
@@ -48,6 +58,11 @@ export default async function WorkspaceTabsRouteLayout({
   return (
     <WorkspaceTabsLayout
       workspaceId={workspaceId}
+      breadcrumbName={
+        <Suspense fallback={<BreadcrumbNameSkeleton />}>
+          <WorkspaceBreadcrumbName workspaceId={workspaceId} />
+        </Suspense>
+      }
       title={
         <Suspense fallback={<TitleSkeleton />}>
           <WorkspaceTitle workspaceId={workspaceId} />

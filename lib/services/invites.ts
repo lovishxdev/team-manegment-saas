@@ -1,3 +1,4 @@
+import type { Channel } from "@/lib/channel-formatters";
 import { inviteUrl } from "@/lib/app-url";
 import { prisma } from "@/lib/prisma";
 import { isWithinWhatsAppMessagingWindow } from "@/lib/whatsapp-session";
@@ -97,6 +98,100 @@ async function sendDirectedWhatsAppInvite(input: {
       header: "Workspace invite",
       footer: "Reject unknown invites",
     }
+  );
+}
+
+export type InvitePreviewRow = {
+  identifier: string;
+  outcome: "resolved" | "no_account" | "already_member";
+  /** Present when outcome is resolved/already_member. */
+  label?: string;
+};
+
+/**
+ * Resolve who each identifier would reach — WITHOUT creating invites or
+ * sending anything. Powers the confirm-before-send preview so a fuzzy
+ * match never silently invites the wrong person.
+ */
+export async function previewInvites(input: {
+  workspaceId: string;
+  inviterUserId: string;
+  identifiers: string[];
+}): Promise<{ workspaceName: string; rows: InvitePreviewRow[] }> {
+  const unique = [
+    ...new Set(input.identifiers.map((id) => id.trim()).filter(Boolean)),
+  ];
+  if (unique.length === 0) {
+    throw new ServiceError(
+      "Provide at least one username, email, or phone number to invite.",
+      "INVALID_INPUT"
+    );
+  }
+  if (unique.length > MAX_BATCH_INVITES) {
+    throw new ServiceError(
+      `You can invite at most ${MAX_BATCH_INVITES} people in one message.`,
+      "INVALID_INPUT"
+    );
+  }
+
+  await getWorkspaceMembers(input.workspaceId, input.inviterUserId);
+  const workspace = await prisma.workspace.findUniqueOrThrow({
+    where: { id: input.workspaceId },
+    select: { name: true },
+  });
+
+  const rows: InvitePreviewRow[] = [];
+  for (const identifier of unique) {
+    const user = await findUserByIdentifier(identifier);
+    if (!user) {
+      rows.push({ identifier, outcome: "no_account" });
+      continue;
+    }
+    const existing = await prisma.workspaceMembership.findUnique({
+      where: {
+        userId_workspaceId: { userId: user.id, workspaceId: input.workspaceId },
+      },
+    });
+    rows.push({
+      identifier,
+      outcome: existing ? "already_member" : "resolved",
+      label: displayUser(user),
+    });
+  }
+
+  return { workspaceName: workspace.name, rows };
+}
+
+export function formatInvitePreview(
+  workspaceName: string,
+  rows: InvitePreviewRow[],
+  channel: Channel
+): string {
+  const lines = rows.map((r) => {
+    if (r.outcome === "resolved") {
+      return channel === "whatsapp"
+        ? `• ${r.identifier} → *@${r.label}*`
+        : `- ${r.identifier} -> @${r.label}`;
+    }
+    if (r.outcome === "already_member") {
+      return channel === "whatsapp"
+        ? `• ${r.identifier} → already in *${workspaceName}* (skipped)`
+        : `- ${r.identifier} -> already a member (skipped)`;
+    }
+    return channel === "whatsapp"
+      ? `• ${r.identifier} → no account found (they'll get an invite link to share)`
+      : `- ${r.identifier} -> no account found (an invite link will be generated)`;
+  });
+
+  if (channel === "whatsapp") {
+    return (
+      `Inviting to *${workspaceName}*:\n${lines.join("\n")}\n\n` +
+      `Check each name — spelling must match exactly, or the invite can go to the wrong person. Tap Confirm to send.`
+    );
+  }
+  return (
+    `Invite preview for "${workspaceName}":\n${lines.join("\n")}\n\n` +
+    `Spelling must match exactly — verify each entry with the user, then call invite_members again with confirm=true.`
   );
 }
 
@@ -243,7 +338,7 @@ export async function inviteMembersToWorkspace(input: {
 
 export function formatInviteMembersResult(
   result: InviteMembersResult,
-  channel: "whatsapp" | "mcp"
+  channel: Channel
 ): string {
   const lines = result.outcomes.map((o) => {
     const prefix =

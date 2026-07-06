@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { ui } from "@/components/ui/ui";
 
 const TABS = [
   { id: "board", label: "Overview", path: "" },
@@ -27,16 +28,12 @@ export function MobileWorkspaceTabs() {
   const activeTab = match[2] ?? "board";
 
   return (
-    <nav className="flex gap-1 overflow-x-auto border-b border-line px-4 py-2 md:hidden">
+    <nav className="flex gap-0.5 overflow-x-auto border-b border-line/80 bg-white/50 px-3 py-1 backdrop-blur-sm md:hidden">
       {TABS.map((tab) => (
         <Link
           key={tab.id}
           href={`/w/${workspaceId}${tab.path}`}
-          className={`shrink-0 cursor-pointer rounded-lg px-3 py-1.5 text-xs transition ${
-            tab.id === activeTab
-              ? "bg-paper font-medium text-ink shadow-sm"
-              : "text-ink-soft hover:bg-paper hover:text-ink"
-          }`}
+          className={`${ui.tabItem} py-2 text-xs ${tab.id === activeTab ? ui.tabItemActive : ""}`}
         >
           {tab.label}
         </Link>

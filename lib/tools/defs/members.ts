@@ -10,7 +10,9 @@ import {
 import {
   createWorkspaceInviteLink,
   formatInviteMembersResult,
+  formatInvitePreview,
   inviteMembersToWorkspace,
+  previewInvites,
   MAX_BATCH_INVITES,
 } from "@/lib/services/invites";
 import {
@@ -20,6 +22,7 @@ import {
 import { formatWorkspaceMemberList } from "@/lib/channel-formatters";
 import {
   stageDemoteMember,
+  stageInviteMembers,
   stageRemoveMember,
 } from "@/lib/whatsapp-pending";
 import { displayUser } from "@/lib/username";
@@ -34,8 +37,8 @@ import { str, workspaceParam } from "@/lib/tools/helpers";
 
 const inviteMembersTool: ToolDef = {
   name: "invite_members",
-  waDescription: `Invite people to the workspace by username, email, or phone. Up to ${MAX_BATCH_INVITES} people per request. Sends WhatsApp Accept/Decline when possible; otherwise returns a link to share.`,
-  mcpDescription: `Invite teammates by username, email, or phone. Up to ${MAX_BATCH_INVITES} per request. WhatsApp users in the 24h window get Accept/Decline buttons; others get a link to share.`,
+  waDescription: `Invite people to the workspace by username, email, or phone. Up to ${MAX_BATCH_INVITES} people per request. Shows a preview of who will be invited and asks for confirmation before sending.`,
+  mcpDescription: `Invite teammates by username, email, or phone. Up to ${MAX_BATCH_INVITES} per request. ALWAYS call once without confirm to preview who each entry resolves to, show the user, and only call again with confirm=true after they verify the names.`,
   inputShape: {
     members: z
       .array(z.string())
@@ -43,6 +46,22 @@ const inviteMembersTool: ToolDef = {
       .max(MAX_BATCH_INVITES)
       .describe(
         `Usernames, emails, or phone numbers to invite (max ${MAX_BATCH_INVITES})`
+      ),
+    confirm: z
+      .boolean()
+      .optional()
+      .describe(
+        "Set true only after the user verified the resolved names in the preview"
+      ),
+    workspace: workspaceParam,
+  },
+  waInputShape: {
+    members: z
+      .array(z.string())
+      .min(1)
+      .max(MAX_BATCH_INVITES)
+      .describe(
+        `Usernames, emails, or phone numbers to invite (max ${MAX_BATCH_INVITES}). Copy each exactly as the user wrote it.`
       ),
     workspace: workspaceParam,
   },
@@ -60,12 +79,42 @@ const inviteMembersTool: ToolDef = {
         `Who should I invite? Give usernames, emails, or phone numbers (up to ${MAX_BATCH_INVITES} at once).`
       );
     }
+
+    if (ctx.wa) {
+      // Preview + Confirm/Cancel buttons — a fuzzy name match must never
+      // silently invite the wrong person.
+      const preview = await previewInvites({
+        workspaceId: ws.workspaceId,
+        inviterUserId: ctx.userId,
+        identifiers: members,
+      });
+      await stageInviteMembers(ctx.wa.session.phone, ctx.userId, {
+        workspaceId: ws.workspaceId,
+        workspaceName: ws.workspaceName,
+        identifiers: members,
+      });
+      ctx.wa.session.pendingInviteMembers = true;
+      return ok(formatInvitePreview(ws.workspaceName, preview.rows, "whatsapp"), {
+        staged: true,
+      });
+    }
+
+    if (input.confirm !== true) {
+      const preview = await previewInvites({
+        workspaceId: ws.workspaceId,
+        inviterUserId: ctx.userId,
+        identifiers: members,
+      });
+      return ok(formatInvitePreview(ws.workspaceName, preview.rows, "mcp"), {
+        staged: true,
+      });
+    }
+
     const result = await inviteMembersToWorkspace({
       workspaceId: ws.workspaceId,
       inviterUserId: ctx.userId,
       identifiers: members,
     });
-    if (ctx.wa) revalidateUserWorkspaces(ctx.userId, ws.workspaceId);
     return ok(formatInviteMembersResult(result, ctx.channel));
   },
 };

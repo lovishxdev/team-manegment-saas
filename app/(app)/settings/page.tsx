@@ -1,6 +1,5 @@
 import { requireUser } from "@/lib/auth";
 import { getMcpConnectorUrl } from "@/lib/app-origin";
-import { SHELL_BRAND_ROW } from "@/components/layout/app-shell-shared";
 import { ui } from "@/components/ui/ui";
 import { CopyField } from "@/components/ui/copy-field";
 import { DeleteAccount } from "@/components/settings/delete-account";
@@ -40,13 +39,16 @@ export default async function SettingsPage() {
   ).map((m) => ({ id: m.workspace.id, name: m.workspace.name }));
 
   return (
-      <main className="mx-auto w-full max-w-2xl">
-        <div className={`${SHELL_BRAND_ROW} mb-8`}>
+      <main className="mx-auto w-full max-w-3xl">
+        <header className="mb-8">
           <h1 className={ui.pageTitle}>Settings</h1>
-        </div>
+          <p className={ui.pageSubtitle}>
+            Profile, integrations, and account preferences.
+          </p>
+        </header>
 
-        <section className="mb-6 rounded-2xl bg-paper p-6 shadow-sm">
-          <h2 className="font-display text-base font-semibold">Profile</h2>
+        <section className={`${ui.contentPanel} mb-5`}>
+          <h2 className={ui.sectionTitle}>Profile</h2>
           <p className="mb-4 mt-1 text-sm text-ink-soft">
             Signed in as{" "}
             <span className="font-mono text-xs text-ink">@{user.username}</span>
@@ -64,8 +66,8 @@ export default async function SettingsPage() {
           <UsernameForm currentUsername={user.username} />
         </section>
 
-        <section className="mb-6 rounded-2xl bg-paper p-6 shadow-sm">
-          <h2 className="font-display text-base font-semibold">WhatsApp</h2>
+        <section className={`${ui.contentPanel} mb-5`}>
+          <h2 className={ui.sectionTitle}>WhatsApp</h2>
           <p className="mb-4 mt-1 text-sm text-ink-soft">
             Link your number below, then send{" "}
             <span className="font-medium text-ink">hi</span> on WhatsApp to start
@@ -112,8 +114,8 @@ export default async function SettingsPage() {
           ) : null}
         </section>
 
-        <section className="mb-6 rounded-2xl bg-paper p-6 shadow-sm">
-          <h2 className="font-display text-base font-semibold">
+        <section className={`${ui.contentPanel} mb-5`}>
+          <h2 className={ui.sectionTitle}>
             AI agent connectors
           </h2>
           <p className="mb-5 mt-1 text-sm text-ink-soft">

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { WorkspaceTab } from "@/components/layout/app-shell-shared";
+import { ui } from "@/components/ui/ui";
 
 type TabItem = {
   id: WorkspaceTab;
@@ -30,7 +31,7 @@ export function WorkspaceTabs({
   return (
     <nav
       aria-label="Workspace sections"
-      className={`flex flex-wrap items-center gap-1 ${className}`}
+      className={`flex items-center gap-1 overflow-x-auto ${className}`}
     >
       {TABS.map((tab) => {
         const href = `/w/${workspaceId}${tab.path}`;
@@ -39,11 +40,7 @@ export function WorkspaceTabs({
           <Link
             key={tab.id}
             href={href}
-            className={`cursor-pointer rounded-full px-4 py-2 text-sm font-medium transition ${
-              active
-                ? "bg-ink text-white shadow-sm"
-                : "text-ink-soft hover:bg-paper hover:text-ink"
-            }`}
+            className={`${ui.tabItem} ${active ? ui.tabItemActive : ""}`}
           >
             {tab.label}
           </Link>

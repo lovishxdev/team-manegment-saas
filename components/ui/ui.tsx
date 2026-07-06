@@ -34,8 +34,29 @@ export const ui = {
   btnGhostDanger:
     "inline-flex items-center justify-center whitespace-nowrap rounded-lg border border-line-strong px-3.5 py-2 text-sm text-ink-soft transition-colors hover:border-red-300 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-60",
   card: "rounded-2xl bg-paper shadow-sm",
+  /** Solid paper section on the shell canvas (settings, forms). */
+  contentPanel: "content-panel",
   /** @deprecated Use class `dashboard-panel` from globals.css */
   dashboardPanel: "dashboard-panel",
+  /** Frosted glass surface (sidebar, mobile header). */
+  shellGlass: "shell-glass",
+  /** Sidebar nav row */
+  navItem:
+    "flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-[14px] transition-[color,background-color,box-shadow] duration-150 text-ink-soft hover:bg-white/60 hover:text-ink",
+  navItemActive:
+    "bg-white font-medium text-ink shadow-[0_1px_3px_rgba(26,26,26,0.06),0_0_0_1px_rgba(26,26,26,0.04)]",
+  /** Workspace sub-nav row (indented) */
+  navSubItem:
+    "flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-[14px] transition-[color,background-color,box-shadow] duration-150 text-ink-soft hover:bg-white/60 hover:text-ink",
+  navSubItemActive:
+    "bg-white font-medium text-ink shadow-[0_1px_3px_rgba(26,26,26,0.06),0_0_0_1px_rgba(26,26,26,0.04)]",
+  /** Underline workspace tabs */
+  tabItem:
+    "relative shrink-0 cursor-pointer px-3 py-2.5 text-sm font-medium text-ink-soft transition-colors hover:text-ink",
+  tabItemActive:
+    "text-ink after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:rounded-full after:bg-ink",
+  pageSubtitle: "mt-1.5 text-sm text-ink-soft",
+  sectionTitle: "text-sm font-semibold text-ink",
   errorText: "text-sm text-red-600",
   successText: "text-sm text-emerald-700",
   linkText: "text-ink underline-offset-2 hover:underline",

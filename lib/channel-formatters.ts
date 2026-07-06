@@ -25,7 +25,7 @@ export type BoardSnapshot = {
   totalTasks: number;
 };
 
-export type Channel = "whatsapp" | "mcp";
+export type Channel = "whatsapp" | "mcp" | "web";
 
 function formatChatDate(date: Date): string {
   return date.toLocaleDateString("en-US", {

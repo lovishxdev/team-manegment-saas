@@ -43,7 +43,7 @@ async function LinksData({ workspaceId }: { workspaceId: string }) {
       </section>
 
       {items.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-line-strong bg-paper p-12 text-center">
+        <div className="flex flex-col items-center rounded-xl border border-dashed border-line/80 bg-paper px-8 py-14 text-center shadow-[0_1px_3px_rgba(26,26,26,0.04)]">
           <p className="font-display text-lg text-ink">No links yet.</p>
           <p className="mt-1 text-sm text-ink-soft">
             Add your first bookmark above so everyone on the team can find it.

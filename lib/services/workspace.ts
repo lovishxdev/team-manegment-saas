@@ -151,6 +151,127 @@ export type WorkspaceDashboardMember = {
   label: string | null;
 };
 
+export type DashboardTaskPeek = {
+  id: string;
+  shortId: number;
+  title: string;
+  status: "TODO" | "IN_PROGRESS" | "DONE";
+  workspaceId: string;
+  workspaceName: string;
+  dueDate: string | null;
+};
+
+export type DashboardSearchTask = DashboardTaskPeek & {
+  assignees: { id: string; label: string | null }[];
+};
+
+export type DashboardHomeSummary = {
+  workspaceCount: number;
+  openTasks: number;
+  assignedToYou: number;
+  taskPeeks: DashboardTaskPeek[];
+};
+
+/** Greeting stats + recent assigned tasks for the dashboard home. */
+export async function getDashboardHomeSummary(
+  userId: string
+): Promise<DashboardHomeSummary> {
+  const memberships = await listUserWorkspaces(userId);
+  const workspaceIds = memberships.map((m) => m.workspace.id);
+  const statsByWorkspace = await getWorkspaceDashboardStats(userId, workspaceIds);
+
+  let openTasks = 0;
+  let assignedToYou = 0;
+  for (const stats of statsByWorkspace.values()) {
+    openTasks += stats.openTasks;
+    assignedToYou += stats.assignedToYou;
+  }
+
+  const assignedTasks = await prisma.task.findMany({
+    where: {
+      status: { not: "DONE" },
+      assignees: { some: { userId } },
+      workspaceId: { in: workspaceIds },
+    },
+    select: {
+      id: true,
+      shortId: true,
+      title: true,
+      status: true,
+      dueDate: true,
+      workspaceId: true,
+      workspace: { select: { name: true } },
+    },
+    orderBy: { updatedAt: "desc" },
+    take: 4,
+  });
+
+  const taskPeeks: DashboardTaskPeek[] = assignedTasks.map((t) => ({
+    id: t.id,
+    shortId: t.shortId,
+    title: t.title,
+    status: t.status,
+    workspaceId: t.workspaceId,
+    workspaceName: t.workspace.name,
+    dueDate: t.dueDate ? t.dueDate.toISOString() : null,
+  }));
+
+  return {
+    workspaceCount: memberships.length,
+    openTasks,
+    assignedToYou,
+    taskPeeks,
+  };
+}
+
+const DASHBOARD_SEARCH_LIMIT = 200;
+
+/** Open tasks across all workspaces for dashboard client search. */
+export async function getDashboardSearchIndex(
+  userId: string
+): Promise<DashboardSearchTask[]> {
+  const memberships = await listUserWorkspaces(userId);
+  const workspaceIds = memberships.map((m) => m.workspace.id);
+  if (workspaceIds.length === 0) return [];
+
+  const tasks = await prisma.task.findMany({
+    where: {
+      workspaceId: { in: workspaceIds },
+      status: { not: "DONE" },
+    },
+    select: {
+      id: true,
+      shortId: true,
+      title: true,
+      status: true,
+      dueDate: true,
+      workspaceId: true,
+      workspace: { select: { name: true } },
+      assignees: {
+        include: {
+          user: { select: { id: true, username: true, email: true } },
+        },
+      },
+    },
+    orderBy: { updatedAt: "desc" },
+    take: DASHBOARD_SEARCH_LIMIT,
+  });
+
+  return tasks.map((task) => ({
+    id: task.id,
+    shortId: task.shortId,
+    title: task.title,
+    status: task.status,
+    workspaceId: task.workspaceId,
+    workspaceName: task.workspace.name,
+    dueDate: task.dueDate ? task.dueDate.toISOString() : null,
+    assignees: task.assignees.map((assignee) => ({
+      id: assignee.user.id,
+      label: displayUser(assignee.user),
+    })),
+  }));
+}
+
 /** Member labels per workspace for dashboard cards. */
 export async function getWorkspaceDashboardMembers(
   workspaceIds: string[]

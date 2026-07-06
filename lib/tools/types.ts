@@ -25,6 +25,7 @@ export type WhatsAppSessionState = {
   pendingDemote: boolean;
   pendingRemoveMember: boolean;
   pendingDeleteAsset: boolean;
+  pendingInviteMembers: boolean;
   whiteboardImages: Buffer[] | null;
   lastCreatedTask: {
     shortId: number;
@@ -51,6 +52,12 @@ export type ToolContext = {
   wa?: {
     session: WhatsAppSessionState;
   };
+  /** Present only on the in-app web chat. */
+  web?: {
+    pathname: string;
+    workspaceId: string | null;
+    workspaceName: string | null;
+  };
 };
 
 export type ToolResult = {
@@ -76,6 +83,8 @@ export type ToolDef = {
   needsWorkspace?: boolean;
   /** Tool only exists on WhatsApp (e.g. interactive picker). */
   whatsappOnly?: boolean;
+  /** Tool only exists on the in-app web chat (e.g. navigation). */
+  webOnly?: boolean;
   run: (
     input: Record<string, unknown>,
     ctx: ToolContext

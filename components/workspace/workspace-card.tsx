@@ -1,14 +1,25 @@
 import Link from "next/link";
+import { ChevronRight, GripVertical } from "lucide-react";
 import {
   MemberAvatarStack,
   type MemberAvatar,
 } from "@/components/members/member-avatar-stack";
 import type { WorkspaceDashboardStats } from "@/lib/services/workspace";
 
+function activityLabel(openTasks: number, assignedToYou: number): string | null {
+  const parts: string[] = [];
+  if (openTasks > 0) {
+    parts.push(`${openTasks} open`);
+  }
+  if (assignedToYou > 0) {
+    parts.push(`${assignedToYou} yours`);
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
 export function WorkspaceCard({
   id,
   name,
-  role,
   memberCount,
   members,
   stats,
@@ -21,54 +32,49 @@ export function WorkspaceCard({
   stats: WorkspaceDashboardStats;
 }) {
   const { openTasks, assignedToYou } = stats;
+  const activity = activityLabel(openTasks, assignedToYou);
+  const showAvatars = memberCount > 1 && members.length > 0;
 
   return (
-    <Link
-      href={`/w/${id}`}
-      className="group flex cursor-pointer flex-col rounded-xl border border-line/80 bg-shell p-5 transition hover:border-line-strong hover:bg-paper-deep/40 hover:shadow-sm"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-paper text-base font-semibold text-ink shadow-sm">
-          {name.charAt(0).toUpperCase()}
-        </span>
-        <span className="rounded-full bg-paper px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-ink-soft shadow-sm">
-          {role.replace("_", " ")}
-        </span>
-      </div>
-
-      <div className="mt-4 flex items-center justify-between gap-3">
-        <h3 className="min-w-0 truncate text-base font-semibold text-ink">
-          {name}
-        </h3>
-        {openTasks > 0 ? (
-          <span className="inline-flex shrink-0 items-center rounded-full bg-orange-50 px-2.5 py-0.5 text-xs font-medium text-orange-700">
-            {openTasks} open
-          </span>
-        ) : (
-          <span className="shrink-0 text-xs text-ink-faint">All caught up</span>
-        )}
-      </div>
-
-      {assignedToYou > 0 ? (
-        <p className="mt-2">
-          <span className="inline-flex items-center rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-800">
-            {assignedToYou} assigned to you
-          </span>
-        </p>
-      ) : null}
-
-      <div className="mt-auto flex items-center gap-2.5 pt-4">
-        <MemberAvatarStack
-          members={members}
-          max={4}
-          size="h-7 w-7 text-[10px]"
-          ringClass="ring-shell"
-          overlap={8}
+    <li>
+      <Link
+        href={`/w/${id}`}
+        className="group flex items-center gap-3 rounded-lg border border-line/70 bg-paper px-3 py-3 transition hover:border-line-strong hover:bg-white hover:shadow-sm sm:px-4"
+      >
+        <GripVertical
+          className="h-4 w-4 shrink-0 text-ink-faint/50"
+          strokeWidth={1.75}
+          aria-hidden
         />
-        <span className="text-xs text-ink-faint">
-          {memberCount} member{memberCount === 1 ? "" : "s"}
+
+        <span className="min-w-0 flex-1 truncate text-[15px] font-medium text-ink">
+          {name}
         </span>
-      </div>
-    </Link>
+
+        <span className="flex shrink-0 items-center gap-2">
+          {activity ? (
+            <span className="truncate font-mono text-[11px] text-ink-soft max-w-[6.5rem] sm:max-w-none">
+              {activity}
+            </span>
+          ) : null}
+
+          {showAvatars ? (
+            <MemberAvatarStack
+              members={members}
+              max={3}
+              size="h-6 w-6 text-[9px]"
+              ringClass="ring-paper"
+              overlap={6}
+            />
+          ) : null}
+
+          <ChevronRight
+            className="h-4 w-4 shrink-0 text-ink-faint/70 transition group-hover:text-ink-soft"
+            strokeWidth={1.75}
+            aria-hidden
+          />
+        </span>
+      </Link>
+    </li>
   );
 }

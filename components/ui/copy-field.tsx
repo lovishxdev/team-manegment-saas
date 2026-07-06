@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export function CopyField({
   value,
@@ -13,10 +13,13 @@ export function CopyField({
   const [copied, setCopied] = useState(false);
   const [revealed, setRevealed] = useState(!secret);
 
+  useEffect(() => {
+    setCopied(false);
+  }, [value]);
+
   async function copy() {
     await navigator.clipboard.writeText(value);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
   }
 
   const btn =
@@ -28,11 +31,11 @@ export function CopyField({
         {revealed ? value : "••••••••-••••-••••-••••-••••••••••••"}
       </code>
       {secret && (
-        <button onClick={() => setRevealed((r) => !r)} className={btn}>
+        <button type="button" onClick={() => setRevealed((r) => !r)} className={btn}>
           {revealed ? "Hide" : "Show"}
         </button>
       )}
-      <button onClick={copy} className={btn}>
+      <button type="button" onClick={copy} className={btn}>
         {copied ? "Copied!" : "Copy"}
       </button>
     </div>

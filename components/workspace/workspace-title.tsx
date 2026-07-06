@@ -13,7 +13,7 @@ export async function WorkspaceTitle({
   try {
     const { workspace } = await getWorkspaceChrome(workspaceId, user.id);
     return (
-      <h1 className="mt-5 text-[3rem] font-semibold leading-tight tracking-tight text-ink sm:text-[3.375rem]">
+      <h1 className="text-[2rem] font-semibold leading-tight tracking-tight text-ink sm:text-[2.25rem]">
         {workspace.name}
       </h1>
     );
