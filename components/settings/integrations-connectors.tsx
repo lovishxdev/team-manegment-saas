@@ -96,17 +96,28 @@ function ConnectButton({
 }) {
   if (connected) {
     return (
-      <span className="inline-flex h-8 w-8 items-center justify-center text-emerald-600">
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          onClick();
+        }}
+        className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-emerald-600 transition hover:bg-paper-deep/60"
+        title="Manage connection"
+      >
         <Check className="h-4 w-4" strokeWidth={2} />
-        <span className="sr-only">Connected</span>
-      </span>
+        <span className="text-xs font-medium">Manage</span>
+      </button>
     );
   }
 
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
       className={`${ui.btnSecondary} h-8 px-3 py-0 text-xs`}
     >
       {label}
@@ -281,7 +292,8 @@ export function IntegrationsConnectors({ data }: { data: AccountSettingsData }) 
             {popular.map((row) => (
               <div
                 key={row.id}
-                className="flex items-center justify-between gap-3 rounded-xl border border-line bg-paper px-4 py-3.5"
+                onClick={() => toggleExpanded(row.id)}
+                className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-line bg-paper px-4 py-3.5 transition hover:bg-paper-deep/30"
               >
                 <div className="flex min-w-0 items-center gap-3">
                   <ConnectorLogo id={row.id} />
@@ -316,7 +328,9 @@ export function IntegrationsConnectors({ data }: { data: AccountSettingsData }) 
               const expanded = expandedId === row.id;
               return (
                 <li key={row.id} className="border-b border-line last:border-b-0">
-                  <div className="grid grid-cols-[minmax(0,1.4fr)_5rem_6.5rem] items-center gap-3 px-4 py-3 sm:grid-cols-[minmax(0,1.6fr)_6rem_7rem] sm:px-5">
+                  <div
+                    onClick={() => toggleExpanded(row.id)}
+                    className="grid cursor-pointer grid-cols-[minmax(0,1.4fr)_5rem_6.5rem] items-center gap-3 px-4 py-3 transition hover:bg-paper-deep/20 sm:grid-cols-[minmax(0,1.6fr)_6rem_7rem] sm:px-5">
                     <div className="flex min-w-0 items-center gap-3">
                       <ConnectorLogo id={row.id} />
                       <div className="min-w-0">
