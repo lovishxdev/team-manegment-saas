@@ -96,6 +96,7 @@ alter table public."Asset"               enable row level security;
 alter table public."WorkspaceLink"       enable row level security;
 alter table public."WorkspaceInvite"     enable row level security;
 alter table public."TaskUpdate"          enable row level security;
+alter table public."WorkspaceMessage"    enable row level security;
 alter table public."MemoryEvent"         enable row level security;
 
 drop policy if exists "members_read_tasks" on public."Task";
@@ -120,6 +121,10 @@ create policy "members_read_links" on public."WorkspaceLink"
 
 drop policy if exists "members_read_task_updates" on public."TaskUpdate";
 create policy "members_read_task_updates" on public."TaskUpdate"
+  for select using (public.is_workspace_member("workspaceId"));
+
+drop policy if exists "members_read_workspace_messages" on public."WorkspaceMessage";
+create policy "members_read_workspace_messages" on public."WorkspaceMessage"
   for select using (public.is_workspace_member("workspaceId"));
 
 drop policy if exists "members_read_memory_events" on public."MemoryEvent";
@@ -180,7 +185,7 @@ do $$
 declare
   t text;
 begin
-  foreach t in array array['Task', 'Workspace', 'WorkspaceMembership', 'Asset', 'WorkspaceLink', 'TaskUpdate', 'MemoryEvent']
+  foreach t in array array['Task', 'Workspace', 'WorkspaceMembership', 'Asset', 'WorkspaceLink', 'TaskUpdate', 'WorkspaceMessage', 'MemoryEvent']
   loop
     if not exists (
       select 1 from pg_publication_tables
@@ -201,5 +206,6 @@ alter table public."Task" replica identity full;
 alter table public."Asset" replica identity full;
 alter table public."WorkspaceLink" replica identity full;
 alter table public."TaskUpdate" replica identity full;
+alter table public."WorkspaceMessage" replica identity full;
 alter table public."Workspace" replica identity full;
 alter table public."MemoryEvent" replica identity full;

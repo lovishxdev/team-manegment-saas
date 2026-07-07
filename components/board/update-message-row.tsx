@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Bookmark, MoreHorizontal, Reply, Trash2 } from "lucide-react";
-import type { TaskUpdateView } from "@/lib/actions/workspace";
+import type { ChatMessageView } from "@/lib/chat-message";
 import type { MentionMember } from "@/lib/mentions";
 import { extractMentionRefs } from "@/lib/mentions";
 import { MentionText } from "@/components/board/mention-text";
@@ -42,21 +42,21 @@ function MentionTags({ labels, body }: { labels: string[]; body: string }) {
 }
 
 export function UpdateMessageRow({
-  update,
+  message,
   members,
   currentUserId,
   onReply,
   onToggleSave,
   onDelete,
 }: {
-  update: TaskUpdateView;
+  message: ChatMessageView;
   members: MentionMember[];
   currentUserId: string;
-  onReply: (update: TaskUpdateView) => void;
-  onToggleSave: (update: TaskUpdateView) => void;
-  onDelete: (update: TaskUpdateView) => void;
+  onReply: (message: ChatMessageView) => void;
+  onToggleSave: (message: ChatMessageView) => void;
+  onDelete: (message: ChatMessageView) => void;
 }) {
-  const isOwn = update.authorId === currentUserId;
+  const isOwn = message.authorId === currentUserId;
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -85,23 +85,23 @@ export function UpdateMessageRow({
     <article className="group rounded-xl bg-paper-deep/30 px-4 py-3 transition-colors hover:bg-paper-deep/50">
       <div className="flex gap-3">
         <Avatar
-          seed={update.authorId}
-          label={update.authorLabel}
+          seed={message.authorId}
+          label={message.authorLabel}
           size="h-9 w-9 text-xs"
         />
         <div className="min-w-0 flex-1">
           <header className="mb-1.5 flex items-start gap-2">
             <span className="min-w-0 flex-1 text-[15px] font-semibold text-ink">
-              {isOwn ? "Me" : update.authorLabel}
+              {isOwn ? "Me" : message.authorLabel}
             </span>
 
             <div className="flex shrink-0 items-center gap-0.5">
               <time
                 className="whitespace-nowrap text-xs text-ink-faint"
-                dateTime={update.createdAt}
-                title={new Date(update.createdAt).toLocaleString()}
+                dateTime={message.createdAt}
+                title={new Date(message.createdAt).toLocaleString()}
               >
-                {formatMessageTimestamp(update.createdAt)}
+                {formatMessageTimestamp(message.createdAt)}
               </time>
 
               <div className="relative" ref={menuRef}>
@@ -125,22 +125,22 @@ export function UpdateMessageRow({
                       type="button"
                       onClick={() => {
                         setMenuOpen(false);
-                        onToggleSave(update);
+                        onToggleSave(message);
                       }}
                       className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink-soft transition hover:bg-ink/[0.04] hover:text-ink"
                     >
                       <Bookmark
                         className="h-4 w-4 shrink-0"
                         strokeWidth={1.75}
-                        fill={update.saved ? "currentColor" : "none"}
+                        fill={message.saved ? "currentColor" : "none"}
                       />
-                      {update.saved ? "Unsave" : "Save"}
+                      {message.saved ? "Unsave" : "Save"}
                     </button>
                     <button
                       type="button"
                       onClick={() => {
                         setMenuOpen(false);
-                        onReply(update);
+                        onReply(message);
                       }}
                       className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink-soft transition hover:bg-ink/[0.04] hover:text-ink"
                     >
@@ -152,7 +152,7 @@ export function UpdateMessageRow({
                         type="button"
                         onClick={() => {
                           setMenuOpen(false);
-                          onDelete(update);
+                          onDelete(message);
                         }}
                         className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 transition hover:bg-red-50"
                       >
@@ -167,12 +167,12 @@ export function UpdateMessageRow({
           </header>
 
           <MentionText
-            body={update.body}
+            body={message.body}
             members={members}
             className="text-[15px] leading-relaxed text-ink"
           />
-          {update.mentionedLabels.length > 0 ? (
-            <MentionTags labels={update.mentionedLabels} body={update.body} />
+          {message.mentionedLabels.length > 0 ? (
+            <MentionTags labels={message.mentionedLabels} body={message.body} />
           ) : null}
         </div>
       </div>

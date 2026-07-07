@@ -45,6 +45,13 @@ import {
   setTaskUpdateSaved,
 } from "@/lib/services/task-updates";
 import {
+  createWorkspaceMessage,
+  deleteWorkspaceMessage,
+  listWorkspaceMessages,
+  setWorkspaceMessageSaved,
+} from "@/lib/services/workspace-discussion";
+import type { ChatMessageView } from "@/lib/chat-message";
+import {
   listMemoryEvents,
   resolveMemoryEvent,
   type MemoryEventRow,
@@ -536,18 +543,11 @@ export async function fetchWorkspaceMemberLabelsAction(workspaceId: string) {
   }));
 }
 
-export type TaskUpdateView = {
-  id: string;
-  body: string;
-  createdAt: string;
-  authorId: string;
-  authorLabel: string;
-  mentionedLabels: string[];
-  saved: boolean;
-};
+export type TaskUpdateView = ChatMessageView;
+export type WorkspaceMessageView = ChatMessageView;
 
-function toTaskUpdateView(
-  update: {
+function toChatMessageView(
+  message: {
     id: string;
     body: string;
     createdAt: Date;
@@ -555,15 +555,15 @@ function toTaskUpdateView(
     mentionedLabels: string[];
     saved: boolean;
   }
-): TaskUpdateView {
+): ChatMessageView {
   return {
-    id: update.id,
-    body: update.body,
-    createdAt: update.createdAt.toISOString(),
-    authorId: update.author.id,
-    authorLabel: displayUser(update.author),
-    mentionedLabels: update.mentionedLabels,
-    saved: update.saved,
+    id: message.id,
+    body: message.body,
+    createdAt: message.createdAt.toISOString(),
+    authorId: message.author.id,
+    authorLabel: displayUser(message.author),
+    mentionedLabels: message.mentionedLabels,
+    saved: message.saved,
   };
 }
 
@@ -579,7 +579,7 @@ export async function fetchTaskUpdatesAction(
       taskShortId
     );
     return {
-      updates: updates.map((u) => toTaskUpdateView(u)),
+      updates: updates.map((u) => toChatMessageView(u)),
     };
   } catch (err) {
     return { updates: [], error: errorMessage(err) };
@@ -661,7 +661,7 @@ export async function addTaskUpdateAction(
     });
     revalidatePath(`/w/${workspaceId}`);
     return {
-      update: toTaskUpdateView(created),
+      update: toChatMessageView(created),
     };
   } catch (err) {
     return { error: errorMessage(err) };
@@ -700,6 +700,78 @@ export async function setTaskUpdateSavedAction(
       saved,
     });
     revalidatePath(`/w/${workspaceId}`);
+    return { saved: nextSaved };
+  } catch (err) {
+    return { error: errorMessage(err) };
+  }
+}
+
+export async function fetchWorkspaceMessagesAction(
+  workspaceId: string
+): Promise<{ messages: WorkspaceMessageView[]; error?: string }> {
+  const user = await requireUser();
+  try {
+    const messages = await listWorkspaceMessages(workspaceId, user.id);
+    return {
+      messages: messages.map((message) => toChatMessageView(message)),
+    };
+  } catch (err) {
+    return { messages: [], error: errorMessage(err) };
+  }
+}
+
+export async function addWorkspaceMessageAction(
+  workspaceId: string,
+  body: string
+): Promise<ActionState & { message?: WorkspaceMessageView }> {
+  const user = await requireUser();
+  try {
+    const created = await createWorkspaceMessage({
+      workspaceId,
+      userId: user.id,
+      body,
+    });
+    revalidatePath(`/w/${workspaceId}/discussion`);
+    return {
+      message: toChatMessageView(created),
+    };
+  } catch (err) {
+    return { error: errorMessage(err) };
+  }
+}
+
+export async function deleteWorkspaceMessageAction(
+  workspaceId: string,
+  messageId: string
+): Promise<ActionState> {
+  const user = await requireUser();
+  try {
+    await deleteWorkspaceMessage({
+      workspaceId,
+      userId: user.id,
+      messageId,
+    });
+    revalidatePath(`/w/${workspaceId}/discussion`);
+    return {};
+  } catch (err) {
+    return { error: errorMessage(err) };
+  }
+}
+
+export async function setWorkspaceMessageSavedAction(
+  workspaceId: string,
+  messageId: string,
+  saved: boolean
+): Promise<ActionState & { saved?: boolean }> {
+  const user = await requireUser();
+  try {
+    const nextSaved = await setWorkspaceMessageSaved({
+      workspaceId,
+      userId: user.id,
+      messageId,
+      saved,
+    });
+    revalidatePath(`/w/${workspaceId}/discussion`);
     return { saved: nextSaved };
   } catch (err) {
     return { error: errorMessage(err) };

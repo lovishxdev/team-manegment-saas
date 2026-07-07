@@ -4,6 +4,7 @@ export type AppNavTopic =
   | "dashboard"
   | "settings"
   | "workspace_overview"
+  | "workspace_discussion"
   | "workspace_memory"
   | "workspace_links"
   | "workspace_assets"
@@ -63,7 +64,7 @@ export function tokenizeNavQuery(query: string): string[] {
 
 export function workspacePath(
   workspaceId: string,
-  tab?: "memory" | "links" | "assets" | "whiteboard" | "settings"
+  tab?: "discussion" | "memory" | "links" | "assets" | "whiteboard" | "settings"
 ): string {
   if (!tab) return `/w/${workspaceId}`;
   return `/w/${workspaceId}/${tab}`;
@@ -105,6 +106,13 @@ export function buildAppNavCatalog(
       description: "Kanban board (Overview tab) for tasks.",
       path: workspacePath(wsId),
       keywords: ["board", "kanban", "tasks", "overview"],
+    },
+    {
+      topic: "workspace_discussion",
+      label: `${wsLabel} — discussion`,
+      description: "Team-wide conversation and general updates.",
+      path: workspacePath(wsId, "discussion"),
+      keywords: ["discussion", "chat", "messages", "team"],
     },
     {
       topic: "workspace_memory",

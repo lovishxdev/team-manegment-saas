@@ -2,6 +2,7 @@
 
 export type WorkspaceTab =
   | "board"
+  | "discussion"
   | "memory"
   | "links"
   | "assets"

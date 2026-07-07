@@ -72,6 +72,9 @@ model User {
   taskUpdates    TaskUpdate[]
   taskUpdateMentions TaskUpdateMention[]
   taskUpdateSaves TaskUpdateSave[]
+  workspaceMessages WorkspaceMessage[]
+  workspaceMessageMentions WorkspaceMessageMention[]
+  workspaceMessageSaves WorkspaceMessageSave[]
   uploadedAssets Asset[]
   createdLinks   WorkspaceLink[]
   oauthCodes     OAuthCode[]
@@ -96,6 +99,7 @@ model Workspace {
   invites         WorkspaceInvite[]
   categories      WorkspaceCategory[]
   taskUpdates     TaskUpdate[]
+  messages        WorkspaceMessage[]
   memoryEvents    MemoryEvent[]
   lastActiveUsers User[]                @relation("LastActiveWorkspace")
   mcpPinnedUsers  User[]                @relation("McpPinnedWorkspace")
@@ -334,6 +338,50 @@ model Asset {
 
   @@index([workspaceId])
   @@index([taskId])
+}
+
+/// Workspace-wide general discussion thread.
+model WorkspaceMessage {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  authorId    String   @db.Uuid
+  body        String
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  author    User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  mentions  WorkspaceMessageMention[]
+  saves     WorkspaceMessageSave[]
+
+  @@index([workspaceId, createdAt])
+}
+
+/// Per-user bookmark of a workspace discussion message (Saved tab).
+model WorkspaceMessageSave {
+  id        String   @id @default(uuid()) @db.Uuid
+  messageId String   @db.Uuid
+  userId    String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  message WorkspaceMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId, createdAt])
+}
+
+/// Workspace members @mentioned in a discussion message.
+model WorkspaceMessageMention {
+  id        String   @id @default(uuid()) @db.Uuid
+  messageId String   @db.Uuid
+  userId    String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  message WorkspaceMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId])
 }
 
 /// Workspace-wide bookmarks — shared URLs for the whole team.

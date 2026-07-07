@@ -17,6 +17,8 @@ export function UpdateCompose({
   onPost,
   pending,
   textareaRef: externalRef,
+  placeholder = "Share progress, blockers, or context… (@ to mention)",
+  inputId = "task-update-compose",
 }: {
   members: MentionMember[];
   value: string;
@@ -24,6 +26,8 @@ export function UpdateCompose({
   onPost: () => void;
   pending?: boolean;
   textareaRef?: React.RefObject<HTMLTextAreaElement | null>;
+  placeholder?: string;
+  inputId?: string;
 }) {
   const internalRef = useRef<HTMLTextAreaElement>(null);
   const textareaRef = externalRef ?? internalRef;
@@ -140,12 +144,12 @@ export function UpdateCompose({
         </div>
       ) : null}
 
-      <label htmlFor="task-update-compose" className="sr-only">
-        Write an update
+      <label htmlFor={inputId} className="sr-only">
+        Write a message
       </label>
       <textarea
         ref={textareaRef}
-        id="task-update-compose"
+        id={inputId}
         value={value}
         onChange={(event) => {
           onChange(event.target.value);
@@ -156,7 +160,7 @@ export function UpdateCompose({
         onClick={syncCursor}
         onKeyDown={handleKeyDown}
         rows={2}
-        placeholder="Share progress, blockers, or context… (@ to mention)"
+        placeholder={placeholder}
         className="w-full resize-none border-0 bg-transparent px-1 py-1 text-[15px] leading-relaxed text-ink placeholder:text-ink-faint focus:outline-none focus:ring-0"
       />
 

@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { formatTaskRef } from "@/lib/whatsapp-task-ref";
-import { taskUrl } from "@/lib/app-url";
+import { taskUrl, discussionUrl } from "@/lib/app-url";
 import { sendWhatsAppText } from "@/lib/whatsapp";
 
 /**
@@ -159,6 +159,45 @@ export async function notifyMentionedInUpdate(input: {
           `${via} mentioned you on ${formatTaskRef(input.taskTitle)} in *${input.workspaceName}*:\n` +
             `"${preview}"\n` +
             `Open: ${taskUrl(input.workspaceId, input.taskShortId)}`
+        )
+      )
+  );
+}
+
+/** Ping teammates @mentioned in workspace discussion (session-window only). */
+export async function notifyMentionedInDiscussion(input: {
+  mentionedUserIds: string[];
+  actorUserId: string;
+  workspaceId: string;
+  workspaceName: string;
+  body: string;
+}): Promise<void> {
+  if (input.mentionedUserIds.length === 0) return;
+
+  const [actor, users] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: input.actorUserId },
+      select: { username: true },
+    }),
+    prisma.user.findMany({
+      where: { id: { in: input.mentionedUserIds } },
+      select: { id: true, phone: true },
+    }),
+  ]);
+
+  const preview =
+    input.body.length > 160 ? `${input.body.slice(0, 157)}…` : input.body;
+  const via = actor?.username ? `@${actor.username}` : "A teammate";
+
+  await Promise.allSettled(
+    users
+      .filter((u) => u.phone && u.id !== input.actorUserId)
+      .map((u) =>
+        sendWhatsAppText(
+          u.phone as string,
+          `${via} mentioned you in *${input.workspaceName}* discussion:\n` +
+            `"${preview}"\n` +
+            `Open: ${discussionUrl(input.workspaceId)}`
         )
       )
   );

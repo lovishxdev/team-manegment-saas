@@ -6,6 +6,7 @@ export const WORKSPACE_TAB_LINKS: {
   path: string;
 }[] = [
   { id: "board", label: "Overview", path: "" },
+  { id: "discussion", label: "Discussion", path: "/discussion" },
   { id: "memory", label: "Memory", path: "/memory" },
   { id: "links", label: "Links", path: "/links" },
   { id: "assets", label: "Assets", path: "/assets" },
@@ -14,6 +15,7 @@ export const WORKSPACE_TAB_LINKS: {
 ];
 
 export function workspaceTabFromPathname(pathname: string): WorkspaceTab {
+  if (pathname.endsWith("/discussion")) return "discussion";
   if (pathname.endsWith("/memory")) return "memory";
   if (pathname.endsWith("/links")) return "links";
   if (pathname.endsWith("/assets")) return "assets";
@@ -27,7 +29,7 @@ export function parseWorkspaceRoute(pathname: string): {
   tab: WorkspaceTab;
 } | null {
   const match = pathname.match(
-    /^\/w\/([^/]+)(?:\/(memory|links|assets|whiteboard|settings))?/
+    /^\/w\/([^/]+)(?:\/(discussion|memory|links|assets|whiteboard|settings))?/
   );
   if (!match) return null;
   return {
