@@ -11,9 +11,13 @@ import {
   whatsAppBotDeepLink,
 } from "@/lib/whatsapp-bot";
 export type McpOAuthConnection = {
+  /** OAuthClient id — the revocation handle (never the token itself). */
+  clientId: string;
   clientName: string;
   scope: string;
   workspaceId: string | null;
+  /** ISO date of the most recent token for this client. */
+  connectedAt: string;
 };
 
 export type AccountSettingsData = {
@@ -58,17 +62,25 @@ export async function loadAccountSettingsData(): Promise<AccountSettingsData> {
   }));
 
   const now = new Date();
-  const mcpOAuthConnections = (
-    await prisma.oAuthToken.findMany({
-      where: { userId: user.id, expiresAt: { gt: now } },
-      include: { client: { select: { name: true } } },
-      orderBy: { createdAt: "desc" },
-    })
-  ).map((token) => ({
-    clientName: token.client.name,
-    scope: token.scope,
-    workspaceId: token.workspaceId,
-  }));
+  const activeTokens = await prisma.oAuthToken.findMany({
+    where: { userId: user.id, expiresAt: { gt: now } },
+    include: { client: { select: { id: true, name: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+  // One row per client (a client can hold several tokens via refresh
+  // rotation); newest token's choices represent the connection.
+  const byClient = new Map<string, McpOAuthConnection>();
+  for (const token of activeTokens) {
+    if (byClient.has(token.clientId)) continue;
+    byClient.set(token.clientId, {
+      clientId: token.clientId,
+      clientName: token.client.name,
+      scope: token.scope,
+      workspaceId: token.workspaceId,
+      connectedAt: token.createdAt.toISOString(),
+    });
+  }
+  const mcpOAuthConnections = [...byClient.values()];
 
   return {
     user: {

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Check, Search } from "lucide-react";
 import { ConnectorLogo } from "@/components/brand/connector-logo";
 import { AddToCursor } from "@/components/settings/add-to-cursor";
+import { McpConnectionList } from "@/components/settings/mcp-connection-list";
 import { McpScopeForm } from "@/components/settings/mcp-scope-form";
 import { McpWorkspaceForm } from "@/components/settings/mcp-workspace-form";
 import { CopyField } from "@/components/ui/copy-field";
@@ -23,14 +24,21 @@ type ConnectorRow = {
   connected: boolean;
 };
 
-function oauthMatches(
+function oauthFor(
   connections: AccountSettingsData["mcpOAuthConnections"],
   pattern: string
 ) {
   const needle = pattern.toLowerCase();
-  return connections.some((row) =>
+  return connections.filter((row) =>
     row.clientName.toLowerCase().includes(needle)
   );
+}
+
+function oauthMatches(
+  connections: AccountSettingsData["mcpOAuthConnections"],
+  pattern: string
+) {
+  return oauthFor(connections, pattern).length > 0;
 }
 
 function buildConnectors(data: AccountSettingsData): ConnectorRow[] {
@@ -114,14 +122,19 @@ function ConnectorDetail({
   data: AccountSettingsData;
 }) {
   if (id === "cursor") {
+    const cursorConnections = oauthFor(data.mcpOAuthConnections, "cursor");
     return (
       <div className="space-y-3 border-t border-line bg-paper-deep/20 px-4 py-4 sm:px-5">
         <AddToCursor mcpUrl={data.mcpConnectorUrl} mcpToken={data.user.mcpToken} />
+        {cursorConnections.length > 0 ? (
+          <McpConnectionList connections={cursorConnections} />
+        ) : null}
       </div>
     );
   }
 
   if (id === "claude") {
+    const claudeConnections = oauthFor(data.mcpOAuthConnections, "claude");
     return (
       <div className="space-y-3 border-t border-line bg-paper-deep/20 px-4 py-4 sm:px-5">
         <p className="text-sm text-ink-soft">
@@ -132,6 +145,9 @@ function ConnectorDetail({
           prompted.
         </p>
         <CopyField value={data.mcpConnectorUrl} secret={false} />
+        {claudeConnections.length > 0 ? (
+          <McpConnectionList connections={claudeConnections} />
+        ) : null}
       </div>
     );
   }
@@ -166,24 +182,7 @@ function ConnectorDetail({
           is required — no token copying.
         </p>
         <CopyField value={data.mcpConnectorUrl} secret={false} />
-        {data.mcpOAuthConnections.length > 0 ? (
-          <div className="rounded-lg border border-line bg-paper px-3 py-2.5">
-            <p className="text-xs font-medium text-ink">Active connections</p>
-            <ul className="mt-2 space-y-1.5">
-              {data.mcpOAuthConnections.map((row) => (
-                <li
-                  key={`${row.clientName}-${row.scope}`}
-                  className="text-xs text-ink-soft"
-                >
-                  <span className="font-medium text-ink">{row.clientName}</span>
-                  {" · "}
-                  {row.scope} scope
-                  {row.workspaceId ? " · pinned workspace" : ""}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
+        <McpConnectionList connections={data.mcpOAuthConnections} />
       </div>
     );
   }

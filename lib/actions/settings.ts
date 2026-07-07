@@ -117,6 +117,33 @@ export async function updateMcpWorkspaceAction(
   };
 }
 
+export async function disconnectMcpConnectionAction(
+  _prev: SettingsState,
+  formData: FormData
+): Promise<SettingsState> {
+  const user = await requireUser();
+  const clientId = String(formData.get("clientId") ?? "").trim();
+  if (!clientId) return { error: "Missing connection id" };
+
+  const { prisma } = await import("@/lib/prisma");
+  // Deletes access + refresh tokens for this user/client pair. The client
+  // app (Cursor, Claude, ...) is not notified — its next call simply gets a
+  // 401 and re-runs the OAuth flow, which is exactly the "remove to re-add"
+  // path. verifyOAuthAccessToken reads the DB per call, so this is instant.
+  const deleted = await prisma.oAuthToken.deleteMany({
+    where: { userId: user.id, clientId },
+  });
+  if (deleted.count === 0) {
+    return { error: "That connection no longer exists" };
+  }
+
+  revalidatePath("/settings");
+  return {
+    message:
+      "Disconnected. The app's next request will be rejected — reconnect from the app to sign in again.",
+  };
+}
+
 export async function deleteAccountAction(
   _prev: SettingsState,
   formData: FormData
