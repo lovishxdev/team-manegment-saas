@@ -1,4 +1,5 @@
 import {
+  SHELL_CONTENT_MAX,
   SHELL_MAIN_X,
   SHELL_TOP,
 } from "@/components/layout/app-shell-shared";
@@ -57,15 +58,47 @@ export function MainColumnSkeleton() {
   );
 }
 
+export function TaskPageSkeleton() {
+  return (
+    <div className={SHELL_CONTENT_MAX}>
+      <Pulse className="h-5 w-16" />
+      <Pulse className="mt-4 h-6 w-48" />
+      <Pulse className="mt-2 h-9 w-full max-w-xl" />
+      <div className="mt-6 flex gap-2">
+        <Pulse className="h-9 w-20" />
+        <Pulse className="h-9 w-24" />
+        <Pulse className="h-9 w-20" />
+      </div>
+      <div className="mt-6 flex flex-col gap-4 sm:flex-row">
+        <div className="min-w-0 flex-1 space-y-4">
+          <Pulse className="h-10 w-full" />
+          <Pulse className="h-40 w-full rounded-xl" />
+          <Pulse className="h-32 w-full rounded-xl" />
+        </div>
+        <Pulse className="h-64 w-full rounded-xl sm:w-56" />
+      </div>
+    </div>
+  );
+}
+
 export function ChatBubbleSkeleton({ count = 3 }: { count?: number }) {
   return (
     <div className="space-y-3" aria-hidden>
       {Array.from({ length: count }).map((_, index) => (
-        <div key={index} className="flex gap-2.5">
-          <Pulse className="h-8 w-8 shrink-0 rounded-full" />
-          <div className="min-w-0 flex-1 space-y-2">
-            <Pulse className="h-3 w-24" />
-            <Pulse className="h-14 w-full rounded-2xl rounded-tl-md" />
+        <div
+          key={index}
+          className="rounded-xl bg-paper-deep/30 px-4 py-3"
+        >
+          <div className="flex gap-3">
+            <Pulse className="h-9 w-9 shrink-0 rounded-full" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <Pulse className="h-4 w-24" />
+                <Pulse className="h-3 w-28" />
+              </div>
+              <Pulse className="h-4 w-full max-w-md" />
+              <Pulse className="h-4 w-[80%]" />
+            </div>
           </div>
         </div>
       ))}

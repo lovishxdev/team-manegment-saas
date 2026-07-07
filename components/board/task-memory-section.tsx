@@ -11,7 +11,7 @@ import { MemoryListSkeleton } from "@/components/ui/loading";
 import { ui } from "@/components/ui/ui";
 
 /**
- * Task-modal "Memory" tab: this task's captured decisions/blockers.
+ * Task page "Memory" tab: this task's captured decisions/blockers.
  */
 export function TaskMemorySection({
   workspaceId,
@@ -73,39 +73,40 @@ export function TaskMemorySection({
   }, [taskId, load]);
 
   if (!loaded) {
-    return <MemoryListSkeleton count={2} />;
-  }
-
-  if (events.length === 0) {
     return (
-      <p className="text-sm text-ink-faint">
-        No memory captured for this task yet.
-      </p>
+      <div className={ui.contentPanel}>
+        <MemoryListSkeleton count={2} />
+      </div>
     );
   }
 
   const openCount = events.filter((e) => e.status === "OPEN").length;
 
   return (
-    <div>
-      <label className={ui.label}>
-        Memory
-        {openCount > 0 && (
-          <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
-            {openCount} open blocker{openCount === 1 ? "" : "s"}
+    <div className={ui.contentPanel}>
+      <div className="mb-5 flex flex-wrap items-baseline gap-2">
+        <h2 className={ui.settingsSectionTitle}>Memory</h2>
+        {openCount > 0 ? (
+          <span className="inline-flex h-[22px] items-center rounded px-2 font-mono text-[10px] font-medium leading-none tracking-wide bg-rose-50 text-rose-700">
+            {openCount} open
           </span>
-        )}
-      </label>
-      <div className="flex max-h-56 flex-col gap-2 overflow-y-auto">
-        {events.map((event) => (
-          <MemoryEventCard
-            key={event.id}
-            workspaceId={workspaceId}
-            event={event}
-            showTaskLink={false}
-          />
-        ))}
+        ) : null}
       </div>
+
+      {events.length === 0 ? (
+        <p className={ui.fieldHint}>No memory captured for this task yet.</p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {events.map((event) => (
+            <MemoryEventCard
+              key={event.id}
+              workspaceId={workspaceId}
+              event={event}
+              showTaskLink={false}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

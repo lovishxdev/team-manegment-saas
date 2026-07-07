@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { ServiceError } from "@/lib/services/project";
 import { getWorkspaceChrome } from "@/lib/services/workspace-chrome";
+import { ui } from "@/components/ui/ui";
 
 export async function WorkspaceTitle({
   workspaceId,
@@ -13,7 +14,7 @@ export async function WorkspaceTitle({
   try {
     const { workspace } = await getWorkspaceChrome(workspaceId, user.id);
     return (
-      <h1 className="text-[2rem] font-semibold leading-tight tracking-tight text-ink sm:text-[2.25rem]">
+      <h1 className={ui.workspaceTitle}>
         {workspace.name}
       </h1>
     );

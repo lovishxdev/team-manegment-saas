@@ -14,12 +14,16 @@ export const ui = {
   focusWithin:
     `${fieldSurface} focus-within:-translate-y-px focus-within:border-ink/40 focus-within:bg-white focus-within:shadow-[0_4px_16px_rgba(26,26,26,0.1),0_0_0_4px_rgba(26,26,26,0.12)] focus-within:ring-0`,
   input:
-    `w-full px-3.5 py-2.5 text-sm text-ink placeholder:text-ink-faint ${fieldSurface} focus:ring-0`,
+    `w-full px-3.5 py-3 text-[15px] leading-snug text-ink placeholder:text-ink-faint ${fieldSurface} focus:ring-0`,
+  /** Prominent single-line fields (task title, workspace name). */
+  inputLg:
+    `w-full px-4 py-3.5 text-base font-medium leading-snug text-ink placeholder:text-ink-faint placeholder:font-normal ${fieldSurface} focus:ring-0`,
   /** @deprecated Use `<Select />` from `@/components/ui/select` instead. */
   select:
-    `px-3 py-2.5 text-sm text-ink-soft ${fieldSurface} focus:ring-0`,
+    `px-3.5 py-3 text-[15px] text-ink-soft ${fieldSurface} focus:ring-0`,
   label:
-    "mb-1.5 block text-xs font-medium text-ink-soft",
+    "mb-2 block text-sm font-medium text-ink",
+  fieldHint: "mt-1.5 text-sm text-ink-soft",
   /** Input + button row — wrap the field in `inputRowField` so `w-full` inputs don't overlap the button. */
   inputRow: "flex items-start gap-2",
   inputRowField: "min-w-0 flex-1",
@@ -57,6 +61,16 @@ export const ui = {
     "text-ink after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:rounded-full after:bg-ink",
   pageSubtitle: "mt-1.5 text-sm text-ink-soft",
   sectionTitle: "text-sm font-semibold text-ink",
+  /** Settings / form pages — bridges workspace shell title and field labels. */
+  settingsSectionTitle:
+    "text-base font-semibold tracking-tight text-ink sm:text-[1.0625rem]",
+  breadcrumbNav:
+    "flex items-center gap-1.5 font-mono text-[11px] tracking-wide text-ink-faint",
+  breadcrumbLink: "transition hover:text-ink-soft",
+  breadcrumbCurrent: "truncate text-ink-soft",
+  /** Workspace name in tab chrome and matching drill-in pages. */
+  workspaceTitle:
+    "text-[2rem] font-semibold leading-tight tracking-tight text-ink sm:text-[2.25rem]",
   errorText: "text-sm text-red-600",
   successText: "text-sm text-emerald-700",
   linkText: "text-ink underline-offset-2 hover:underline",

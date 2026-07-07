@@ -6,11 +6,15 @@ import {
   DndContext,
   DragOverlay,
   PointerSensor,
+  pointerWithin,
+  rectIntersection,
   useDraggable,
   useDroppable,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
+  type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { restrictToWindowEdges } from "@dnd-kit/modifiers";
@@ -22,9 +26,13 @@ import {
 } from "@/lib/actions/workspace";
 import { formatTaskTitle } from "@/lib/format-task-title";
 import { markdownToPlainText } from "@/lib/markdown/parse";
-import { TaskModal } from "@/components/board/task-modal";
+import { MessageCircle, Plus } from "lucide-react";
+import {
+  rememberTaskReturnPath,
+  taskNewPath,
+  taskPath,
+} from "@/lib/task-navigation";
 import { Select } from "@/components/ui/select";
-import { LoadingCenter } from "@/components/ui/loading";
 import { tagColor } from "@/components/ui/ui";
 import { MemberAvatarStack } from "@/components/members/member-avatar-stack";
 
@@ -48,6 +56,7 @@ export type BoardTask = {
   tags: string[];
   assignees: { id: string; label: string | null }[];
   attachments: TaskAttachment[];
+  updateCount: number;
 };
 
 export type BoardMember = {
@@ -67,39 +76,76 @@ const COLUMNS: {
   status: BoardTask["status"];
   label: string;
   columnClass: string;
-  dot: string;
-  countBg: string;
+  emptyZone: string;
   dropRing: string;
-  dropActive: string;
+  dropHint: string;
 }[] = [
   {
     status: "TODO",
-    label: "To Do",
-    columnClass: "kanban-column kanban-column--todo",
-    dot: "bg-rose-500",
-    countBg: "bg-white/70",
-    dropRing: "ring-rose-400/55",
-    dropActive: "border-rose-400 bg-rose-200/60 text-rose-800",
+    label: "To-dos",
+    columnClass: "kanban-column--todo",
+    emptyZone:
+      "border-rose-300/55 bg-white/25 hover:border-rose-400/70 hover:bg-white/40",
+    dropRing: "ring-rose-400/35",
+    dropHint: "border-rose-300/55 bg-white/30 text-rose-800/85",
   },
   {
     status: "IN_PROGRESS",
-    label: "In Progress",
-    columnClass: "kanban-column kanban-column--progress",
-    dot: "bg-orange-500",
-    countBg: "bg-white/70",
-    dropRing: "ring-orange-400/55",
-    dropActive: "border-orange-400 bg-orange-200/60 text-orange-900",
+    label: "In progress",
+    columnClass: "kanban-column--progress",
+    emptyZone:
+      "border-orange-300/55 bg-white/25 hover:border-orange-400/70 hover:bg-white/40",
+    dropRing: "ring-orange-400/35",
+    dropHint: "border-orange-300/55 bg-white/30 text-orange-900/85",
   },
   {
     status: "DONE",
     label: "Done",
-    columnClass: "kanban-column kanban-column--done",
-    dot: "bg-violet-500",
-    countBg: "bg-white/70",
-    dropRing: "ring-violet-400/55",
-    dropActive: "border-violet-400 bg-violet-200/60 text-violet-900",
+    columnClass: "kanban-column--done",
+    emptyZone:
+      "border-violet-300/55 bg-white/25 hover:border-violet-400/70 hover:bg-white/40",
+    dropRing: "ring-violet-400/35",
+    dropHint: "border-violet-300/55 bg-white/30 text-violet-900/85",
   },
 ];
+
+const COLUMN_STATUSES = new Set<BoardTask["status"]>([
+  "TODO",
+  "IN_PROGRESS",
+  "DONE",
+]);
+
+/** Prefer column droppables so hover + drop work over cards, not just gaps. */
+const boardCollisionDetection: CollisionDetection = (args) => {
+  const pointerHits = pointerWithin(args);
+  const columnPointer = pointerHits.find((hit) =>
+    COLUMN_STATUSES.has(hit.id as BoardTask["status"])
+  );
+  if (columnPointer) return [columnPointer];
+
+  const rectHits = rectIntersection(args);
+  const columnRect = rectHits.find((hit) =>
+    COLUMN_STATUSES.has(hit.id as BoardTask["status"])
+  );
+  if (columnRect) return [columnRect];
+
+  return pointerHits.length > 0 ? pointerHits : rectHits;
+};
+
+function resolveDropColumn(
+  overId: string | number | undefined,
+  tasks: BoardTask[]
+): BoardTask["status"] | null {
+  if (
+    overId === "TODO" ||
+    overId === "IN_PROGRESS" ||
+    overId === "DONE"
+  ) {
+    return overId;
+  }
+  if (overId == null) return null;
+  return tasks.find((t) => t.id === String(overId))?.status ?? null;
+}
 
 const PRIORITY_STYLES: Record<BoardTask["priority"], string> = {
   HIGH: "bg-rose-50 text-rose-700",
@@ -108,7 +154,13 @@ const PRIORITY_STYLES: Record<BoardTask["priority"], string> = {
 };
 
 /* Status chips: monospaced labels in low-opacity tints (Kinetic spec). */
-const chipCls = "rounded px-2 py-1 font-mono text-[10px] font-medium tracking-wide";
+const chipCls =
+  "inline-flex h-[22px] items-center rounded px-2 font-mono text-[10px] font-medium leading-none tracking-wide";
+
+const cardMetaCls =
+  "inline-flex h-6 items-center gap-1 font-mono text-[11px] leading-none tabular-nums";
+
+const cardMetaIconCls = "size-3.5 shrink-0";
 
 function formatDue(iso: string): { label: string; overdue: boolean } {
   const due = new Date(iso);
@@ -124,7 +176,13 @@ function formatDue(iso: string): { label: string; overdue: boolean } {
   return { label, overdue };
 }
 
-function TaskCardBody({ task }: { task: BoardTask }) {
+function TaskCardBody({
+  task,
+  onOpenUpdates,
+}: {
+  task: BoardTask;
+  onOpenUpdates: (task: BoardTask) => void;
+}) {
   const due = task.dueDate ? formatDue(task.dueDate) : null;
   const isOverdue = due?.overdue && task.status !== "DONE";
 
@@ -137,41 +195,43 @@ function TaskCardBody({ task }: { task: BoardTask }) {
   return (
     <>
       {/* Chips row: scope + priority + free-form tags + add affordance */}
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span className={`${chipCls} ${tagColor(task.categoryName)}`}>
-          {task.categoryName}
-        </span>
-        {task.priority !== "MEDIUM" && (
+      <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+          <span className={`${chipCls} ${tagColor(task.categoryName)}`}>
+            {task.categoryName}
+          </span>
+          {task.priority !== "MEDIUM" && (
+            <span
+              className={`${chipCls} uppercase ${PRIORITY_STYLES[task.priority]}`}
+            >
+              {task.priority.toLowerCase()}
+            </span>
+          )}
+          {task.tags.slice(0, 3).map((tag) => (
+            <span key={tag} className={`${chipCls} ${tagColor(tag)}`}>
+              {tag}
+            </span>
+          ))}
+          {task.tags.length > 3 && (
+            <span className={`${chipCls} bg-paper-deep text-ink-faint`}>
+              +{task.tags.length - 3}
+            </span>
+          )}
           <span
-            className={`${chipCls} uppercase ${PRIORITY_STYLES[task.priority]}`}
+            title="Add tag"
+            className="inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded bg-paper-deep text-ink-faint transition hover:bg-line hover:text-ink"
           >
-            {task.priority.toLowerCase()}
+            <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none" aria-hidden>
+              <path
+                d="M6 2.5v7M2.5 6h7"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+            </svg>
           </span>
-        )}
-        {task.tags.slice(0, 3).map((tag) => (
-          <span key={tag} className={`${chipCls} ${tagColor(tag)}`}>
-            {tag}
-          </span>
-        ))}
-        {task.tags.length > 3 && (
-          <span className={`${chipCls} bg-paper-deep text-ink-faint`}>
-            +{task.tags.length - 3}
-          </span>
-        )}
-        <span
-          title="Add tag"
-          className="inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded bg-paper-deep text-ink-faint transition hover:bg-line hover:text-ink"
-        >
-          <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none" aria-hidden>
-            <path
-              d="M6 2.5v7M2.5 6h7"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            />
-          </svg>
-        </span>
-        <span className="ml-auto font-mono text-[10px] font-medium text-ink-faint/70">
+        </div>
+        <span className={`${chipCls} shrink-0 px-0 text-ink-faint/70`}>
           #{task.shortId}
         </span>
       </div>
@@ -207,8 +267,8 @@ function TaskCardBody({ task }: { task: BoardTask }) {
         </p>
       )}
 
-      <div className="mt-4 flex items-center justify-between">
-        <div className="flex items-center">
+      <div className="mt-4 flex items-center justify-between gap-3">
+        <div className="flex h-6 shrink-0 items-center">
           {task.assignees.length > 0 ? (
             <MemberAvatarStack
               members={task.assignees}
@@ -218,32 +278,75 @@ function TaskCardBody({ task }: { task: BoardTask }) {
               overlap={8}
             />
           ) : (
-            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-dashed border-line-strong text-[11px] text-ink-faint">
-              +
+            <span
+              aria-hidden
+              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-dashed border-line-strong text-ink-faint"
+            >
+              <Plus className="h-3 w-3 shrink-0" strokeWidth={2} />
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2.5 font-mono text-[10px] text-ink-faint">
+        <div className="flex h-6 shrink-0 items-center gap-2.5 text-ink-faint">
+          <button
+            type="button"
+            title="Task updates"
+            aria-label={
+              task.updateCount > 0
+                ? `${task.updateCount} updates`
+                : "Open task updates"
+            }
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpenUpdates(task);
+            }}
+            className={`${cardMetaCls} shrink-0 rounded-md px-1 transition hover:bg-paper-deep hover:text-ink ${
+              task.updateCount > 0 ? "text-ink-soft" : "text-ink-faint/80"
+            }`}
+          >
+            <MessageCircle
+              className={cardMetaIconCls}
+              strokeWidth={1.75}
+              aria-hidden
+            />
+            <span>{task.updateCount}</span>
+          </button>
           {fileCount > 0 && (
-            <span className="inline-flex items-center gap-1">
-              <svg viewBox="0 0 14 14" fill="none" className="h-3 w-3" stroke="currentColor" strokeWidth="1.2">
+            <span className={`${cardMetaCls} shrink-0`}>
+              <svg
+                viewBox="0 0 14 14"
+                fill="none"
+                className={cardMetaIconCls}
+                stroke="currentColor"
+                strokeWidth="1.2"
+                aria-hidden
+              >
                 <path d="M9.5 4 5 8.5a1.4 1.4 0 0 0 2 2L11.5 6a2.8 2.8 0 1 0-4-4L3 6.5a4.2 4.2 0 0 0 6 6l3-3" />
               </svg>
-              {fileCount}
+              <span>{fileCount}</span>
             </span>
           )}
           {due && (
             <span
-              className={`inline-flex items-center gap-1 ${
+              className={`${cardMetaCls} shrink-0 ${
                 isOverdue ? "font-semibold text-red-400" : ""
               }`}
             >
-              <svg viewBox="0 0 14 14" fill="none" className="h-3 w-3" stroke="currentColor" strokeWidth="1.2">
+              <svg
+                viewBox="0 0 14 14"
+                fill="none"
+                className={cardMetaIconCls}
+                stroke="currentColor"
+                strokeWidth="1.2"
+                aria-hidden
+              >
                 <rect x="1.5" y="2.5" width="11" height="10" rx="1.5" />
                 <path d="M1.5 5.5h11M4.5 1.5v2M9.5 1.5v2" />
               </svg>
-              {isOverdue ? "overdue " : ""}
-              {due.label}
+              <span>
+                {isOverdue ? "overdue " : ""}
+                {due.label}
+              </span>
             </span>
           )}
         </div>
@@ -258,9 +361,11 @@ const taskCardSurface =
 function TaskCard({
   task,
   onOpen,
+  onOpenUpdates,
 }: {
   task: BoardTask;
   onOpen: (task: BoardTask) => void;
+  onOpenUpdates: (task: BoardTask) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: task.id });
@@ -280,13 +385,13 @@ function TaskCard({
         if (!isDragging) onOpen(task);
       }}
       style={style}
-      className={`${taskCardSurface} touch-none transition-[border-color,box-shadow,opacity] duration-150 hover:border-line-strong hover:shadow-[0_4px_12px_rgba(26,26,26,0.08)] active:cursor-grabbing ${
+      className={`${taskCardSurface} touch-none transition-[border-color,box-shadow] duration-150 hover:border-line-strong hover:shadow-[0_4px_12px_rgba(26,26,26,0.08)] active:cursor-grabbing ${
         isDragging
-          ? "pointer-events-none opacity-0"
+          ? "pointer-events-none opacity-35"
           : "cursor-grab"
       }`}
     >
-      <TaskCardBody task={task} />
+      <TaskCardBody task={task} onOpenUpdates={onOpenUpdates} />
     </article>
   );
 }
@@ -294,68 +399,70 @@ function TaskCard({
 function TaskCardOverlay({ task }: { task: BoardTask }) {
   return (
     <article
-      className={`${taskCardSurface} w-[min(100%,22rem)] cursor-grabbing border-ink/35 shadow-lg ring-1 ring-ink/10 rotate-2`}
+      className={`${taskCardSurface} w-[min(100%,22rem)] cursor-grabbing border-line-strong shadow-[0_8px_24px_rgba(26,26,26,0.12)]`}
     >
-      <TaskCardBody task={task} />
+      <TaskCardBody task={task} onOpenUpdates={() => {}} />
     </article>
   );
 }
 
-/**
- * Ghost tile shown as a drop target while a task is being dragged.
- * Sized to match the dragged card so the drop feels 1:1.
- */
-function DropPlaceholder({
-  height,
-  dropActive,
+function ColumnEmptyState({
+  status,
+  emptyZone,
+  onCreate,
+  isDropTarget = false,
 }: {
-  height: number;
-  dropActive: string;
+  status: BoardTask["status"];
+  emptyZone: string;
+  onCreate: (status: BoardTask["status"]) => void;
+  isDropTarget?: boolean;
 }) {
   return (
-    <div
-      style={{ height }}
-      className={`flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed p-4 transition-colors duration-200 ${dropActive}`}
+    <button
+      type="button"
+      onClick={() => onCreate(status)}
+      className={`group flex min-h-[7.5rem] w-full flex-col items-center justify-center gap-2 rounded-md border border-dashed px-3 py-7 text-center transition duration-150 ${emptyZone}`}
     >
-      <svg
-        viewBox="0 0 20 20"
-        fill="none"
-        className="h-6 w-6"
-        stroke="currentColor"
-        strokeWidth="1.3"
-      >
-        <rect x="6.5" y="3" width="10" height="12" rx="2" />
-        <path d="M13.5 17.2a2 2 0 0 1-1.9 1.3H6a2.5 2.5 0 0 1-2.5-2.5V8.4A2 2 0 0 1 4.8 6.5" />
-      </svg>
-      <span className="font-mono text-[11px] font-medium tracking-wide">
-        Release to move here
+      {!isDropTarget && (
+        <span className="flex h-8 w-8 items-center justify-center rounded-full border border-white/80 bg-white/70 text-ink-faint shadow-sm transition group-hover:text-ink">
+          <Plus className="h-4 w-4" strokeWidth={2} aria-hidden />
+        </span>
+      )}
+      <span className="text-sm font-medium text-ink-soft transition group-hover:text-ink">
+        {isDropTarget ? "Release to move here" : "Add task"}
       </span>
-    </div>
+      {!isDropTarget && (
+        <span className="text-xs text-ink-faint">or drag one here</span>
+      )}
+    </button>
   );
 }
 
-/** Expands/collapses the drop slot while dragging over a column. */
-function AnimatedDropSlot({
-  open,
-  height,
-  dropActive,
+function ColumnAddTask({
+  status,
+  onCreate,
 }: {
-  open: boolean;
-  height: number | null;
-  dropActive: string;
+  status: BoardTask["status"];
+  onCreate: (status: BoardTask["status"]) => void;
 }) {
-  const targetHeight = height ?? 112;
+  return (
+    <button
+      type="button"
+      onClick={() => onCreate(status)}
+      className="flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-ink-faint transition hover:bg-white/45 hover:text-ink"
+    >
+      <Plus className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+      Add task
+    </button>
+  );
+}
 
+function ColumnDropHint({ hintClass }: { hintClass: string }) {
   return (
     <div
-      aria-hidden={!open}
-      className="overflow-hidden transition-[height,opacity] duration-300 ease-out"
-      style={{
-        height: open ? targetHeight : 0,
-        opacity: open ? 1 : 0,
-      }}
+      className={`rounded-lg border border-dashed px-3 py-2.5 text-center text-xs font-medium ${hintClass}`}
     >
-      <DropPlaceholder height={targetHeight} dropActive={dropActive} />
+      Release to move here
     </div>
   );
 }
@@ -364,65 +471,79 @@ function Column({
   status,
   label,
   columnClass,
-  dot,
-  countBg,
+  emptyZone,
   dropRing,
-  dropActive,
+  dropHint,
   tasks,
   onOpen,
-  dropHint,
-  dragHeight,
+  onOpenUpdates,
+  onCreate,
+  dragSource,
+  overColumn,
 }: {
   status: BoardTask["status"];
   label: string;
   columnClass: string;
-  dot: string;
-  countBg: string;
+  emptyZone: string;
   dropRing: string;
-  dropActive: string;
+  dropHint: string;
   tasks: BoardTask[];
   onOpen: (task: BoardTask) => void;
-  /** True while a task from another column is being dragged. */
-  dropHint: boolean;
-  /** Height of the card being dragged, to size the placeholder 1:1. */
-  dragHeight: number | null;
+  onOpenUpdates: (task: BoardTask) => void;
+  onCreate: (status: BoardTask["status"]) => void;
+  dragSource: BoardTask["status"] | null;
+  overColumn: BoardTask["status"] | null;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
+  const isDragging = dragSource !== null;
+  const isDropTarget =
+    isDragging &&
+    dragSource !== status &&
+    (isOver || overColumn === status);
+  const isSourceColumn = isDragging && dragSource === status;
 
   return (
     <section
       ref={setNodeRef}
-      className={`transition-[box-shadow] duration-300 ease-out ${columnClass} ${
-        isOver ? `ring-2 ${dropRing} ring-offset-2 ring-offset-shell` : ""
-      }`}
+      className={`kanban-column ${columnClass} flex min-h-[18rem] flex-col transition-[box-shadow,opacity] duration-150 ${
+        isDropTarget
+          ? `ring-1 ${dropRing} ring-offset-1 ring-offset-shell`
+          : ""
+      } ${isSourceColumn ? "opacity-75" : ""}`}
     >
-      <header className="mb-3 flex items-center gap-2 px-1">
-        <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
-        <h3 className="font-mono text-xs font-semibold uppercase tracking-[0.1em] text-ink">
+      <header className="mb-3.5 flex items-baseline gap-2 px-0.5">
+        <h3 className="text-[15px] font-medium leading-none tracking-tight text-ink">
           {label}
         </h3>
-        <span
-          className={`rounded px-1.5 py-0.5 font-mono text-[11px] font-semibold text-ink-soft ${countBg}`}
-        >
+        <span className="inline-flex min-w-[1.35rem] items-center justify-center rounded-md bg-black/[0.06] px-1.5 py-0.5 text-xs font-medium tabular-nums text-ink-soft">
           {tasks.length}
         </span>
       </header>
-      <div className="flex min-h-16 flex-col gap-2.5">
+      <div className="flex flex-1 flex-col gap-2.5">
         {tasks.map((task) => (
-          <TaskCard key={task.id} task={task} onOpen={onOpen} />
+          <TaskCard
+            key={task.id}
+            task={task}
+            onOpen={onOpen}
+            onOpenUpdates={onOpenUpdates}
+          />
         ))}
-        {dropHint && (
-          <AnimatedDropSlot
-            open={isOver}
-            height={dragHeight}
-            dropActive={dropActive}
+        {tasks.length === 0 && (
+          <ColumnEmptyState
+            status={status}
+            emptyZone={
+              isDropTarget
+                ? `${emptyZone} !border-solid ring-1 ${dropRing}`
+                : emptyZone
+            }
+            onCreate={onCreate}
+            isDropTarget={isDropTarget}
           />
         )}
-        {tasks.length === 0 && !(dropHint && isOver) && (
-          <p className="rounded-md border border-dashed border-line-strong px-3 py-7 text-center text-xs text-ink-faint">
-            Drop tasks here
-          </p>
+        {isDropTarget && tasks.length > 0 && (
+          <ColumnDropHint hintClass={dropHint} />
         )}
+        {tasks.length > 0 && <ColumnAddTask status={status} onCreate={onCreate} />}
       </div>
     </section>
   );
@@ -473,7 +594,6 @@ export function TaskBoard({
   const searchParams = useSearchParams();
   const [, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [openTask, setOpenTask] = useState<BoardTask | null>(null);
   const pendingTaskShortId = useMemo(() => {
     const raw = searchParams.get("task");
     if (!raw) return null;
@@ -485,7 +605,9 @@ export function TaskBoard({
     null
   );
   const [activeTask, setActiveTask] = useState<BoardTask | null>(null);
-  const [dragHeight, setDragHeight] = useState<number | null>(null);
+  const [overColumn, setOverColumn] = useState<BoardTask["status"] | null>(
+    null
+  );
   const [members, setMembers] = useState<BoardMember[]>(() =>
     seedMembersFromTasks(tasks)
   );
@@ -498,25 +620,12 @@ export function TaskBoard({
 
   useEffect(() => {
     if (pendingTaskShortId === null) return;
-    const match = localTasks.find((t) => t.shortId === pendingTaskShortId);
-    if (!match) return;
-    setOpenTask(match);
-    router.replace(pathname, { scroll: false });
-  }, [pendingTaskShortId, localTasks, pathname, router]);
+    rememberTaskReturnPath(pathname);
+    router.replace(taskPath(workspaceId, pendingTaskShortId));
+  }, [pendingTaskShortId, workspaceId, pathname, router]);
 
   useEffect(() => {
-    if (pendingTaskShortId === null || openTask) return;
-    const match = localTasks.find((t) => t.shortId === pendingTaskShortId);
-    if (match) return;
-
-    const timer = window.setTimeout(() => {
-      router.replace(pathname, { scroll: false });
-    }, 2500);
-    return () => window.clearTimeout(timer);
-  }, [pendingTaskShortId, openTask, localTasks, pathname, router]);
-
-  useEffect(() => {
-    if ((!filtersOpen && !openTask) || membersLoaded) return;
+    if (!filtersOpen || membersLoaded) return;
 
     let cancelled = false;
     fetchWorkspaceMemberLabelsAction(workspaceId).then((loaded) => {
@@ -529,9 +638,24 @@ export function TaskBoard({
     return () => {
       cancelled = true;
     };
-  }, [workspaceId, filtersOpen, openTask, membersLoaded]);
+  }, [workspaceId, filtersOpen, membersLoaded]);
 
-  // Distance threshold keeps plain clicks working (opens the modal).
+  function openTask(task: BoardTask) {
+    rememberTaskReturnPath(pathname);
+    router.push(taskPath(workspaceId, task.shortId));
+  }
+
+  function openTaskUpdates(task: BoardTask) {
+    rememberTaskReturnPath(pathname);
+    router.push(taskPath(workspaceId, task.shortId, { tab: "updates" }));
+  }
+
+  function createTaskInColumn(columnStatus: BoardTask["status"]) {
+    rememberTaskReturnPath(pathname);
+    router.push(taskNewPath(workspaceId, { status: columnStatus }));
+  }
+
+  // Distance threshold keeps plain clicks working (opens the task page).
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
   );
@@ -622,37 +746,37 @@ export function TaskBoard({
     const task = localTasks.find((t) => t.id === taskId);
     setDragSource(task?.status ?? null);
     setActiveTask(task ?? null);
+    setOverColumn(null);
+  }
 
-    const node = document.querySelector(`[data-task-id="${taskId}"]`);
-    setDragHeight(
-      node ? node.getBoundingClientRect().height : null
-    );
+  function handleDragOver(event: DragOverEvent) {
+    setOverColumn(resolveDropColumn(event.over?.id, localTasks));
   }
 
   function handleDragEnd(event: DragEndEvent) {
+    const taskId = String(event.active.id);
+    const target = resolveDropColumn(event.over?.id, localTasks);
+    const task = localTasks.find((t) => t.id === taskId);
+
+    if (target && task && task.status !== target) {
+      setError(null);
+      setLocalTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? { ...t, status: target } : t))
+      );
+      startTransition(async () => {
+        const result = await updateTaskAction(workspaceId, taskId, {
+          status: target,
+        });
+        if (result.error) {
+          setError(result.error);
+          setLocalTasks(tasks); // roll back
+        }
+      });
+    }
+
     setDragSource(null);
     setActiveTask(null);
-    setDragHeight(null);
-    const taskId = String(event.active.id);
-    const target = event.over?.id as BoardTask["status"] | undefined;
-    if (!target) return;
-
-    const task = localTasks.find((t) => t.id === taskId);
-    if (!task || task.status === target) return;
-
-    setError(null);
-    setLocalTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, status: target } : t))
-    );
-    startTransition(async () => {
-      const result = await updateTaskAction(workspaceId, taskId, {
-        status: target,
-      });
-      if (result.error) {
-        setError(result.error);
-        setLocalTasks(tasks); // roll back
-      }
-    });
+    setOverColumn(null);
   }
 
   const categoryOptions = [
@@ -671,13 +795,6 @@ export function TaskBoard({
 
   return (
     <div>
-      {pendingTaskShortId !== null && !openTask ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/10 backdrop-blur-[1px]">
-          <div className="rounded-2xl border border-line bg-card px-8 py-6 shadow-lg">
-            <LoadingCenter label="Opening task…" className="min-h-0" />
-          </div>
-        </div>
-      ) : null}
       {filtersOpen && (
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <Select
@@ -735,16 +852,18 @@ export function TaskBoard({
       <DndContext
         id={`board-dnd-${workspaceId}`}
         sensors={sensors}
+        collisionDetection={boardCollisionDetection}
         // Vertical-only autoscroll: long columns stay reachable mid-drag,
         // but no horizontal drift (threshold.x = 0 disables that axis).
         autoScroll={{ threshold: { x: 0, y: 0.2 } }}
         modifiers={[restrictToWindowEdges]}
         onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
         onDragCancel={() => {
           setDragSource(null);
           setActiveTask(null);
-          setDragHeight(null);
+          setOverColumn(null);
         }}
       >
         <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-3">
@@ -754,14 +873,15 @@ export function TaskBoard({
               status={col.status}
               label={col.label}
               columnClass={col.columnClass}
-              dot={col.dot}
-              countBg={col.countBg}
+              emptyZone={col.emptyZone}
               dropRing={col.dropRing}
-              dropActive={col.dropActive}
+              dropHint={col.dropHint}
               tasks={visibleTasks.filter((t) => t.status === col.status)}
-              onOpen={setOpenTask}
-              dropHint={dragSource !== null && dragSource !== col.status}
-              dragHeight={dragHeight}
+              onOpen={openTask}
+              onOpenUpdates={openTaskUpdates}
+              onCreate={createTaskInColumn}
+              dragSource={dragSource}
+              overColumn={overColumn}
             />
           ))}
         </div>
@@ -769,17 +889,6 @@ export function TaskBoard({
           {activeTask ? <TaskCardOverlay task={activeTask} /> : null}
         </DragOverlay>
       </DndContext>
-
-      {openTask && (
-        <TaskModal
-          mode="edit"
-          workspaceId={workspaceId}
-          task={openTask}
-          members={members}
-          categories={categories}
-          onClose={() => setOpenTask(null)}
-        />
-      )}
     </div>
   );
 }

@@ -45,3 +45,9 @@ next-env.d.ts
 # nested duplicate workspace (local copy — has its own .git)
 team-manegment-saas-landing/
 team-management-saas/
+
+# Euclis (local credential + generated memory briefs)
+.euclis.json
+.cursor/euclis.json
+.cursor/rules/euclis-memory.mdc
+.claude/euclis-memory.md

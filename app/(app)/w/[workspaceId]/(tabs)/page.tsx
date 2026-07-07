@@ -42,6 +42,7 @@ async function BoardData({
         label: displayUser(a.user),
       })),
       attachments: t.attachments,
+      updateCount: t._count.updates,
     }));
 
   return (

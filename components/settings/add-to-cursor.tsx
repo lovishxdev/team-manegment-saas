@@ -48,7 +48,7 @@ export function AddToCursor({
         project brief that loads into every new chat. No tool calls, nothing
         to remember:
       </p>
-      <CopyField value={hooksCommand} secret />
+      <CopyField value={hooksCommand} secret={false} />
       <p className="mt-1 text-xs text-ink-faint">
         Optional: also install the rules snippet so the agent knows when to
         use the Euclis tools directly (deep context pulls, posting updates):

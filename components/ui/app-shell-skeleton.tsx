@@ -36,6 +36,21 @@ export function SidebarNavSkeleton() {
   );
 }
 
+export function MobileUserSkeleton() {
+  return (
+    <div className="flex items-center gap-1">
+      <div
+        aria-hidden
+        className="h-7 w-14 animate-pulse rounded-lg bg-paper-deep/70"
+      />
+      <div
+        aria-hidden
+        className="h-7 w-7 animate-pulse rounded-full bg-paper-deep/70"
+      />
+    </div>
+  );
+}
+
 export function AppShellLoading() {
   return (
     <SidebarProvider>

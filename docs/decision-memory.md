@@ -81,11 +81,17 @@ No signal auto-resolves anything. The suggestion engine
 
 - **WhatsApp:** "mark it resolved?" with ✅ Resolved / Not yet buttons
   (rides the conversation the person already has with the bot).
-- **MCP/coding agents:** pull-based — no push channel exists. Instead,
-  `read_task`, `ask_task`, and `add_task_update` responses append the task's
-  open blockers with an instruction to confirm with the user and call
-  `resolve_blocker`. Any session touching a task sees its blockers at
-  exactly the moment they're relevant.
+- **In-editor (Cursor / Claude Code):** when the session judge flags a
+  likely clear, the ingest response carries an `ask` and the hook feeds it
+  back into the very session that did the work (Cursor `followup_message` /
+  Claude Code `Stop`-block, both loop-guarded) — the agent asks the user in
+  the editor chat and calls `resolve_blocker` only on their yes. Shares the
+  same per-event throttle budget as WhatsApp, so no double-nagging.
+- **MCP tool responses:** additionally, `read_task`, `ask_task`, and
+  `add_task_update` responses append the task's open blockers with an
+  instruction to confirm with the user and call `resolve_blocker`. Any
+  session touching a task sees its blockers at exactly the moment they're
+  relevant.
 
 Anti-irritation rules (tracked on `MemoryEvent`): max 2 suggestions per
 blocker lifetime, 1h cooldown, permanent silence after "Not yet"
@@ -102,7 +108,9 @@ contract below is what gets it reflected.
 snippet", source: [lib/memory/rules-snippet.ts](../lib/memory/rules-snippet.ts)):
 call `get_project_context` before starting, `add_task_update` after
 meaningful work, `record_decision` when deciding, `resolve_blocker` (after
-confirmation) when a blocker clears.
+confirmation) when a blocker clears, and reference the task in commit
+messages (e.g. "(#12)" in the subject) so git history links back to the
+task — a convention, not a git integration.
 
 **Scopes** (enforced server-side in `dispatchMcpTool` — a prompt cannot talk
 its way past them):

@@ -70,6 +70,8 @@ model User {
   taskAssignments TaskAssignee[]
   createdTasks   Task[]                @relation("CreatedTasks")
   taskUpdates    TaskUpdate[]
+  taskUpdateMentions TaskUpdateMention[]
+  taskUpdateSaves TaskUpdateSave[]
   uploadedAssets Asset[]
   createdLinks   WorkspaceLink[]
   oauthCodes     OAuthCode[]
@@ -206,9 +208,39 @@ model TaskUpdate {
   author    User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
   embedding TaskUpdateEmbedding?
   memoryEvents MemoryEvent[] @relation("MemoryEventSource")
+  mentions  TaskUpdateMention[]
+  saves     TaskUpdateSave[]
 
   @@index([taskId, createdAt])
   @@index([workspaceId, createdAt])
+}
+
+/// Per-user bookmark of a task update (Saved tab).
+model TaskUpdateSave {
+  id        String   @id @default(uuid()) @db.Uuid
+  updateId  String   @db.Uuid
+  userId    String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  update TaskUpdate @relation(fields: [updateId], references: [id], onDelete: Cascade)
+  user   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([updateId, userId])
+  @@index([userId, createdAt])
+}
+
+/// Workspace members @mentioned in a task update (for notifications + UI).
+model TaskUpdateMention {
+  id        String   @id @default(uuid()) @db.Uuid
+  updateId  String   @db.Uuid
+  userId    String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  update TaskUpdate @relation(fields: [updateId], references: [id], onDelete: Cascade)
+  user   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([updateId, userId])
+  @@index([userId])
 }
 
 /// Structured decision-memory record — a discrete "moment worth remembering"
@@ -230,6 +262,10 @@ model MemoryEvent {
   summary     String
   /// Why — the answer to a future "why was X decided".
   reasoning   String?
+  /// Topic tags emitted by the capture judges ("auth", "payments", ...) —
+  /// lightweight entity nodes: grouping/filtering across tasks without a
+  /// knowledge-graph store.
+  tags        String[]          @default([])
   authorId    String?           @db.Uuid
 
   resolvedAt         DateTime?

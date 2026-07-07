@@ -5,14 +5,12 @@ import type { DashboardSearchTask } from "@/lib/services/workspace";
 import { DashboardTaskRow } from "@/components/dashboard/dashboard-task-row";
 import { ui } from "@/components/ui/ui";
 
-export function DashboardSearch({
+function DashboardSearchInput({
   query,
   onQueryChange,
-  results,
 }: {
   query: string;
   onQueryChange: (query: string) => void;
-  results: DashboardSearchTask[];
 }) {
   const searching = query.trim().length > 0;
 
@@ -43,24 +41,54 @@ export function DashboardSearch({
           </button>
         ) : null}
       </div>
-
-      {searching ? (
-        <div className="mt-3">
-          {results.length > 0 ? (
-            <ul className="flex flex-col gap-1.5">
-              {results.map((task) => (
-                <li key={task.id}>
-                  <DashboardTaskRow task={task} showAssignees />
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="rounded-lg border border-line/70 bg-paper/80 px-3 py-2.5 text-sm text-ink-soft">
-              No tasks match &ldquo;{query.trim()}&rdquo;
-            </p>
-          )}
-        </div>
-      ) : null}
     </section>
   );
 }
+
+function DashboardSearchResults({
+  query,
+  results,
+}: {
+  query: string;
+  results: DashboardSearchTask[];
+}) {
+  return (
+    <div className="-mt-6 mb-6">
+      {results.length > 0 ? (
+        <ul className="flex flex-col gap-1.5">
+          {results.map((task) => (
+            <li key={task.id}>
+              <DashboardTaskRow task={task} showAssignees />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="rounded-lg border border-line/70 bg-paper/80 px-3 py-2.5 text-sm text-ink-soft">
+          No tasks match &ldquo;{query.trim()}&rdquo;
+        </p>
+      )}
+    </div>
+  );
+}
+
+export function DashboardSearchResultsSkeleton({ query }: { query: string }) {
+  return (
+    <div className="-mt-6 mb-6" aria-busy aria-label="Loading search results">
+      <div className="flex flex-col gap-1.5">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div
+            key={i}
+            className="h-14 animate-pulse rounded-lg bg-paper-deep/70"
+          />
+        ))}
+      </div>
+      <p className="sr-only">Loading results for {query.trim()}</p>
+    </div>
+  );
+}
+
+/** Dashboard search — input paints immediately; results stream in via Suspense. */
+export const DashboardSearch = {
+  Input: DashboardSearchInput,
+  Results: DashboardSearchResults,
+};

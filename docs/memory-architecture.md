@@ -233,9 +233,17 @@ stated as the expected correct output.
 - Resolution is **confirm-only, always**:
   - WhatsApp: "mark it resolved?" with ✅ Resolved / Not yet buttons —
     rides an existing conversation, never a cold ping.
-  - Coding agents (pull-based, no push channel): blocker nudges ride tool
-    responses and the ambient brief, instructing the agent to confirm with
-    the user before calling `resolve_blocker`.
+  - In-editor: when the session judge flags a likely clear, the ingest
+    response carries an `ask` and the hook feeds it back into the session
+    that did the work (Cursor `followup_message` / Claude Code `Stop`-block
+    with reason, loop-guarded via `loop_count` / `stop_hook_active`). The
+    agent asks the user in the editor chat and calls `resolve_blocker`
+    only on a yes. The judge runs inline in the ingest request to make
+    this possible — acceptable because the caller is a hook, not a human.
+  - Passive: blocker nudges also ride task-tool responses and the ambient
+    brief.
+  - All channels share one per-event throttle budget (below), so the user
+    is never asked twice about the same clear by different surfaces.
 - Anti-irritation throttles on the event: max 2 suggestions per lifetime,
   1h cooldown, permanent silence after a decline.
 

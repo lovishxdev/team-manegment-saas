@@ -7,6 +7,7 @@ import { BUTTON } from "@/lib/whatsapp-interactive";
 import { ServiceError } from "@/lib/services/project";
 import { getWorkspaceMembers, createInvite } from "@/lib/services/workspace";
 import { displayUser, USERNAME_REGEX, normalizeUsername } from "@/lib/username";
+import { normalizeMemberRef } from "@/lib/services/member-resolve";
 
 export const MAX_BATCH_INVITES = 8;
 
@@ -49,7 +50,10 @@ async function findUserByIdentifier(identifier: string) {
     if (byPhone) return byPhone;
   }
 
-  if (trimmed.includes("@")) {
+  const memberRef = normalizeMemberRef(trimmed);
+  if (!memberRef) return null;
+
+  if (trimmed.includes("@") && trimmed.includes(".")) {
     const byEmail = await prisma.user.findFirst({
       where: { email: { equals: trimmed, mode: "insensitive" } },
       select: { id: true, username: true, email: true, phone: true },
@@ -57,21 +61,19 @@ async function findUserByIdentifier(identifier: string) {
     if (byEmail) return byEmail;
   }
 
-  const username = normalizeUsername(trimmed);
-  if (USERNAME_REGEX.test(username)) {
+  if (USERNAME_REGEX.test(memberRef)) {
     const byUsername = await prisma.user.findUnique({
-      where: { username },
+      where: { username: memberRef },
       select: { id: true, username: true, email: true, phone: true },
     });
     if (byUsername) return byUsername;
   }
 
-  const needle = trimmed.toLowerCase();
   const candidates = await prisma.user.findMany({
     where: {
       OR: [
-        { username: { contains: needle, mode: "insensitive" } },
-        { email: { contains: needle, mode: "insensitive" } },
+        { username: { contains: memberRef, mode: "insensitive" } },
+        { email: { contains: memberRef, mode: "insensitive" } },
       ],
     },
     select: { id: true, username: true, email: true, phone: true },

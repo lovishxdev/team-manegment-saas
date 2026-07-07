@@ -12,4 +12,7 @@ tasks, decisions, and blockers.
 - When a decision is made during the work (library choice, approach,
   trade-off), record it via `record_decision` with the reasoning.
 - If your work clears an open blocker, confirm with the user, then call
-  `resolve_blocker` with the blocker's event id.
+ `resolve_blocker` with the blocker's event id.
+- When committing work that belongs to a Euclis task, reference it in the
+ commit message (e.g. "(#12)" in the subject) so git history links back
+ to the task and its decisions.

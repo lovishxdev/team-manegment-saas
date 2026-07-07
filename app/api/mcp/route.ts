@@ -2,8 +2,10 @@ import { createMcpHandler, withMcpAuth } from "mcp-handler";
 import { getMcpIdentityByToken } from "@/lib/identity-cache";
 import { verifyOAuthAccessToken } from "@/lib/services/oauth";
 import { ServiceError } from "@/lib/services/project";
+import { salvageJsonRpcBody } from "@/lib/tools/input-salvage";
 import {
   dispatchMcpTool,
+  getToolDef,
   mcpTools,
   normalizeMcpScope,
 } from "@/lib/tools/registry";
@@ -117,4 +119,32 @@ const authHandler = withMcpAuth(
 
 export const maxDuration = 120;
 
-export { authHandler as GET, authHandler as POST };
+/**
+ * Pre-validation input salvage: models invent parameter names, and schema
+ * validation would silently strip them (losing intent) or reject the call.
+ * Rewriting tools/call arguments BEFORE mcp-handler validates means any
+ * stray-but-obvious string lands in the parameter it was meant for,
+ * regardless of what the model called it. See lib/tools/input-salvage.ts.
+ */
+async function postWithSalvage(req: Request): Promise<Response> {
+  let salvagedReq = req;
+  try {
+    const rawBody = await req.text();
+    const body = await salvageJsonRpcBody(
+      rawBody,
+      (name) => getToolDef(name)?.inputShape
+    );
+    const headers = new Headers(req.headers);
+    headers.delete("content-length");
+    salvagedReq = new Request(req.url, {
+      method: req.method,
+      headers,
+      body,
+    });
+  } catch {
+    // Body already consumed or unreadable — fall through with the original.
+  }
+  return authHandler(salvagedReq);
+}
+
+export { authHandler as GET, postWithSalvage as POST };

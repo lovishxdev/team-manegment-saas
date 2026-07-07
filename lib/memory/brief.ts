@@ -15,6 +15,7 @@ import {
 const MAX_TASKS = 12;
 const MAX_DECISIONS = 8;
 const MAX_BLOCKERS = 10;
+const MAX_RECENT = 6;
 
 const STATUS_LABEL: Record<string, string> = {
   TODO: "todo",
@@ -24,8 +25,10 @@ const STATUS_LABEL: Record<string, string> = {
 
 function formatEventLine(e: MemoryEventRow): string {
   const task = e.task ? ` · task #${e.task.shortId}` : "";
+  const tags =
+    e.tags.length > 0 ? ` · ${e.tags.map((t) => `#${t}`).join(" ")}` : "";
   const why = e.reasoning ? `\n  why: ${e.reasoning}` : "";
-  return `- [${e.kind}] ${e.summary}${why}\n  (${e.createdAt.toISOString().slice(0, 10)}${task} · id: ${e.id})`;
+  return `- [${e.kind}] ${e.summary}${why}\n  (${e.createdAt.toISOString().slice(0, 10)}${task}${tags} · id: ${e.id})`;
 }
 
 export async function buildWorkspaceBrief(input: {
@@ -33,7 +36,7 @@ export async function buildWorkspaceBrief(input: {
   workspaceName: string;
   userId: string;
 }): Promise<string> {
-  const [tasks, openEvents, decisions] = await Promise.all([
+  const [tasks, openEvents, decisions, recent] = await Promise.all([
     prisma.task.findMany({
       where: { workspaceId: input.workspaceId, status: { not: "DONE" } },
       orderBy: { updatedAt: "desc" },
@@ -56,6 +59,20 @@ export async function buildWorkspaceBrief(input: {
       userId: input.userId,
       kind: "DECISION",
       limit: MAX_DECISIONS,
+    }),
+    // What just happened, regardless of kind/status — resolved blockers and
+    // fresh milestones included, so a returning agent sees movement at a
+    // glance without querying anything.
+    prisma.memoryEvent.findMany({
+      where: { workspaceId: input.workspaceId, supersededByEventId: null },
+      orderBy: { createdAt: "desc" },
+      take: MAX_RECENT,
+      select: {
+        kind: true,
+        status: true,
+        summary: true,
+        createdAt: true,
+      },
     }),
   ]);
 
@@ -80,6 +97,22 @@ export async function buildWorkspaceBrief(input: {
       : `(none recorded yet)`
   );
 
+  sections.push(``, `## Recent memory activity`);
+  sections.push(
+    recent.length > 0
+      ? recent
+          .map((e) => {
+            const statusNote =
+              (e.kind === "BLOCKER" || e.kind === "DEPENDENCY") &&
+              e.status === "RESOLVED"
+                ? ", resolved"
+                : "";
+            return `- [${e.kind}${statusNote}] ${e.summary} (${e.createdAt.toISOString().slice(0, 10)})`;
+          })
+          .join("\n")
+      : `(nothing yet)`
+  );
+
   sections.push(``, `## Active tasks`);
   sections.push(
     tasks.length > 0
@@ -100,7 +133,8 @@ export async function buildWorkspaceBrief(input: {
     `- If a blocker above affects the current work, tell the user before proceeding.`,
     `- Deeper context on demand: \`get_project_context\` / \`recall_memory\` (Euclis MCP).`,
     `- After meaningful work: \`add_task_update\` on the task (#N). New decisions: \`record_decision\`.`,
-    `- \`resolve_blocker\` only after the user confirms a blocker is actually cleared.`
+    `- \`resolve_blocker\` only after the user confirms a blocker is actually cleared.`,
+    `- Commits for a Euclis task should reference it in the message (e.g. "(#12)" in the subject).`
   );
 
   return sections.join("\n");

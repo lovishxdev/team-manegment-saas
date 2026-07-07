@@ -180,7 +180,7 @@ function ConnectorDetail({
           project brief imported by <code className="rounded bg-paper-deep px-1 py-0.5 font-mono text-[11px]">CLAUDE.md</code>.
           No tool calls, nothing to remember:
         </p>
-        <CopyField value={hooksCommand} secret />
+        <CopyField value={hooksCommand} secret={false} />
       </div>
     );
   }

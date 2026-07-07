@@ -1,8 +1,7 @@
 import { cookies } from "next/headers";
-import { requireUser } from "@/lib/auth";
+import { getSessionClaims } from "@/lib/auth";
 import { AppShell } from "@/components/layout/app-shell";
 import { SIDEBAR_COOKIE } from "@/components/layout/sidebar-context";
-import { displayUser } from "@/lib/username";
 
 /**
  * Persistent shell for all authenticated app routes (dashboard, settings,
@@ -16,18 +15,11 @@ export default async function AppLayout({
   children: React.ReactNode;
   modal: React.ReactNode;
 }) {
-  const [user, cookieStore] = await Promise.all([requireUser(), cookies()]);
+  const [cookieStore] = await Promise.all([cookies(), getSessionClaims()]);
   const sidebarCollapsed = cookieStore.get(SIDEBAR_COOKIE)?.value === "1";
 
   return (
-    <AppShell
-      userId={user.id}
-      userLabel={displayUser(user)}
-      userPhone={user.phone}
-      whatsappChatCached={Boolean(user.whatsappChatInitiatedAt)}
-      sidebarCollapsed={sidebarCollapsed}
-      modal={modal}
-    >
+    <AppShell sidebarCollapsed={sidebarCollapsed} modal={modal}>
       {children}
     </AppShell>
   );

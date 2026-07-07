@@ -1,11 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { MemberAvatar } from "@/components/members/member-avatar-stack";
 import { DashboardGreeting } from "@/components/dashboard/dashboard-greeting";
-import { DashboardSearch } from "@/components/dashboard/dashboard-search";
+import {
+  DashboardSearch,
+  DashboardSearchResultsSkeleton,
+} from "@/components/dashboard/dashboard-search";
 import { DashboardSneakPeek } from "@/components/dashboard/dashboard-sneak-peek";
 import { WorkspaceCard } from "@/components/workspace/workspace-card";
+import { loadDashboardSearchIndex } from "@/lib/actions/dashboard";
 import {
   filterDashboardSearchTasks,
   filterDashboardWorkspaces,
@@ -26,25 +30,97 @@ type WorkspaceEntry = {
   role: string;
 };
 
+function WorkspaceGrid({
+  workspaces,
+  statsByWorkspace,
+  membersByWorkspace,
+  showHeading = false,
+}: {
+  workspaces: WorkspaceEntry[];
+  statsByWorkspace: Map<string, WorkspaceDashboardStats>;
+  membersByWorkspace: Map<string, MemberAvatar[]>;
+  showHeading?: boolean;
+}) {
+  if (workspaces.length === 0) {
+    return (
+      <section className={ui.dashboardPanel}>
+        <p className="rounded-lg border border-line/70 bg-paper/80 px-3 py-2.5 text-sm text-ink-soft">
+          No workspaces match your search.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className={ui.dashboardPanel}>
+      {showHeading ? (
+        <h2 className="mb-2 text-sm font-semibold text-ink">Workspaces</h2>
+      ) : null}
+      <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+        {workspaces.map(({ workspace, role }) => (
+          <WorkspaceCard
+            key={workspace.id}
+            id={workspace.id}
+            name={workspace.name}
+            role={role}
+            memberCount={workspace._count.memberships}
+            members={membersByWorkspace.get(workspace.id) ?? []}
+            stats={
+              statsByWorkspace.get(workspace.id) ?? {
+                openTasks: 0,
+                assignedToYou: 0,
+              }
+            }
+          />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export function DashboardContent({
   userLabel,
   home,
   workspaces,
-  searchIndex,
   statsByWorkspace,
   membersByWorkspace,
 }: {
   userLabel: string | null;
   home: DashboardHomeSummary;
   workspaces: WorkspaceEntry[];
-  searchIndex: DashboardSearchTask[];
   statsByWorkspace: Map<string, WorkspaceDashboardStats>;
   membersByWorkspace: Map<string, MemberAvatar[]>;
 }) {
   const [query, setQuery] = useState("");
+  const [searchIndex, setSearchIndex] = useState<DashboardSearchTask[] | null>(
+    null
+  );
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchRequestRef = useRef(0);
+
+  const searching = query.trim().length > 0;
+
+  useEffect(() => {
+    if (!searching) return;
+    if (searchIndex !== null) return;
+
+    const requestId = ++searchRequestRef.current;
+    setSearchLoading(true);
+
+    void loadDashboardSearchIndex()
+      .then((index) => {
+        if (requestId !== searchRequestRef.current) return;
+        setSearchIndex(index);
+      })
+      .finally(() => {
+        if (requestId !== searchRequestRef.current) return;
+        setSearchLoading(false);
+      });
+  }, [searching, searchIndex]);
 
   const results = useMemo(
-    () => filterDashboardSearchTasks(searchIndex, query),
+    () =>
+      searchIndex ? filterDashboardSearchTasks(searchIndex, query) : [],
     [searchIndex, query]
   );
 
@@ -54,11 +130,12 @@ export function DashboardContent({
   );
 
   const visibleWorkspaces = useMemo(
-    () => filterDashboardWorkspaces(workspaces, query, matchingWorkspaceIds),
-    [workspaces, query, matchingWorkspaceIds]
+    () =>
+      searchIndex
+        ? filterDashboardWorkspaces(workspaces, query, matchingWorkspaceIds)
+        : workspaces,
+    [workspaces, query, matchingWorkspaceIds, searchIndex]
   );
-
-  const searching = query.trim().length > 0;
 
   return (
     <>
@@ -69,11 +146,15 @@ export function DashboardContent({
         assignedToYou={home.assignedToYou}
       />
 
-      <DashboardSearch
-        query={query}
-        onQueryChange={setQuery}
-        results={results}
-      />
+      <DashboardSearch.Input query={query} onQueryChange={setQuery} />
+
+      {searching ? (
+        searchLoading || searchIndex === null ? (
+          <DashboardSearchResultsSkeleton query={query} />
+        ) : (
+          <DashboardSearch.Results query={query} results={results} />
+        )
+      ) : null}
 
       {!searching ? <DashboardSneakPeek tasks={home.taskPeeks} /> : null}
 
@@ -102,36 +183,33 @@ export function DashboardContent({
             </p>
           </div>
         </section>
-      ) : visibleWorkspaces.length === 0 ? (
-        <section className={ui.dashboardPanel}>
-          <p className="rounded-lg border border-line/70 bg-paper/80 px-3 py-2.5 text-sm text-ink-soft">
-            No workspaces match your search.
-          </p>
-        </section>
+      ) : searching ? (
+        searchLoading || searchIndex === null ? (
+          <section className={ui.dashboardPanel}>
+            <div className="h-3 w-24 animate-pulse rounded bg-paper-deep/70" />
+            <ul className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+              {Array.from({ length: 2 }).map((_, i) => (
+                <li
+                  key={i}
+                  className="h-12 animate-pulse rounded-lg bg-paper-deep/70"
+                />
+              ))}
+            </ul>
+          </section>
+        ) : (
+          <WorkspaceGrid
+            workspaces={visibleWorkspaces}
+            statsByWorkspace={statsByWorkspace}
+            membersByWorkspace={membersByWorkspace}
+            showHeading
+          />
+        )
       ) : (
-        <section className={ui.dashboardPanel}>
-          {searching ? (
-            <h2 className="mb-2 text-sm font-semibold text-ink">Workspaces</h2>
-          ) : null}
-          <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-            {visibleWorkspaces.map(({ workspace, role }) => (
-              <WorkspaceCard
-                key={workspace.id}
-                id={workspace.id}
-                name={workspace.name}
-                role={role}
-                memberCount={workspace._count.memberships}
-                members={membersByWorkspace.get(workspace.id) ?? []}
-                stats={
-                  statsByWorkspace.get(workspace.id) ?? {
-                    openTasks: 0,
-                    assignedToYou: 0,
-                  }
-                }
-              />
-            ))}
-          </ul>
-        </section>
+        <WorkspaceGrid
+          workspaces={workspaces}
+          statsByWorkspace={statsByWorkspace}
+          membersByWorkspace={membersByWorkspace}
+        />
       )}
     </>
   );

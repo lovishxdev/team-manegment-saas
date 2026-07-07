@@ -2,6 +2,12 @@
 
 import { useState, useTransition } from "react";
 import { revokeInviteAction } from "@/lib/actions/workspace";
+import { ui } from "@/components/ui/ui";
+
+const settingsRowCls =
+  "rounded-xl border border-line bg-white px-4 py-3.5 shadow-[0_1px_3px_rgba(26,26,26,0.04)]";
+
+const actionBtnCls = "min-h-[46px] px-3.5";
 
 export function InviteRow({
   workspaceId,
@@ -38,17 +44,14 @@ export function InviteRow({
     });
   }
 
-  const smallBtn =
-    "rounded-md border border-line-strong px-2.5 py-1 text-xs text-ink-soft transition disabled:opacity-60";
-
   return (
-    <div className="flex flex-col gap-1 rounded-lg border border-line bg-card px-4 py-3">
-      <div className="flex items-center justify-between gap-3">
+    <div className={`flex flex-col gap-2 ${settingsRowCls}`}>
+      <div className="flex items-center justify-between gap-4">
         <div className="min-w-0">
-          <p className="truncate font-mono text-xs text-ink">
+          <p className="truncate font-mono text-sm text-ink">
             /invite/{invite.id.slice(0, 8)}…
           </p>
-          <p className="text-xs text-ink-faint">
+          <p className="text-sm text-ink-faint">
             {invite.usesCount}/{invite.maxUses} uses ·{" "}
             {invite.active
               ? `expires ${new Date(invite.expiresAt).toLocaleString("en-GB")}`
@@ -57,25 +60,29 @@ export function InviteRow({
                 : "exhausted"}
           </p>
         </div>
+
         <div className="flex shrink-0 items-center gap-2">
-          {invite.active && (
+          {invite.active ? (
             <button
+              type="button"
               onClick={copy}
-              className={`${smallBtn} hover:border-ink/40 hover:text-ink`}
+              className={`${ui.btnSecondary} ${actionBtnCls}`}
             >
               {copied ? "Copied!" : "Copy link"}
             </button>
-          )}
+          ) : null}
           <button
+            type="button"
             onClick={revoke}
             disabled={pending}
-            className={`${smallBtn} hover:border-red-500/50 hover:text-red-300`}
+            className={`${ui.btnGhostDanger} ${actionBtnCls}`}
           >
             Revoke
           </button>
         </div>
       </div>
-      {error && <p className="text-xs text-red-300">{error}</p>}
+
+      {error ? <p className={ui.errorText}>{error}</p> : null}
     </div>
   );
 }

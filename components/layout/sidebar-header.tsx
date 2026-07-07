@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { X } from "lucide-react";
 import { useSidebar } from "@/components/layout/sidebar-context";
 import { SHELL_HEADER_H } from "@/components/layout/app-shell-shared";
 
@@ -44,24 +45,37 @@ function Logo() {
 
 /** Header inside the expanded sidebar rail: logo + collapse toggle. */
 export function SidebarHeader() {
-  const { toggle } = useSidebar();
+  const { toggle, closeMobile } = useSidebar();
+
+  function onToggleClick() {
+    if (window.matchMedia("(max-width: 767px)").matches) {
+      closeMobile();
+      return;
+    }
+    toggle();
+  }
 
   return (
     <header
-      className={`flex ${SHELL_HEADER_H} shrink-0 items-center justify-between border-b border-line/60 px-4`}
+      className={`flex ${SHELL_HEADER_H} shrink-0 items-center justify-between border-b border-line bg-paper px-4 md:bg-transparent`}
     >
-      <Link href="/dashboard" className="shrink-0" title="Euclis">
+      <Link href="/dashboard" className="shrink-0" title="Euclis" onClick={closeMobile}>
         <Logo />
       </Link>
 
       <button
         type="button"
-        onClick={toggle}
+        onClick={onToggleClick}
         className={toggleBtn}
-        title="Collapse sidebar"
-        aria-label="Collapse sidebar"
+        title="Close menu"
+        aria-label="Close menu"
       >
-        <CollapseIcon collapsed={false} />
+        <span className="md:hidden">
+          <X className="h-5 w-5" strokeWidth={1.75} />
+        </span>
+        <span className="hidden md:inline">
+          <CollapseIcon collapsed={false} />
+        </span>
       </button>
     </header>
   );

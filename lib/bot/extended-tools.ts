@@ -472,19 +472,35 @@ export async function runAddTaskUpdate(
   userId: string,
   shortId: number,
   body: string,
-  channel: Channel
-): Promise<{ message: string; updateId: string; taskTitle: string }> {
+  channel: Channel,
+  options?: { mentionRefs?: string[] }
+): Promise<{
+  message: string;
+  updateId: string;
+  taskTitle: string;
+  mentionedLabels: string[];
+}> {
   const created = await createTaskUpdate({
     workspaceId: ctx.workspaceId,
     userId,
     shortId,
     body,
+    mentionRefs: options?.mentionRefs,
   });
+  const tagged =
+    created.mentionedLabels.length > 0
+      ? ` (tagged ${created.mentionedLabels.map((l) => `@${l}`).join(", ")})`
+      : "";
   const message =
     channel === "whatsapp"
-      ? `Posted on ${formatTaskRef(created.taskTitle)}.`
-      : `Posted update on task #${created.taskShortId} "${created.taskTitle}" in workspace "${ctx.workspaceName}".`;
-  return { message, updateId: created.id, taskTitle: created.taskTitle };
+      ? `Posted on ${formatTaskRef(created.taskTitle)}${tagged}.`
+      : `Posted update on task #${created.taskShortId} "${created.taskTitle}" in workspace "${ctx.workspaceName}"${tagged}.`;
+  return {
+    message,
+    updateId: created.id,
+    taskTitle: created.taskTitle,
+    mentionedLabels: created.mentionedLabels,
+  };
 }
 
 export async function runListTaskUpdates(

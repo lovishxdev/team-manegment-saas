@@ -2,22 +2,8 @@
 
 import Link from "next/link";
 import type { WorkspaceTab } from "@/components/layout/app-shell-shared";
+import { WORKSPACE_TAB_LINKS } from "@/lib/workspace-nav";
 import { ui } from "@/components/ui/ui";
-
-type TabItem = {
-  id: WorkspaceTab;
-  label: string;
-  path: string;
-};
-
-const TABS: TabItem[] = [
-  { id: "board", label: "Overview", path: "" },
-  { id: "memory", label: "Memory", path: "/memory" },
-  { id: "links", label: "Links", path: "/links" },
-  { id: "assets", label: "Assets", path: "/assets" },
-  { id: "whiteboard", label: "Whiteboard", path: "/whiteboard" },
-  { id: "settings", label: "Settings", path: "/settings" },
-];
 
 export function WorkspaceTabs({
   workspaceId,
@@ -31,16 +17,16 @@ export function WorkspaceTabs({
   return (
     <nav
       aria-label="Workspace sections"
-      className={`flex items-center gap-1 overflow-x-auto ${className}`}
+      className={`hidden min-w-0 max-w-full flex-wrap items-center gap-x-0.5 gap-y-1 md:flex ${className}`}
     >
-      {TABS.map((tab) => {
+      {WORKSPACE_TAB_LINKS.map((tab) => {
         const href = `/w/${workspaceId}${tab.path}`;
         const active = tab.id === activeTab;
         return (
           <Link
             key={tab.id}
             href={href}
-            className={`${ui.tabItem} ${active ? ui.tabItemActive : ""}`}
+            className={`${ui.tabItem} !shrink ${active ? ui.tabItemActive : ""}`}
           >
             {tab.label}
           </Link>

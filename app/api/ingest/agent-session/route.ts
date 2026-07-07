@@ -3,26 +3,48 @@ import { prisma } from "@/lib/prisma";
 import { getMcpIdentityByToken } from "@/lib/identity-cache";
 import { verifyOAuthAccessToken } from "@/lib/services/oauth";
 import { resolveUserWorkspaceContext, ServiceError } from "@/lib/services/project";
-import { scheduleBackgroundTask } from "@/lib/background-task";
 import {
   captureFromAgentSession,
   MAX_AGENT_TRANSCRIPT_CHARS,
+  type SessionCaptureResult,
 } from "@/lib/memory/agent-capture";
 import { memoryCaptureEnabled } from "@/lib/memory/capture";
 import { buildWorkspaceBrief } from "@/lib/memory/brief";
+import type { ClaimedSuggestion } from "@/lib/memory/suggest";
 
 /**
- * Ambient ingest for coding-agent sessions. The Cursor stop hook POSTs the
- * session's transcript delta here once per completed run:
- *  - capture runs post-response (fire-and-forget judge call) — the agent's
- *    loop is never blocked and no tools are involved;
- *  - the response carries the fresh workspace brief, which the hook writes
- *    to .cursor/rules/euclis-memory.mdc so the NEXT session starts
- *    context-aware without calling anything.
+ * Ambient ingest for coding-agent sessions. The agent's stop hook (Cursor /
+ * Claude Code) POSTs the session's transcript delta here once per completed
+ * run. The judge runs inline — the caller is a hook, not a human, so a few
+ * seconds here are invisible — which buys two things:
+ *  - the returned brief already reflects what this session produced;
+ *  - `ask` carries any confirm-only resolution suggestions, which the hook
+ *    feeds back into the editor session (Cursor followup_message /
+ *    Claude Code Stop-block) so the user confirms right where they work.
+ *    Throttled by the same per-event budget as WhatsApp asks.
  *
  * Auth mirrors /api/mcp: personal mcpToken (UUID) or an OAuth access token.
  * A workspace-pinned credential is confined exactly like MCP tool calls.
  */
+
+export const maxDuration = 60;
+
+function formatAsk(suggestions: ClaimedSuggestion[]): string | null {
+  if (suggestions.length === 0) return null;
+  const lines = suggestions.map((s) => {
+    const kindLabel = s.kind === "DEPENDENCY" ? "dependency" : "blocker";
+    const taskRef = s.taskTitle ? ` on "${s.taskTitle}"` : "";
+    return `- The ${kindLabel}${taskRef}: "${s.summary}" (memory event id: ${s.eventId})`;
+  });
+  return (
+    `Euclis project memory: this session's work may have cleared ` +
+    `${suggestions.length === 1 ? "an open item" : "open items"}:\n` +
+    `${lines.join("\n")}\n` +
+    `Ask the user whether ${suggestions.length === 1 ? "it is" : "these are"} actually resolved. ` +
+    `If they confirm, call the Euclis MCP tool resolve_blocker with the event id. ` +
+    `If they decline, are unsure, or you cannot ask, do nothing and finish.`
+  );
+}
 
 const MAX_BODY_CHARS = 200_000;
 const UUID_REGEX =
@@ -119,17 +141,21 @@ export async function POST(req: Request) {
     );
   }
 
+  // Judge inline so the response can carry both the up-to-date brief and
+  // any resolution asks for this very session. Capture failures never fail
+  // the request — the brief still ships.
+  let capture: SessionCaptureResult = { suggestions: [] };
   if (memoryCaptureEnabled() && transcript.trim().length > 0) {
-    const ws = workspace;
-    scheduleBackgroundTask("agent session capture", () =>
-      captureFromAgentSession({
-        workspaceId: ws.workspaceId,
-        workspaceName: ws.workspaceName,
-        userId: credential.userId,
-        conversationId,
-        transcript: transcript.slice(-MAX_AGENT_TRANSCRIPT_CHARS),
-      })
-    );
+    capture = await captureFromAgentSession({
+      workspaceId: workspace.workspaceId,
+      workspaceName: workspace.workspaceName,
+      userId: credential.userId,
+      conversationId,
+      transcript: transcript.slice(-MAX_AGENT_TRANSCRIPT_CHARS),
+    }).catch((err) => {
+      console.error("[agent-session] capture failed:", err);
+      return { suggestions: [] };
+    });
   }
 
   const brief = await buildWorkspaceBrief({
@@ -138,5 +164,9 @@ export async function POST(req: Request) {
     userId: credential.userId,
   }).catch(() => null);
 
-  return NextResponse.json({ ok: true, brief });
+  return NextResponse.json({
+    ok: true,
+    brief,
+    ask: formatAsk(capture.suggestions),
+  });
 }

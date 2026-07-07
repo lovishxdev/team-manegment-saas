@@ -5,28 +5,18 @@ import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import {
   SHELL_CONTENT_MAX,
-  type WorkspaceTab,
 } from "@/components/layout/app-shell-shared";
 import { WorkspaceTabs } from "@/components/workspace/workspace-tabs";
 import { WorkspaceToolbarSlotProvider } from "@/components/workspace/workspace-toolbar-slot";
+import { ui } from "@/components/ui/ui";
+import {
+  WORKSPACE_TAB_LINKS,
+  workspaceTabFromPathname,
+} from "@/lib/workspace-nav";
 
-const TAB_LABELS: Record<WorkspaceTab, string> = {
-  board: "Overview",
-  memory: "Memory",
-  links: "Links",
-  assets: "Assets",
-  whiteboard: "Whiteboard",
-  settings: "Settings",
-};
-
-function deriveTab(pathname: string): WorkspaceTab {
-  if (pathname.endsWith("/memory")) return "memory";
-  if (pathname.endsWith("/links")) return "links";
-  if (pathname.endsWith("/assets")) return "assets";
-  if (pathname.endsWith("/settings")) return "settings";
-  if (pathname.endsWith("/whiteboard")) return "whiteboard";
-  return "board";
-}
+const TAB_LABELS = Object.fromEntries(
+  WORKSPACE_TAB_LINKS.map((tab) => [tab.id, tab.label])
+) as Record<(typeof WORKSPACE_TAB_LINKS)[number]["id"], string>;
 
 /**
  * Persistent workspace chrome: tabs + breadcrumb update instantly from the URL
@@ -49,32 +39,26 @@ export function WorkspaceTabsLayout({
   children: ReactNode;
 }) {
   const pathname = usePathname();
-  const activeTab = deriveTab(pathname);
+  const activeTab = workspaceTabFromPathname(pathname);
   const breadcrumbLeaf = TAB_LABELS[activeTab];
   const [toolbarSlot, setToolbarSlot] = useState<HTMLDivElement | null>(null);
 
   return (
-    <main className={SHELL_CONTENT_MAX}>
+    <main className={`${SHELL_CONTENT_MAX} min-w-0 overflow-x-hidden`}>
       <header className="mb-6">
-        <nav
-          aria-label="Breadcrumb"
-          className="flex items-center gap-1.5 font-mono text-[11px] tracking-wide text-ink-faint"
-        >
-          <Link
-            href="/dashboard"
-            className="transition hover:text-ink-soft"
-          >
+        <nav aria-label="Breadcrumb" className={ui.breadcrumbNav}>
+          <Link href="/dashboard" className={ui.breadcrumbLink}>
             Workspaces
           </Link>
           <span>/</span>
           <Link
             href={`/w/${workspaceId}`}
-            className="truncate normal-case transition hover:text-ink-soft"
+            className={`${ui.breadcrumbLink} truncate normal-case`}
           >
             {breadcrumbName}
           </Link>
           <span>/</span>
-          <span className="truncate text-ink-soft">{breadcrumbLeaf}</span>
+          <span className={ui.breadcrumbCurrent}>{breadcrumbLeaf}</span>
         </nav>
 
         <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
@@ -82,12 +66,18 @@ export function WorkspaceTabsLayout({
           {headerActions}
         </div>
 
-        <div className="mt-6 flex flex-wrap items-end justify-between gap-3 border-b border-line">
-          <WorkspaceTabs workspaceId={workspaceId} activeTab={activeTab} />
-          <div
-            ref={setToolbarSlot}
-            className="mb-2 flex flex-wrap items-center justify-end gap-2"
-          />
+        <div className="mt-6 min-w-0 md:border-b md:border-line">
+          <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <WorkspaceTabs
+              workspaceId={workspaceId}
+              activeTab={activeTab}
+              className="lg:flex-1"
+            />
+            <div
+              ref={setToolbarSlot}
+              className="mb-2 flex min-w-0 flex-wrap items-center justify-start gap-2 lg:mb-2 lg:shrink-0 lg:justify-end"
+            />
+          </div>
         </div>
       </header>
 

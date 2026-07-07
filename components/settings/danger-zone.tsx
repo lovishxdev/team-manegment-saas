@@ -41,21 +41,28 @@ export function DangerZone({
   }
 
   return (
-    <section className="rounded-lg border border-red-500/30 bg-red-500/5 p-5">
-      <h2 className="text-sm font-semibold text-red-300">
-        Danger zone
-      </h2>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <button onClick={leave} disabled={pending} className={ui.btnGhostDanger}>
+    <section className="rounded-xl border border-red-200 bg-red-50/60 p-5">
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={leave}
+          disabled={pending}
+          className={`${ui.btnGhostDanger} min-h-[46px] px-3.5`}
+        >
           Leave workspace
         </button>
-        {isLeader && (
-          <button onClick={destroy} disabled={pending} className={ui.btnDanger}>
+        {isLeader ? (
+          <button
+            type="button"
+            onClick={destroy}
+            disabled={pending}
+            className={`${ui.btnDanger} min-h-[46px] px-3.5`}
+          >
             Delete workspace
           </button>
-        )}
+        ) : null}
       </div>
-      {error && <p className="mt-2 text-sm text-red-300">{error}</p>}
+      {error ? <p className={`mt-3 ${ui.errorText}`}>{error}</p> : null}
     </section>
   );
 }

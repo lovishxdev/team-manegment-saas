@@ -37,5 +37,5 @@ export function workspaceUrl(workspaceId: string): string {
 }
 
 export function taskUrl(workspaceId: string, shortId: number): string {
-  return `${workspaceUrl(workspaceId)}?task=${shortId}`;
+  return `${getAppBaseUrl()}/w/${workspaceId}/tasks/${shortId}`;
 }

@@ -224,6 +224,17 @@ body::before {
     0 4px 24px rgba(140, 160, 200, 0.08);
 }
 
+/* Mobile drawer — solid panel so page content does not bleed through. */
+@media (max-width: 767px) {
+  .shell-sidebar {
+    background: var(--color-paper);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-right: 1px solid var(--color-line);
+    box-shadow: 4px 0 24px rgba(26, 26, 26, 0.12);
+  }
+}
+
 /* Dashboard workspace panel — soft float over the mesh gradient. */
 .dashboard-panel {
   margin-top: 0;
@@ -277,7 +288,7 @@ body::before {
 .content-panel {
   border-radius: 1rem;
   border: 1px solid var(--color-line);
-  background: var(--color-paper);
+  background: #ffffff;
   padding: 1.5rem;
   box-shadow: 0 1px 3px rgba(26, 26, 26, 0.04);
 }
@@ -288,7 +299,33 @@ body::before {
   }
 }
 
-/* Kanban columns — float shadow on solid status tints (full opacity). */
+/* Task updates thread — keep scrollbar off the message cards. */
+.updates-scroll {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(26, 26, 26, 0.14) transparent;
+  padding-right: 0.625rem;
+  margin-right: -0.25rem;
+}
+
+.updates-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.updates-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.updates-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(26, 26, 26, 0.14);
+}
+
+.updates-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(26, 26, 26, 0.24);
+}
+
+/* Kanban columns — soft status tints with inset highlight and float shadow. */
 .kanban-column {
   border-radius: 0.75rem;
   padding: 0.75rem;
@@ -309,4 +346,13 @@ body::before {
 
 .kanban-column--done {
   background: #ede9fe; /* violet-100 */
+}
+
+.kanban-column-skeleton {
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    0 4px 20px rgba(140, 160, 200, 0.07),
+    0 16px 40px rgba(120, 140, 180, 0.06);
 }

@@ -6,6 +6,10 @@ import { GripVertical } from "lucide-react";
 import { useCreateWorkspaceModal } from "@/components/layout/create-workspace-modal-provider";
 import { OpenSettingsLink } from "@/components/settings/open-settings-link";
 import { isAccountSettingsPath } from "@/lib/account-settings";
+import {
+  WORKSPACE_TAB_LINKS,
+  parseWorkspaceRoute,
+} from "@/lib/workspace-nav";
 import { ui } from "@/components/ui/ui";
 
 type WorkspaceEntry = {
@@ -37,22 +41,31 @@ function NavIcon({ name }: { name: "dashboard" | "settings" }) {
 }
 
 function Badge({ count }: { count: number }) {
+  const label = count > 99 ? "99+" : String(count);
+  const wide = label.length > 1;
+
   return (
-    <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-ink/90 px-1 font-mono text-[10px] font-medium leading-none text-white">
-      {count}
+    <span
+      className={`inline-flex h-[18px] shrink-0 items-center justify-center rounded-full bg-ink/90 font-mono text-[10px] font-medium tabular-nums leading-none text-white ${
+        wide ? "min-w-[18px] px-1.5" : "w-[18px]"
+      }`}
+    >
+      {label}
     </span>
   );
 }
 
-function useActiveWorkspaceId(): string | undefined {
-  const pathname = usePathname();
-  const match = pathname.match(/^\/w\/([^/]+)/);
-  return match?.[1];
-}
+const workspaceSectionLink =
+  "flex w-full min-w-0 items-center rounded-md px-2.5 py-2 text-sm transition-colors text-ink-soft hover:bg-paper hover:text-ink";
+
+const workspaceSectionLinkActive =
+  "bg-paper font-medium text-ink";
 
 export function SidebarNav({ workspaces }: { workspaces: WorkspaceEntry[] }) {
   const pathname = usePathname();
-  const activeWorkspaceId = useActiveWorkspaceId();
+  const workspaceRoute = parseWorkspaceRoute(pathname);
+  const activeWorkspaceId = workspaceRoute?.workspaceId;
+  const activeTab = workspaceRoute?.tab ?? "board";
   const { open: openCreateWorkspace } = useCreateWorkspaceModal();
   const onDashboard = pathname === "/dashboard";
   const onSettings = isAccountSettingsPath(pathname);
@@ -118,7 +131,11 @@ export function SidebarNav({ workspaces }: { workspaces: WorkspaceEntry[] }) {
                   <li key={ws.id}>
                     <Link
                       href={`/w/${ws.id}`}
-                      className={`${ui.navSubItem} ${isActive ? ui.navSubItemActive : ""}`}
+                      className={`${ui.navSubItem} ${
+                        isActive
+                          ? `${ui.navSubItemActive} max-md:bg-transparent max-md:shadow-none`
+                          : ""
+                      }`}
                     >
                       <GripVertical
                         className="h-4 w-4 shrink-0 text-ink-faint"
@@ -127,6 +144,32 @@ export function SidebarNav({ workspaces }: { workspaces: WorkspaceEntry[] }) {
                       <span className="flex-1 truncate">{ws.name}</span>
                       {ws.openTasks > 0 ? <Badge count={ws.openTasks} /> : null}
                     </Link>
+
+                    {isActive ? (
+                      <div className="md:hidden">
+                        <ul
+                          className="mx-1.5 mb-1.5 mt-1 flex flex-col gap-0.5 rounded-lg border border-line bg-paper-deep/50 p-1"
+                          aria-label="Workspace sections"
+                        >
+                          {WORKSPACE_TAB_LINKS.map((tab) => {
+                            const href = `/w/${ws.id}${tab.path}`;
+                            const sectionActive = activeTab === tab.id;
+                            return (
+                              <li key={tab.id}>
+                                <Link
+                                  href={href}
+                                  className={`${workspaceSectionLink} ${
+                                    sectionActive ? workspaceSectionLinkActive : ""
+                                  }`}
+                                >
+                                  {tab.label}
+                                </Link>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    ) : null}
                   </li>
                 );
               })}

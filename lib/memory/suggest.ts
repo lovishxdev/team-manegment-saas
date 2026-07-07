@@ -22,6 +22,62 @@ import { ServiceError } from "@/lib/services/project";
 const MAX_SUGGESTIONS_PER_EVENT = 2;
 const SUGGESTION_COOLDOWN_MS = 60 * 60 * 1000;
 
+export type ClaimedSuggestion = {
+  eventId: string;
+  kind: "BLOCKER" | "DEPENDENCY";
+  summary: string;
+  taskTitle: string | null;
+};
+
+/**
+ * Check the anti-irritation throttles for an event and, if an ask is
+ * allowed, consume one suggestion slot (increment + timestamp). Used by the
+ * in-editor ask (agent hooks) so it shares the same budget as WhatsApp —
+ * whichever channel asks first, the user is never double-nagged.
+ */
+export async function claimResolutionSuggestion(
+  eventId: string
+): Promise<ClaimedSuggestion | null> {
+  const event = await prisma.memoryEvent.findUnique({
+    where: { id: eventId },
+    select: {
+      id: true,
+      status: true,
+      kind: true,
+      summary: true,
+      suggestionsSuppressed: true,
+      suggestionCount: true,
+      lastSuggestedAt: true,
+      task: { select: { title: true } },
+    },
+  });
+  if (!event || event.status !== "OPEN") return null;
+  if (event.kind !== "BLOCKER" && event.kind !== "DEPENDENCY") return null;
+  if (event.suggestionsSuppressed) return null;
+  if (event.suggestionCount >= MAX_SUGGESTIONS_PER_EVENT) return null;
+  if (
+    event.lastSuggestedAt &&
+    Date.now() - event.lastSuggestedAt.getTime() < SUGGESTION_COOLDOWN_MS
+  ) {
+    return null;
+  }
+
+  await prisma.memoryEvent.update({
+    where: { id: event.id },
+    data: {
+      suggestionCount: { increment: 1 },
+      lastSuggestedAt: new Date(),
+    },
+  });
+
+  return {
+    eventId: event.id,
+    kind: event.kind,
+    summary: event.summary,
+    taskTitle: event.task?.title ?? null,
+  };
+}
+
 export async function suggestBlockerResolution(input: {
   eventId: string;
   /** TaskUpdate that triggered the suggestion; agent sessions have none. */

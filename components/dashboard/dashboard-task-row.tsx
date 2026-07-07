@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { OpenTaskLink } from "@/components/board/open-task-link";
 import type { DashboardTaskPeek } from "@/lib/services/workspace";
 
 const STATUS_STYLES: Record<DashboardTaskPeek["status"], string> = {
@@ -38,8 +38,9 @@ export function DashboardTaskRow({
       : null;
 
   return (
-    <Link
-      href={`/w/${task.workspaceId}?task=${task.shortId}`}
+    <OpenTaskLink
+      workspaceId={task.workspaceId}
+      shortId={task.shortId}
       className="group flex items-center gap-3 rounded-lg border border-line/70 bg-paper/80 px-3 py-2.5 transition hover:border-line-strong hover:bg-paper hover:shadow-sm"
     >
       <span
@@ -63,6 +64,6 @@ export function DashboardTaskRow({
           {formatDue(task.dueDate)}
         </span>
       ) : null}
-    </Link>
+    </OpenTaskLink>
   );
 }

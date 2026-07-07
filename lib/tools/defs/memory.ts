@@ -32,8 +32,10 @@ export function formatMemoryEvent(e: MemoryEventRow): string {
   const status = e.status === "OPEN" ? " · OPEN" : "";
   const author = e.author ? ` — @${e.author.username}` : "";
   const task = e.task ? ` · task #${e.task.shortId} "${e.task.title}"` : "";
+  const tags =
+    e.tags.length > 0 ? ` · ${e.tags.map((t) => `#${t}`).join(" ")}` : "";
   const why = e.reasoning ? `\n  why: ${e.reasoning}` : "";
-  return `- [${e.kind}${status}] ${e.summary}${why}\n  (${date}${author}${task} · id: ${e.id})`;
+  return `- [${e.kind}${status}] ${e.summary}${why}\n  (${date}${author}${task}${tags} · id: ${e.id})`;
 }
 
 export function formatMemoryEvents(events: MemoryEventRow[]): string {
@@ -63,6 +65,10 @@ const recallMemoryTool: ToolDef = {
       .enum(MEMORY_KINDS)
       .optional()
       .describe("Limit to one kind of memory"),
+    tag: z
+      .string()
+      .optional()
+      .describe("Limit to one topic tag, e.g. 'auth' (tags shown on records)"),
     limit: z
       .number()
       .int()
@@ -83,6 +89,7 @@ const recallMemoryTool: ToolDef = {
         userId: ctx.userId,
         taskShortId: optionalNum(input.shortId),
         kind: optionalStr(input.kind) as MemoryEventKind | undefined,
+        tag: optionalStr(input.tag),
         limit: optionalNum(input.limit) ?? 10,
       });
       if (events.length === 0) {
@@ -102,6 +109,7 @@ const recallMemoryTool: ToolDef = {
       query,
       taskShortId: optionalNum(input.shortId),
       kind: optionalStr(input.kind) as MemoryEventKind | undefined,
+      tag: optionalStr(input.tag),
       limit: optionalNum(input.limit),
     });
 
@@ -194,6 +202,11 @@ const recordDecisionTool: ToolDef = {
       .enum(MEMORY_KINDS)
       .optional()
       .describe("Default DECISION"),
+    tags: z
+      .array(z.string())
+      .max(4)
+      .optional()
+      .describe("1-4 short lowercase topic tags, e.g. ['auth', 'payments']"),
     shortId: z
       .number()
       .int()
@@ -214,6 +227,11 @@ const recordDecisionTool: ToolDef = {
       .optional()
       .describe("Why — the part after 'because', rationale, constraints"),
     kind: z.enum(MEMORY_KINDS).optional().describe("Default DECISION"),
+    tags: z
+      .array(z.string())
+      .max(4)
+      .optional()
+      .describe("1-4 short lowercase topic tags, e.g. ['auth', 'payments']"),
     shortId: z
       .number()
       .int()
@@ -245,6 +263,7 @@ const recordDecisionTool: ToolDef = {
       kind,
       summary,
       reasoning,
+      tags: Array.isArray(input.tags) ? (input.tags as string[]) : undefined,
       taskShortId: optionalNum(input.shortId),
     });
 
@@ -320,14 +339,21 @@ const getProjectContextTool: ToolDef = {
     const ws = requireWorkspace(ctx);
     const query = optionalStr(input.query);
     // No query = the agent just wants context. Never fail that — return the
-    // general workspace brief (open blockers + decisions + active tasks).
+    // general workspace brief (open blockers + decisions + recent activity +
+    // active tasks) and point at the scoped tools for anything specific.
     if (!query) {
       const brief = await buildWorkspaceBrief({
         workspaceId: ws.workspaceId,
         workspaceName: ws.workspaceName,
         userId: ctx.userId,
       });
-      return ok(brief);
+      return ok(
+        brief +
+          `\n\nThis is the general workspace brief (no query given). For ` +
+          `anything specific, call get_project_context again with query ` +
+          `(what you're working on) and shortId (#N) if known, or ` +
+          `recall_memory for the history of a topic.`
+      );
     }
     const shortId = optionalNum(input.shortId);
 

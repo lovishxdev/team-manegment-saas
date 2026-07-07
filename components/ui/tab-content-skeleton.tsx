@@ -53,3 +53,20 @@ export function SettingsContentSkeleton() {
     </div>
   );
 }
+
+export function MemoryContentSkeleton() {
+  return (
+    <div className="mt-2 flex flex-col gap-10">
+      <Pulse className="h-20 max-w-2xl" />
+      <div className="flex flex-col gap-3">
+        <Pulse className="h-28" />
+        <Pulse className="h-28" />
+      </div>
+      <div className="flex flex-col gap-3">
+        <Pulse className="h-24" />
+        <Pulse className="h-24" />
+        <Pulse className="h-24" />
+      </div>
+    </div>
+  );
+}

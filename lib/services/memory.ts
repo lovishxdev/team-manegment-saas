@@ -34,6 +34,7 @@ const eventSelect = {
   status: true,
   summary: true,
   reasoning: true,
+  tags: true,
   createdAt: true,
   resolvedAt: true,
   supersededByEventId: true,
@@ -47,6 +48,7 @@ export type MemoryEventRow = {
   status: MemoryEventStatus;
   summary: string;
   reasoning: string | null;
+  tags: string[];
   createdAt: Date;
   resolvedAt: Date | null;
   supersededByEventId: string | null;
@@ -81,13 +83,36 @@ async function resolveTaskId(
   return task.id;
 }
 
+const MAX_TAGS = 4;
+const MAX_TAG_LENGTH = 32;
+
+/** Lowercase, kebab-ish, deduped, capped — judges and humans both feed this. */
+export function normalizeMemoryTags(tags: unknown): string[] {
+  if (!Array.isArray(tags)) return [];
+  const seen = new Set<string>();
+  for (const raw of tags) {
+    if (typeof raw !== "string") continue;
+    const tag = raw
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/^#/, "")
+      .slice(0, MAX_TAG_LENGTH);
+    if (tag) seen.add(tag);
+    if (seen.size >= MAX_TAGS) break;
+  }
+  return [...seen];
+}
+
 export function memoryEventDocument(event: {
   summary: string;
   reasoning?: string | null;
+  tags?: string[];
 }): string {
-  return event.reasoning
-    ? `${event.summary}\n${event.reasoning}`
-    : event.summary;
+  const parts = [event.summary];
+  if (event.reasoning) parts.push(event.reasoning);
+  if (event.tags && event.tags.length > 0) parts.push(event.tags.join(" "));
+  return parts.join("\n");
 }
 
 /** (Re)embed one memory event. No-op when the embedding API is unset. */
@@ -96,7 +121,7 @@ export async function indexMemoryEventEmbedding(eventId: string): Promise<void> 
 
   const event = await prisma.memoryEvent.findUnique({
     where: { id: eventId },
-    select: { summary: true, reasoning: true, contentHash: true },
+    select: { summary: true, reasoning: true, tags: true, contentHash: true },
   });
   if (!event) return;
 
@@ -133,6 +158,8 @@ export type CreateMemoryEventInput = {
   authorId?: string;
   /** Older decision this event supersedes (linked, never deleted). */
   supersedesEventId?: string;
+  /** Topic tags ("auth", "payments") — normalized, max 4. */
+  tags?: string[];
   /** Backfill only: preserve the original moment the event happened. */
   createdAt?: Date;
 };
@@ -175,16 +202,24 @@ export async function createMemoryEvent(
       resolvedAt: status === "RESOLVED" ? new Date() : null,
       summary,
       reasoning,
+      tags: normalizeMemoryTags(input.tags),
       authorId: input.authorId ?? input.userId,
       ...(input.createdAt ? { createdAt: input.createdAt } : {}),
     },
     select: eventSelect,
   });
 
-  if (input.supersedesEventId) {
+  if (input.supersedesEventId && input.kind === "DECISION") {
+    // Guardrails on top of caller checks: only a DECISION in the same
+    // workspace can be superseded (never an open blocker — that would hide
+    // open work), and only by another DECISION. Silently a no-op otherwise.
     await prisma.memoryEvent
-      .update({
-        where: { id: input.supersedesEventId },
+      .updateMany({
+        where: {
+          id: input.supersedesEventId,
+          workspaceId: input.workspaceId,
+          kind: "DECISION",
+        },
         data: { supersededByEventId: event.id },
       })
       .catch(() => {
@@ -202,6 +237,8 @@ export type ListMemoryEventsInput = {
   taskShortId?: number;
   kind?: MemoryEventKind;
   status?: MemoryEventStatus;
+  /** Filter to events carrying this topic tag. */
+  tag?: string;
   includeSuperseded?: boolean;
   limit?: number;
 };
@@ -219,6 +256,7 @@ export async function listMemoryEvents(
   }
   if (input.kind) where.kind = input.kind;
   if (input.status) where.status = input.status;
+  if (input.tag) where.tags = { has: input.tag.trim().toLowerCase() };
   if (!input.includeSuperseded) where.supersededByEventId = null;
 
   const limit = Math.min(
@@ -330,6 +368,8 @@ export type RecallMemoryInput = {
   taskShortId?: number;
   kind?: MemoryEventKind;
   status?: MemoryEventStatus;
+  /** Filter to events carrying this topic tag. */
+  tag?: string;
   limit?: number;
 };
 
@@ -360,6 +400,7 @@ export async function recallMemory(
   }
   if (input.kind) where.kind = input.kind;
   if (input.status) where.status = input.status;
+  if (input.tag) where.tags = { has: input.tag.trim().toLowerCase() };
 
   const candidates = await prisma.memoryEvent.findMany({
     where,
@@ -381,7 +422,11 @@ export async function recallMemory(
   const hits: MemoryRecallHit[] = [];
   for (const candidate of candidates) {
     const { embedding, ...row } = candidate;
-    const keywordScore = scoreTaskTitleQuery(query, row.summary, row.reasoning);
+    const keywordScore = scoreTaskTitleQuery(
+      query,
+      row.summary,
+      [row.reasoning, row.tags.join(" ")].filter(Boolean).join("\n")
+    );
 
     let sem: number | null = null;
     const stored = parseEmbeddingJson(embedding);

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { normalizeMemberRef } from "@/lib/services/member-resolve";
 
 /** Shared Zod params (same text the MCP connector has always shown). */
 export const workspaceParam = z
@@ -49,15 +50,25 @@ export function parseTagsInput(value: unknown): string[] | undefined {
   return value.map((t) => String(t).trim()).filter(Boolean);
 }
 
-/** "me" (any case) resolves to the sender; otherwise pass through. */
+/** Member handles from agent tool input (strips @, lowercases). */
+export function parseMentionRefsInput(value: unknown): string[] | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value)) return undefined;
+  const refs = value
+    .map((entry) => normalizeMemberRef(String(entry)))
+    .filter(Boolean);
+  return refs.length > 0 ? refs : undefined;
+}
+
+/** "me" (any case) resolves to the sender; @prefix is stripped. */
 export function resolveAssigneeInput(
   value: unknown,
   senderUserId: string
 ): string | null | undefined {
   if (value === undefined || value === null) return undefined;
-  const s = String(value).trim();
+  const s = normalizeMemberRef(String(value));
   if (s === "") return null;
-  if (s.toLowerCase() === "me") return senderUserId;
+  if (s === "me") return senderUserId;
   return s;
 }
 

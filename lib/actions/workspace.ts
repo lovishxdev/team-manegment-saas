@@ -40,7 +40,9 @@ import { displayUser } from "@/lib/username";
 import { findOrCreateCategoryByName } from "@/lib/services/categories";
 import {
   createTaskUpdate,
+  deleteTaskUpdate,
   listTaskUpdates,
+  setTaskUpdateSaved,
 } from "@/lib/services/task-updates";
 import {
   listMemoryEvents,
@@ -52,6 +54,7 @@ export type ActionState = {
   error?: string;
   workspaceId?: string;
   inviteId?: string;
+  shortId?: number;
 };
 
 function errorMessage(err: unknown): string {
@@ -98,6 +101,7 @@ export async function createTaskFromModalAction(
   const title = edit.title.trim();
   if (!title) return { error: "Task title is required" };
 
+  let task;
   try {
     let resolvedCategoryId = edit.categoryId;
     let category: string | undefined;
@@ -116,7 +120,7 @@ export async function createTaskFromModalAction(
       dueDate = edit.dueDate ? new Date(edit.dueDate) : null;
     }
 
-    await createTask({
+    task = await createTask({
       workspaceId,
       title,
       description: edit.description ?? undefined,
@@ -132,7 +136,8 @@ export async function createTaskFromModalAction(
     return { error: errorMessage(err) };
   }
   revalidatePath(`/w/${workspaceId}`);
-  return {};
+  revalidatePath(`/w/${workspaceId}/tasks/${task.shortId}`);
+  return { shortId: task.shortId };
 }
 
 export async function createTaskAction(
@@ -167,6 +172,7 @@ export async function createTaskAction(
     return { error: errorMessage(err) };
   }
   revalidatePath(`/w/${workspaceId}`);
+  revalidatePath(`/w/${workspaceId}/tasks`, "layout");
   return {};
 }
 
@@ -235,6 +241,7 @@ export async function updateTaskAction(
     return { error: errorMessage(err) };
   }
   revalidatePath(`/w/${workspaceId}`);
+  revalidatePath(`/w/${workspaceId}/tasks`, "layout");
   return {};
 }
 
@@ -249,6 +256,7 @@ export async function deleteTaskAction(
     return { error: errorMessage(err) };
   }
   revalidatePath(`/w/${workspaceId}`);
+  revalidatePath(`/w/${workspaceId}/tasks`, "layout");
   return {};
 }
 
@@ -322,6 +330,7 @@ export async function uploadAssetAction(
   }
   revalidatePath(`/w/${workspaceId}/assets`);
   revalidatePath(`/w/${workspaceId}`);
+  revalidatePath(`/w/${workspaceId}/tasks`, "layout");
   return {};
 }
 
@@ -533,7 +542,30 @@ export type TaskUpdateView = {
   createdAt: string;
   authorId: string;
   authorLabel: string;
+  mentionedLabels: string[];
+  saved: boolean;
 };
+
+function toTaskUpdateView(
+  update: {
+    id: string;
+    body: string;
+    createdAt: Date;
+    author: { id: string; email: string | null; username: string };
+    mentionedLabels: string[];
+    saved: boolean;
+  }
+): TaskUpdateView {
+  return {
+    id: update.id,
+    body: update.body,
+    createdAt: update.createdAt.toISOString(),
+    authorId: update.author.id,
+    authorLabel: displayUser(update.author),
+    mentionedLabels: update.mentionedLabels,
+    saved: update.saved,
+  };
+}
 
 export async function fetchTaskUpdatesAction(
   workspaceId: string,
@@ -547,13 +579,7 @@ export async function fetchTaskUpdatesAction(
       taskShortId
     );
     return {
-      updates: updates.map((u) => ({
-        id: u.id,
-        body: u.body,
-        createdAt: u.createdAt.toISOString(),
-        authorId: u.author.id,
-        authorLabel: displayUser(u.author),
-      })),
+      updates: updates.map((u) => toTaskUpdateView(u)),
     };
   } catch (err) {
     return { updates: [], error: errorMessage(err) };
@@ -566,6 +592,7 @@ export type MemoryEventView = {
   status: string;
   summary: string;
   reasoning: string | null;
+  tags: string[];
   createdAt: string;
   resolvedAt: string | null;
   authorLabel: string | null;
@@ -579,6 +606,7 @@ function toMemoryEventView(e: MemoryEventRow): MemoryEventView {
     status: e.status,
     summary: e.summary,
     reasoning: e.reasoning,
+    tags: e.tags,
     createdAt: e.createdAt.toISOString(),
     resolvedAt: e.resolvedAt ? e.resolvedAt.toISOString() : null,
     authorLabel: e.author ? displayUser(e.author) : null,
@@ -633,14 +661,46 @@ export async function addTaskUpdateAction(
     });
     revalidatePath(`/w/${workspaceId}`);
     return {
-      update: {
-        id: created.id,
-        body: created.body,
-        createdAt: created.createdAt.toISOString(),
-        authorId: created.author.id,
-        authorLabel: displayUser(created.author),
-      },
+      update: toTaskUpdateView(created),
     };
+  } catch (err) {
+    return { error: errorMessage(err) };
+  }
+}
+
+export async function deleteTaskUpdateAction(
+  workspaceId: string,
+  updateId: string
+): Promise<ActionState> {
+  const user = await requireUser();
+  try {
+    await deleteTaskUpdate({
+      workspaceId,
+      userId: user.id,
+      updateId,
+    });
+    revalidatePath(`/w/${workspaceId}`);
+    return {};
+  } catch (err) {
+    return { error: errorMessage(err) };
+  }
+}
+
+export async function setTaskUpdateSavedAction(
+  workspaceId: string,
+  updateId: string,
+  saved: boolean
+): Promise<ActionState & { saved?: boolean }> {
+  const user = await requireUser();
+  try {
+    const nextSaved = await setTaskUpdateSaved({
+      workspaceId,
+      userId: user.id,
+      updateId,
+      saved,
+    });
+    revalidatePath(`/w/${workspaceId}`);
+    return { saved: nextSaved };
   } catch (err) {
     return { error: errorMessage(err) };
   }

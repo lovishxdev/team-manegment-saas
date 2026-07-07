@@ -9,6 +9,7 @@ import {
   validateUsernameFormat,
   displayUser,
 } from "@/lib/username";
+import { matchWorkspaceMember, normalizeMemberRef } from "@/lib/services/member-resolve";
 import { isUsernameTaken } from "@/lib/username-server";
 import { seedDefaultCategories } from "@/lib/services/categories";
 
@@ -113,38 +114,40 @@ export const getOpenTaskCountsByWorkspace = cache(
 );
 
 /** Open + assigned-to-me task counts per workspace for the dashboard cards. */
-export async function getWorkspaceDashboardStats(
-  userId: string,
-  workspaceIds: string[]
-): Promise<Map<string, WorkspaceDashboardStats>> {
-  const stats = new Map<string, WorkspaceDashboardStats>(
-    workspaceIds.map((id) => [id, { openTasks: 0, assignedToYou: 0 }])
-  );
-  if (workspaceIds.length === 0) return stats;
+export const getWorkspaceDashboardStats = cache(
+  async function getWorkspaceDashboardStats(
+    userId: string,
+    workspaceIds: string[]
+  ): Promise<Map<string, WorkspaceDashboardStats>> {
+    const stats = new Map<string, WorkspaceDashboardStats>(
+      workspaceIds.map((id) => [id, { openTasks: 0, assignedToYou: 0 }])
+    );
+    if (workspaceIds.length === 0) return stats;
 
-  const [openByWorkspace, assignedRows] = await Promise.all([
-    getOpenTaskCountsByWorkspace(workspaceIds),
-    prisma.taskAssignee.findMany({
-      where: {
-        userId,
-        task: {
-          workspaceId: { in: workspaceIds },
-          status: { not: "DONE" },
+    const [openByWorkspace, assignedRows] = await Promise.all([
+      getOpenTaskCountsByWorkspace(workspaceIds),
+      prisma.taskAssignee.findMany({
+        where: {
+          userId,
+          task: {
+            workspaceId: { in: workspaceIds },
+            status: { not: "DONE" },
+          },
         },
-      },
-      select: { task: { select: { workspaceId: true } } },
-    }),
-  ]);
+        select: { task: { select: { workspaceId: true } } },
+      }),
+    ]);
 
-  for (const [workspaceId, openTasks] of openByWorkspace) {
-    stats.get(workspaceId)!.openTasks = openTasks;
-  }
-  for (const row of assignedRows) {
-    stats.get(row.task.workspaceId)!.assignedToYou++;
-  }
+    for (const [workspaceId, openTasks] of openByWorkspace) {
+      stats.get(workspaceId)!.openTasks = openTasks;
+    }
+    for (const row of assignedRows) {
+      stats.get(row.task.workspaceId)!.assignedToYou++;
+    }
 
-  return stats;
-}
+    return stats;
+  }
+);
 
 export type WorkspaceDashboardMember = {
   id: string;
@@ -471,46 +474,24 @@ export async function resolveWorkspaceMember(
     include: { user: { select: { id: true, email: true, username: true } } },
   });
 
-  const trimmed = identifier.trim();
-  const byId = memberships.find((m) => m.user.id === trimmed);
-  if (byId) {
-    return { userId: byId.user.id, role: byId.role, user: byId.user };
-  }
-
-  const needle = trimmed.toLowerCase();
-  const byUsername = memberships.find(
-    (m) => m.user.username?.toLowerCase() === needle
-  );
-  if (byUsername) {
+  const matched = matchWorkspaceMember(memberships, identifier);
+  if (matched.kind === "one") {
     return {
-      userId: byUsername.user.id,
-      role: byUsername.role,
-      user: byUsername.user,
+      userId: matched.member.user.id,
+      role: matched.member.role,
+      user: matched.member.user,
     };
   }
-
-  const matches = memberships.filter(
-    (m) =>
-      m.user.email?.toLowerCase().includes(needle) ||
-      m.user.username?.toLowerCase().includes(needle)
-  );
-  if (matches.length === 1) {
-    return {
-      userId: matches[0].user.id,
-      role: matches[0].role,
-      user: matches[0].user,
-    };
-  }
-  if (matches.length > 1) {
+  if (matched.kind === "ambiguous") {
     throw new ServiceError(
-      `Multiple members match "${identifier}": ${matches
+      `Multiple members match "${normalizeMemberRef(identifier) || identifier.trim()}": ${matched.members
         .map((m) => displayUser(m.user))
         .join(", ")}. Be more specific.`,
       "AMBIGUOUS_WORKSPACE"
     );
   }
   throw new ServiceError(
-    `No workspace member matches "${identifier}"`,
+    `No workspace member matches "${normalizeMemberRef(identifier) || identifier.trim()}"`,
     "NOT_FOUND"
   );
 }

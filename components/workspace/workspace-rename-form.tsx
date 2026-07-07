@@ -56,7 +56,7 @@ export function WorkspaceRenameForm({
           type="submit"
           disabled={pending}
           aria-busy={pending}
-          className={`${ui.btnSecondary} ${ui.btnShrink} self-center`}
+          className={`${ui.btnSecondary} ${ui.btnShrink} min-h-[46px] self-center px-4`}
         >
           Save name
         </button>

@@ -4,14 +4,16 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef } from "react";
 import { createSupabaseBrowser } from "@/lib/supabase-browser";
 
+const TASK_REFRESH_DEBOUNCE_MS = 1200;
+
 /**
  * Subscribes to Postgres changes via Supabase Realtime and refreshes the
- * App Router tree so the sidebar, dashboard, and pages stay in sync when
- * writes happen through Prisma (web actions, WhatsApp bot, MCP, etc.).
+ * App Router tree so the sidebar and dashboard stay in sync when writes
+ * happen through Prisma (web actions, WhatsApp bot, MCP, etc.).
  *
- * Task/Asset/Workspace subscriptions are scoped to the workspaces this user
- * belongs to (Supabase `in` filter) so an edit in someone else's unrelated
- * workspace never triggers a full router.refresh() here.
+ * Scoped to membership/workspace changes and task counts for the sidebar.
+ * Board pages handle their own task realtime; asset/link/update streams are
+ * omitted here to avoid hammering router.refresh() on every kanban edit.
  */
 export function AppRealtimeSync({
   userId,
@@ -34,7 +36,7 @@ export function AppRealtimeSync({
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       router.refresh();
-    }, 500);
+    }, TASK_REFRESH_DEBOUNCE_MS);
   }, [router]);
 
   useEffect(() => {
@@ -93,46 +95,6 @@ export function AppRealtimeSync({
               event: "*",
               schema: "public",
               table: "Task",
-              filter: wsScopedFilter,
-            },
-            refreshDebounced
-          )
-          .on(
-            "postgres_changes",
-            {
-              event: "*",
-              schema: "public",
-              table: "Asset",
-              filter: wsScopedFilter,
-            },
-            refreshDebounced
-          )
-          .on(
-            "postgres_changes",
-            {
-              event: "*",
-              schema: "public",
-              table: "WorkspaceLink",
-              filter: wsScopedFilter,
-            },
-            refreshDebounced
-          )
-          .on(
-            "postgres_changes",
-            {
-              event: "*",
-              schema: "public",
-              table: "TaskUpdate",
-              filter: wsScopedFilter,
-            },
-            refreshDebounced
-          )
-          .on(
-            "postgres_changes",
-            {
-              event: "*",
-              schema: "public",
-              table: "MemoryEvent",
               filter: wsScopedFilter,
             },
             refreshDebounced

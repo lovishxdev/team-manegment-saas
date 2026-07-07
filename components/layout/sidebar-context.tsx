@@ -4,15 +4,21 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useState,
   type ReactNode,
 } from "react";
+import { usePathname } from "next/navigation";
 
 export const SIDEBAR_COOKIE = "euclis_sidebar_collapsed";
 
 type SidebarContextValue = {
   collapsed: boolean;
+  mobileOpen: boolean;
   toggle: () => void;
+  openMobile: () => void;
+  closeMobile: () => void;
+  toggleMobile: () => void;
 };
 
 const SidebarContext = createContext<SidebarContextValue | null>(null);
@@ -29,7 +35,9 @@ export function SidebarProvider({
   defaultCollapsed?: boolean;
   children: ReactNode;
 }) {
+  const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const toggle = useCallback(() => {
     setCollapsed((prev) => {
@@ -43,8 +51,34 @@ export function SidebarProvider({
     });
   }, []);
 
+  const openMobile = useCallback(() => setMobileOpen(true), []);
+  const closeMobile = useCallback(() => setMobileOpen(false), []);
+  const toggleMobile = useCallback(() => setMobileOpen((open) => !open), []);
+
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [mobileOpen]);
+
   return (
-    <SidebarContext.Provider value={{ collapsed, toggle }}>
+    <SidebarContext.Provider
+      value={{
+        collapsed,
+        mobileOpen,
+        toggle,
+        openMobile,
+        closeMobile,
+        toggleMobile,
+      }}
+    >
       {children}
     </SidebarContext.Provider>
   );

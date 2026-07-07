@@ -3,7 +3,6 @@ import { requireUser } from "@/lib/auth";
 import { displayUser } from "@/lib/username";
 import {
   getDashboardHomeSummary,
-  getDashboardSearchIndex,
   getWorkspaceDashboardMembers,
   getWorkspaceDashboardStats,
   listUserWorkspaces,
@@ -17,14 +16,11 @@ async function DashboardHome() {
   const userId = user.id;
   const userLabel = displayUser(user);
 
-  const [workspaces, home, searchIndex] = await Promise.all([
-    listUserWorkspaces(userId),
-    getDashboardHomeSummary(userId),
-    getDashboardSearchIndex(userId),
-  ]);
-
+  const workspaces = await listUserWorkspaces(userId);
   const workspaceIds = workspaces.map((m) => m.workspace.id);
-  const [statsByWorkspace, membersByWorkspace] = await Promise.all([
+
+  const [home, statsByWorkspace, membersByWorkspace] = await Promise.all([
+    getDashboardHomeSummary(userId),
     getWorkspaceDashboardStats(userId, workspaceIds),
     getWorkspaceDashboardMembers(workspaceIds),
   ]);
@@ -34,7 +30,6 @@ async function DashboardHome() {
       userLabel={userLabel}
       home={home}
       workspaces={workspaces}
-      searchIndex={searchIndex}
       statsByWorkspace={statsByWorkspace}
       membersByWorkspace={membersByWorkspace}
     />

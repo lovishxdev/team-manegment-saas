@@ -31,6 +31,8 @@ export type CaptureAnalysis = {
   kind?: "DECISION" | "BLOCKER" | "DEPENDENCY" | "MILESTONE";
   summary?: string;
   reasoning?: string;
+  /** Topic tags, e.g. ["auth", "design-handoff"]. */
+  tags?: string[];
   /** Existing MemoryEvent id this update likely resolves or supersedes. */
   target_event_id?: string;
 };
@@ -67,6 +69,12 @@ const ANALYSIS_TOOL: Anthropic.Tool = {
         description:
           "WHY — the rationale/context a future teammate would need. Omit if the update gives none.",
       },
+      tags: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "1-4 short lowercase topic tags ('auth', 'payments', 'design-handoff'). Reuse tags already seen on existing events for the same topic — consistency beats precision.",
+      },
       target_event_id: {
         type: "string",
         description:
@@ -96,7 +104,7 @@ function formatExistingEvents(events: MemoryEventRow[]): string {
   return events
     .map(
       (e) =>
-        `- id=${e.id} [${e.kind}${e.status === "OPEN" ? ", OPEN" : ""}] ${e.summary}`
+        `- id=${e.id} [${e.kind}${e.status === "OPEN" ? ", OPEN" : ""}] ${e.summary}${e.tags.length > 0 ? ` (tags: ${e.tags.join(", ")})` : ""}`
     )
     .join("\n");
 }
@@ -190,6 +198,7 @@ export async function captureFromTaskUpdate(
       status: true,
       summary: true,
       reasoning: true,
+      tags: true,
       createdAt: true,
       resolvedAt: true,
       supersededByEventId: true,
@@ -242,10 +251,15 @@ export async function captureFromTaskUpdate(
     analysis.outcome === "supersedes_decision" ? "DECISION" : analysis.kind;
   if (!kind) return;
 
+  // A decision may only supersede another DECISION — pointing supersession
+  // at an OPEN blocker would hide open work from every default listing.
+  const decisionIds = new Set(
+    existingEvents.filter((e) => e.kind === "DECISION").map((e) => e.id)
+  );
   const supersedesEventId =
     analysis.outcome === "supersedes_decision" &&
     analysis.target_event_id &&
-    existingIds.has(analysis.target_event_id)
+    decisionIds.has(analysis.target_event_id)
       ? analysis.target_event_id
       : undefined;
 
@@ -255,6 +269,7 @@ export async function captureFromTaskUpdate(
     kind,
     summary: analysis.summary,
     reasoning: analysis.reasoning,
+    tags: analysis.tags,
     taskShortId: update.task.shortId,
     sourceUpdateId: update.id,
     supersedesEventId,

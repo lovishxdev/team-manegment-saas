@@ -52,6 +52,8 @@ function readStdin() {
 }
 
 // Cursor and Claude Code send the same idea with different field names.
+// canAsk: whether this run may feed a follow-up back into the session
+// (guarded against loops — a follow-up run never asks again).
 function detectAgent(input) {
   if (input.hook_event_name === "stop") {
     return {
@@ -60,6 +62,7 @@ function detectAgent(input) {
         (Array.isArray(input.workspace_roots) && input.workspace_roots[0]) ||
         process.cwd(),
       conversationId: input.conversation_id || "unknown",
+      canAsk: !(input.loop_count > 0),
     };
   }
   if (input.hook_event_name === "Stop") {
@@ -67,6 +70,7 @@ function detectAgent(input) {
       agent: "claude-code",
       root: input.cwd || process.cwd(),
       conversationId: input.session_id || "unknown",
+      canAsk: input.stop_hook_active !== true,
     };
   }
   return null;
@@ -177,7 +181,8 @@ async function main() {
       conversation_id: detected.conversationId,
       transcript: delta,
     }),
-    signal: AbortSignal.timeout(15000),
+    // The judge runs inline server-side; give it room.
+    signal: AbortSignal.timeout(45000),
   });
   if (!res.ok) return;
 
@@ -188,6 +193,21 @@ async function main() {
   try { data = await res.json(); } catch (e) {}
   if (data && typeof data.brief === "string" && data.brief.trim()) {
     writeBrief(detected.agent, detected.root, data.brief);
+  }
+
+  // Confirm-only resolution ask: feed it back into the session so the
+  // agent asks the user right in the editor. Loop-guarded via canAsk and
+  // server-side per-event throttles.
+  var ask =
+    data && typeof data.ask === "string" && data.ask.trim()
+      ? data.ask.trim()
+      : null;
+  if (ask && detected.canAsk) {
+    if (detected.agent === "cursor") {
+      process.stdout.write(JSON.stringify({ followup_message: ask }));
+    } else {
+      process.stdout.write(JSON.stringify({ decision: "block", reason: ask }));
+    }
   }
 }
 
@@ -253,7 +273,7 @@ export function buildAgentHooksInstaller(
           "cfg.hooks.stop = cfg.hooks.stop || [];",
           'const cmd = "' + hookCmd + '";',
           "if (!cfg.hooks.stop.some((h) => h && h.command === cmd)) {",
-          "  cfg.hooks.stop.push({ command: cmd });",
+          "  cfg.hooks.stop.push({ command: cmd, timeout: 60 });",
           "}",
           'fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + "\\n");',
           "EUCLIS_MERGE_EOF",
@@ -274,7 +294,7 @@ export function buildAgentHooksInstaller(
           "  (m) => m && Array.isArray(m.hooks) && m.hooks.some((h) => h && h.command === cmd)",
           ");",
           "if (!has) {",
-          '  cfg.hooks.Stop.push({ hooks: [{ type: "command", command: cmd }] });',
+          '  cfg.hooks.Stop.push({ hooks: [{ type: "command", command: cmd, timeout: 60 }] });',
           "}",
           'fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + "\\n");',
           "",

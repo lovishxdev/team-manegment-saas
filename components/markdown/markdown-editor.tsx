@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Bold,
   Code,
@@ -9,9 +9,9 @@ import {
   Link,
   List,
   ListOrdered,
+  Pencil,
 } from "lucide-react";
 import { MarkdownContent } from "@/components/markdown/markdown-content";
-import { ui } from "@/components/ui/ui";
 
 type MarkdownEditorProps = {
   value: string;
@@ -22,6 +22,10 @@ type MarkdownEditorProps = {
 };
 
 type EditorView = "write" | "preview";
+
+function initialView(content: string): EditorView {
+  return content.trim() ? "preview" : "write";
+}
 
 function wrapSelection(
   textarea: HTMLTextAreaElement,
@@ -61,7 +65,7 @@ function prefixLines(
       const trimmed = line.trim();
       if (!trimmed) return line;
       if (ordered) return `${index + 1}. ${trimmed}`;
-      return `- ${trimmed}`;
+      return `${prefix}${trimmed}`;
     })
     .join("\n");
   const next = value.slice(0, lineStart) + prefixed + value.slice(blockEnd);
@@ -76,11 +80,31 @@ export function MarkdownEditor({
   disabled = false,
 }: MarkdownEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [view, setView] = useState<EditorView>("write");
+  const lastEmitted = useRef(value);
+  const [localValue, setLocalValue] = useState(value);
+  const [view, setView] = useState<EditorView>(() => initialView(value));
+
+  // Sync external value changes without clobbering the browser undo stack.
+  useEffect(() => {
+    if (value !== lastEmitted.current) {
+      setLocalValue(value);
+      lastEmitted.current = value;
+      setView(initialView(value));
+    }
+  }, [value]);
+
+  const emitChange = useCallback(
+    (next: string) => {
+      setLocalValue(next);
+      lastEmitted.current = next;
+      onChange(next);
+    },
+    [onChange]
+  );
 
   const applyEdit = useCallback(
     (next: string, cursorStart?: number, cursorEnd?: number) => {
-      onChange(next);
+      emitChange(next);
       requestAnimationFrame(() => {
         const el = textareaRef.current;
         if (!el) return;
@@ -90,38 +114,58 @@ export function MarkdownEditor({
         }
       });
     },
-    [onChange]
+    [emitChange]
+  );
+
+  const withTextarea = useCallback(
+    (run: (el: HTMLTextAreaElement) => void) => {
+      if (disabled) return;
+
+      const execute = () => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.focus();
+        run(el);
+      };
+
+      if (view === "preview") {
+        setView("write");
+        requestAnimationFrame(execute);
+        return;
+      }
+
+      execute();
+    },
+    [disabled, view]
   );
 
   function runWrap(before: string, after: string, placeholderText?: string) {
-    const el = textareaRef.current;
-    if (!el || disabled) return;
-    const { next, cursorStart, cursorEnd } = wrapSelection(
-      el,
-      before,
-      after,
-      placeholderText
-    );
-    applyEdit(next, cursorStart, cursorEnd);
+    withTextarea((el) => {
+      const { next, cursorStart, cursorEnd } = wrapSelection(
+        el,
+        before,
+        after,
+        placeholderText
+      );
+      applyEdit(next, cursorStart, cursorEnd);
+    });
   }
 
   function runPrefix(prefix: string, ordered = false) {
-    const el = textareaRef.current;
-    if (!el || disabled) return;
-    const { next, cursorStart, cursorEnd } = prefixLines(el, prefix, ordered);
-    applyEdit(next, cursorStart, cursorEnd);
+    withTextarea((el) => {
+      const { next, cursorStart, cursorEnd } = prefixLines(el, prefix, ordered);
+      applyEdit(next, cursorStart, cursorEnd);
+    });
   }
 
   function insertLink() {
-    const el = textareaRef.current;
-    if (!el || disabled) return;
-    const url = window.prompt("Link URL");
-    if (!url?.trim()) return;
-    runWrap("[", `](${url.trim()})`, "label");
+    runWrap("[", "](link)", "label");
   }
 
   const toolbarBtn =
     "inline-flex h-8 w-8 items-center justify-center rounded-md text-ink-faint transition hover:bg-paper-deep/80 hover:text-ink disabled:opacity-40";
+
+  const toolbarDisabled = disabled;
 
   return (
     <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-line bg-paper">
@@ -131,7 +175,7 @@ export function MarkdownEditor({
             type="button"
             className={toolbarBtn}
             onClick={() => runWrap("**", "**", "bold")}
-            disabled={disabled || view === "preview"}
+            disabled={toolbarDisabled}
             title="Bold"
             aria-label="Bold"
           >
@@ -141,7 +185,7 @@ export function MarkdownEditor({
             type="button"
             className={toolbarBtn}
             onClick={() => runWrap("*", "*", "italic")}
-            disabled={disabled || view === "preview"}
+            disabled={toolbarDisabled}
             title="Italic"
             aria-label="Italic"
           >
@@ -151,7 +195,7 @@ export function MarkdownEditor({
             type="button"
             className={toolbarBtn}
             onClick={() => runWrap("`", "`", "code")}
-            disabled={disabled || view === "preview"}
+            disabled={toolbarDisabled}
             title="Code"
             aria-label="Code"
           >
@@ -161,7 +205,7 @@ export function MarkdownEditor({
             type="button"
             className={toolbarBtn}
             onClick={insertLink}
-            disabled={disabled || view === "preview"}
+            disabled={toolbarDisabled}
             title="Link"
             aria-label="Link"
           >
@@ -171,7 +215,7 @@ export function MarkdownEditor({
             type="button"
             className={toolbarBtn}
             onClick={() => runPrefix("- ")}
-            disabled={disabled || view === "preview"}
+            disabled={toolbarDisabled}
             title="Bullet list"
             aria-label="Bullet list"
           >
@@ -181,7 +225,7 @@ export function MarkdownEditor({
             type="button"
             className={toolbarBtn}
             onClick={() => runPrefix("1. ", true)}
-            disabled={disabled || view === "preview"}
+            disabled={toolbarDisabled}
             title="Numbered list"
             aria-label="Numbered list"
           >
@@ -191,7 +235,7 @@ export function MarkdownEditor({
             type="button"
             className={toolbarBtn}
             onClick={() => runPrefix("## ")}
-            disabled={disabled || view === "preview"}
+            disabled={toolbarDisabled}
             title="Heading"
             aria-label="Heading"
           >
@@ -203,13 +247,14 @@ export function MarkdownEditor({
           <button
             type="button"
             onClick={() => setView("write")}
-            className={`rounded-md px-2.5 py-1 transition ${
+            className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 transition ${
               view === "write"
                 ? "bg-paper font-medium text-ink shadow-sm"
                 : "text-ink-soft hover:text-ink"
             }`}
           >
-            Write
+            <Pencil className="h-3 w-3" strokeWidth={1.75} />
+            Edit
           </button>
           <button
             type="button"
@@ -228,19 +273,29 @@ export function MarkdownEditor({
       {view === "write" ? (
         <textarea
           ref={textareaRef}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
+          value={localValue}
+          onChange={(event) => emitChange(event.target.value)}
           placeholder={placeholder}
           rows={minRows}
           disabled={disabled}
-          className="min-h-[8rem] w-full resize-y border-0 bg-transparent px-3 py-2.5 text-sm text-ink placeholder:text-ink-faint outline-none focus:ring-0"
+          className="min-h-[10rem] w-full resize-y border-0 bg-transparent px-4 py-3 text-[15px] leading-relaxed text-ink placeholder:text-ink-faint outline-none focus:ring-0"
         />
       ) : (
-        <div className="min-h-[8rem] overflow-y-auto px-3 py-2.5">
-          {value.trim() ? (
-            <MarkdownContent source={value} />
+        <div
+          role="presentation"
+          onClick={(event) => {
+            if (disabled) return;
+            if ((event.target as HTMLElement).closest("a")) return;
+            setView("write");
+          }}
+          className={`min-h-[10rem] overflow-y-auto px-4 py-3 ${
+            disabled ? "" : "cursor-text hover:bg-paper-deep/20"
+          }`}
+        >
+          {localValue.trim() ? (
+            <MarkdownContent source={localValue} />
           ) : (
-            <p className="text-sm text-ink-faint">Nothing to preview.</p>
+            <p className="text-[15px] text-ink-faint">{placeholder}</p>
           )}
         </div>
       )}

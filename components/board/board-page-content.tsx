@@ -1,8 +1,8 @@
 "use client";
 
+import { usePathname, useRouter } from "next/navigation";
 import { Suspense, useState } from "react";
 import { BoardToolbar } from "@/components/board/board-toolbar";
-import { TaskModal } from "@/components/board/task-modal";
 import { WorkspaceToolbarPortal } from "@/components/workspace/workspace-toolbar-slot";
 import { BoardContentSkeleton } from "@/components/ui/tab-content-skeleton";
 import {
@@ -10,6 +10,10 @@ import {
   type BoardSort,
   type BoardTask,
 } from "@/components/board/task-board";
+import {
+  rememberTaskReturnPath,
+  taskNewPath,
+} from "@/lib/task-navigation";
 
 const SORT_LABELS: Record<BoardSort, string> = {
   default: "Sorting",
@@ -28,12 +32,13 @@ export function BoardPageContent({
   categories: { id: string; name: string }[];
   currentUserId: string;
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState("");
   const [assigneeFilter, setAssigneeFilter] = useState("");
   const [mineOnly, setMineOnly] = useState(false);
   const [sortBy, setSortBy] = useState<BoardSort>("default");
-  const [createOpen, setCreateOpen] = useState(false);
 
   const filtersApplied = Boolean(categoryFilter || assigneeFilter || mineOnly);
 
@@ -41,6 +46,11 @@ export function BoardPageContent({
     setSortBy((current) =>
       current === "default" ? "title" : current === "title" ? "due" : "default"
     );
+  }
+
+  function openCreateTask() {
+    rememberTaskReturnPath(pathname);
+    router.push(taskNewPath(workspaceId));
   }
 
   return (
@@ -52,19 +62,9 @@ export function BoardPageContent({
           onFilterClick={() => setFiltersOpen((open) => !open)}
           sortLabel={SORT_LABELS[sortBy]}
           onSortClick={cycleSort}
-          onAddTaskClick={() => setCreateOpen(true)}
-          addTaskOpen={createOpen}
+          onAddTaskClick={openCreateTask}
         />
       </WorkspaceToolbarPortal>
-
-      {createOpen ? (
-        <TaskModal
-          mode="create"
-          workspaceId={workspaceId}
-          categories={categories}
-          onClose={() => setCreateOpen(false)}
-        />
-      ) : null}
 
       <Suspense fallback={<BoardContentSkeleton />}>
         <TaskBoard

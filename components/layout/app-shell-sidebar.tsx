@@ -31,7 +31,7 @@ export async function AppShellSidebar({
       <SidebarContent>
         <SidebarNav workspaces={workspaceNavData} />
 
-        <div className="mt-auto shrink-0 border-t border-line/60 pt-4">
+        <div className="mt-auto shrink-0 border-t border-line bg-paper pt-4 md:bg-transparent">
           <SidebarAccount userId={userId} userLabel={userLabel} />
         </div>
       </SidebarContent>

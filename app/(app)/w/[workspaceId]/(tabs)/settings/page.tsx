@@ -9,6 +9,7 @@ import { InviteRow } from "@/components/members/invite-row";
 import { MemberRow } from "@/components/members/member-row";
 import { WorkspaceRenameForm } from "@/components/workspace/workspace-rename-form";
 import { SettingsContentSkeleton } from "@/components/ui/tab-content-skeleton";
+import { ui } from "@/components/ui/ui";
 
 async function SettingsData({ workspaceId }: { workspaceId: string }) {
   const user = await requireUser();
@@ -36,8 +37,8 @@ async function SettingsData({ workspaceId }: { workspaceId: string }) {
   return (
     <>
       <section className="mb-10 max-w-2xl">
-        <h2 className="mb-1 text-sm font-semibold text-ink">General</h2>
-        <p className="mb-4 text-sm text-ink-soft">
+        <h2 className={ui.settingsSectionTitle}>General</h2>
+        <p className={`${ui.fieldHint} mb-4`}>
           Rename this workspace. Only leaders can change the name.
         </p>
         {isLeader ? (
@@ -46,17 +47,18 @@ async function SettingsData({ workspaceId }: { workspaceId: string }) {
             initialName={workspace.name}
           />
         ) : (
-          <p className="rounded-lg border border-line bg-paper px-3.5 py-2.5 text-sm text-ink">
+          <p className="rounded-lg border border-line bg-white px-3.5 py-3 text-[15px] text-ink shadow-[0_1px_3px_rgba(26,26,26,0.04)]">
             {workspace.name}
           </p>
         )}
       </section>
 
       <section className="mb-10">
-        <h2 className="mb-3 font-mono text-xs font-semibold uppercase tracking-[0.12em] text-ink-faint">
-          Members ({members.length})
-        </h2>
-        <div className="flex flex-col gap-2">
+        <h2 className={ui.settingsSectionTitle}>Members ({members.length})</h2>
+        <p className={`${ui.fieldHint} mb-4`}>
+          Manage roles and remove members from this workspace.
+        </p>
+        <div className="flex flex-col gap-3">
           {members.map((m) => (
             <MemberRow
               key={m.userId}
@@ -77,15 +79,19 @@ async function SettingsData({ workspaceId }: { workspaceId: string }) {
 
       {canInvite && (
         <section className="mb-10">
-          <h2 className="mb-3 font-mono text-xs font-semibold uppercase tracking-[0.12em] text-ink-faint">
+          <h2 className={ui.settingsSectionTitle}>
             Invite links ({invites.length})
           </h2>
+          <p className={`${ui.fieldHint} mb-4`}>
+            Share links to invite new members. Revoke any link that should no
+            longer work.
+          </p>
           {invites.length === 0 ? (
-            <p className="rounded-md border border-dashed border-line-strong px-4 py-6 text-center text-xs text-ink-faint">
+            <p className="rounded-xl border border-dashed border-line-strong px-4 py-8 text-center text-sm text-ink-faint">
               No invites yet. Generate one with the button above.
             </p>
           ) : (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-3">
               {invites.map((invite) => (
                 <InviteRow
                   key={invite.id}
@@ -105,6 +111,10 @@ async function SettingsData({ workspaceId }: { workspaceId: string }) {
       )}
 
       <section className="mb-8 max-w-2xl">
+        <h2 className={ui.settingsSectionTitle}>Danger zone</h2>
+        <p className={`${ui.fieldHint} mb-4`}>
+          Leave or permanently delete this workspace.
+        </p>
         <DangerZone
           workspaceId={workspaceId}
           workspaceName={workspace.name}

@@ -83,6 +83,7 @@ const sampleEvent: MemoryEventRow = {
   status: "OPEN",
   summary: "Design files for the login redesign are missing.",
   reasoning: "Figma export was never shared by the design contractor.",
+  tags: ["design-handoff"],
   createdAt: new Date("2026-07-01T10:00:00Z"),
   resolvedAt: null,
   supersededByEventId: null,

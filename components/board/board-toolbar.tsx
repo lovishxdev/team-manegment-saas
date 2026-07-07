@@ -41,7 +41,6 @@ export function BoardToolbar({
   sortLabel,
   onSortClick,
   onAddTaskClick,
-  addTaskOpen,
   className = "",
 }: {
   filtersApplied: boolean;
@@ -50,7 +49,6 @@ export function BoardToolbar({
   sortLabel: string;
   onSortClick: () => void;
   onAddTaskClick: () => void;
-  addTaskOpen: boolean;
   className?: string;
 }) {
   return (
@@ -79,7 +77,6 @@ export function BoardToolbar({
       <button
         type="button"
         onClick={onAddTaskClick}
-        aria-expanded={addTaskOpen}
         className="inline-flex h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-xl bg-ink px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-ink/90"
       >
         + Add Task

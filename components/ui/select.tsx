@@ -49,14 +49,19 @@ const fieldOpenCls =
 
 const sizeCls = {
   sm: {
-    trigger: "min-h-[34px] gap-2 rounded-lg px-3 py-1.5 text-xs",
+    trigger: "min-h-[36px] gap-2 rounded-lg px-3 py-2 text-sm",
     menu: "p-1.5",
-    item: "gap-2 rounded-md px-2.5 py-2 text-xs",
+    item: "gap-2 rounded-md px-2.5 py-2 text-sm",
   },
   md: {
-    trigger: "min-h-[42px] gap-2 rounded-lg px-3.5 py-2.5 text-sm",
+    trigger: "min-h-[46px] gap-2 rounded-lg px-3.5 py-3 text-[15px]",
     menu: "p-2",
-    item: "gap-2.5 rounded-md px-3 py-2.5 text-sm",
+    item: "gap-2.5 rounded-lg px-3 py-2.5 text-[15px]",
+  },
+  lg: {
+    trigger: "min-h-[52px] gap-2 rounded-lg px-4 py-3.5 text-base",
+    menu: "p-2",
+    item: "gap-2.5 rounded-lg px-3 py-2.5 text-[15px]",
   },
 } as const;
 
@@ -76,7 +81,7 @@ export function Select({
   options: SelectOption[];
   placeholder?: string;
   className?: string;
-  size?: "sm" | "md";
+  size?: "sm" | "md" | "lg";
   name?: string;
   disabled?: boolean;
   "aria-label"?: string;
@@ -128,7 +133,7 @@ export function Select({
           open ? fieldOpenCls : ""
         }`}
       >
-        <span className={selected ? "truncate text-ink" : "truncate text-ink-soft"}>
+        <span className={selected ? "truncate font-medium text-ink" : "truncate text-ink-soft"}>
           {selected?.triggerLabel ?? selected?.label ?? placeholder}
         </span>
         <ChevronDown open={open} />

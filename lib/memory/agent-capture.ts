@@ -8,7 +8,10 @@ import {
 } from "@/lib/services/memory";
 import { memoryCaptureEnabled } from "@/lib/memory/capture";
 import { notifyBlockerDetected } from "@/lib/whatsapp-notify";
-import { suggestBlockerResolution } from "@/lib/memory/suggest";
+import {
+  claimResolutionSuggestion,
+  type ClaimedSuggestion,
+} from "@/lib/memory/suggest";
 
 /**
  * Ambient memory capture from coding-agent sessions (Cursor stop hook →
@@ -27,7 +30,9 @@ import { suggestBlockerResolution } from "@/lib/memory/suggest";
  * anything recoverable by reading the repo never qualify.
  *
  * Confirm-only resolution still holds: a session that plausibly cleared an
- * open blocker triggers a WhatsApp confirmation ask, never an auto-resolve.
+ * open blocker produces an ask (delivered in-editor via the hook's
+ * followup/block output, sharing the WhatsApp throttle budget), never an
+ * auto-resolve.
  */
 
 const CAPTURE_MODEL =
@@ -47,6 +52,7 @@ type SessionEvent = {
   kind?: "DECISION" | "BLOCKER" | "DEPENDENCY" | "MILESTONE";
   summary?: string;
   reasoning?: string;
+  tags?: string[];
   task_short_id?: number;
   supersedes_event_id?: string;
 };
@@ -83,6 +89,12 @@ const SESSION_TOOL: Anthropic.Tool = {
               type: "string",
               description:
                 "WHY — rationale, alternatives rejected, constraints discovered. Omit if the session gives none.",
+            },
+            tags: {
+              type: "array",
+              items: { type: "string" },
+              description:
+                "1-4 short lowercase topic tags ('auth', 'payments', 'design-handoff'). Reuse tags already seen on existing events for the same topic — consistency beats precision.",
             },
             task_short_id: {
               type: "number",
@@ -140,7 +152,7 @@ function formatExistingEvents(events: MemoryEventRow[]): string {
   return events
     .map(
       (e) =>
-        `- id=${e.id} [${e.kind}${e.status === "OPEN" ? ", OPEN" : ""}] ${e.summary}${e.task ? ` (task #${e.task.shortId})` : ""}`
+        `- id=${e.id} [${e.kind}${e.status === "OPEN" ? ", OPEN" : ""}] ${e.summary}${e.task ? ` (task #${e.task.shortId})` : ""}${e.tags.length > 0 ? ` (tags: ${e.tags.join(", ")})` : ""}`
     )
     .join("\n");
 }
@@ -194,22 +206,29 @@ async function judgeSession(input: {
   return toolUse.input as SessionAnalysis;
 }
 
+export type SessionCaptureResult = {
+  /** Confirm-only resolution asks claimed for in-editor delivery. */
+  suggestions: ClaimedSuggestion[];
+};
+
+const NO_RESULT: SessionCaptureResult = { suggestions: [] };
+
 export async function captureFromAgentSession(input: {
   workspaceId: string;
   workspaceName: string;
   userId: string;
   conversationId: string;
   transcript: string;
-}): Promise<void> {
-  if (!memoryCaptureEnabled()) return;
+}): Promise<SessionCaptureResult> {
+  if (!memoryCaptureEnabled()) return NO_RESULT;
 
   const transcript = input.transcript
     .trim()
     .slice(-MAX_AGENT_TRANSCRIPT_CHARS);
-  if (transcript.length < MIN_AGENT_TRANSCRIPT_CHARS) return;
+  if (transcript.length < MIN_AGENT_TRANSCRIPT_CHARS) return NO_RESULT;
 
   const cooldownKey = `${input.workspaceId}:${input.conversationId}`;
-  if (judgeCooldown.get(cooldownKey)) return;
+  if (judgeCooldown.get(cooldownKey)) return NO_RESULT;
   judgeCooldown.set(cooldownKey, true);
 
   const [user, tasks, existingEvents] = await Promise.all([
@@ -245,6 +264,7 @@ export async function captureFromAgentSession(input: {
         status: true,
         summary: true,
         reasoning: true,
+        tags: true,
         createdAt: true,
         resolvedAt: true,
         supersededByEventId: true,
@@ -253,7 +273,7 @@ export async function captureFromAgentSession(input: {
       },
     }),
   ]);
-  if (!user) return;
+  if (!user) return NO_RESULT;
 
   const analysis = await judgeSession({
     transcript,
@@ -262,23 +282,32 @@ export async function captureFromAgentSession(input: {
     tasks,
     existingEvents,
   });
-  if (!analysis) return;
+  if (!analysis) return NO_RESULT;
 
-  const existingIds = new Set(existingEvents.map((e) => e.id));
+  // Supersession is decision semantics — a decision may only replace
+  // another DECISION, never a blocker/dependency (that would hide open
+  // work from every default listing).
+  const decisionIds = new Set(
+    existingEvents.filter((e) => e.kind === "DECISION").map((e) => e.id)
+  );
   const openIds = new Set(
     existingEvents.filter((e) => e.status === "OPEN").map((e) => e.id)
   );
   const taskShortIds = new Set(tasks.map((t) => t.shortId));
 
-  // Confirm-only: a plausible clear becomes a WhatsApp ask, never a resolve.
+  // Confirm-only: a plausible clear becomes an ask, never a resolve. The
+  // asks are returned to the ingest endpoint, which hands them to the hook
+  // for delivery inside the editor session (the user confirms there and the
+  // agent calls resolve_blocker). Claiming consumes the shared suggestion
+  // budget, so WhatsApp won't re-ask about the same event in parallel.
+  const suggestions: ClaimedSuggestion[] = [];
   for (const eventId of analysis.resolved_event_ids ?? []) {
     if (!openIds.has(eventId)) continue;
-    await suggestBlockerResolution({
-      eventId,
-      triggerUserId: input.userId,
-    }).catch((err) =>
-      console.error("[agent-capture] resolution suggestion failed:", err)
-    );
+    const claimed = await claimResolutionSuggestion(eventId).catch((err) => {
+      console.error("[agent-capture] suggestion claim failed:", err);
+      return null;
+    });
+    if (claimed) suggestions.push(claimed);
   }
 
   const events = (analysis.events ?? []).slice(0, MAX_EVENTS_PER_SESSION);
@@ -296,7 +325,7 @@ export async function captureFromAgentSession(input: {
     const supersedesEventId =
       kind === "DECISION" &&
       candidate.supersedes_event_id &&
-      existingIds.has(candidate.supersedes_event_id)
+      decisionIds.has(candidate.supersedes_event_id)
         ? candidate.supersedes_event_id
         : undefined;
 
@@ -307,6 +336,7 @@ export async function captureFromAgentSession(input: {
         kind,
         summary,
         reasoning: candidate.reasoning,
+        tags: candidate.tags,
         taskShortId,
         supersedesEventId,
       });
@@ -340,4 +370,6 @@ export async function captureFromAgentSession(input: {
       console.error("[agent-capture] event create failed:", err);
     }
   }
+
+  return { suggestions };
 }

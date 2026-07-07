@@ -25,6 +25,7 @@ import {
 } from "@/lib/channel-formatters";
 import { resolveWhatsAppTaskShortId, resolveWebTaskShortId } from "@/lib/whatsapp-tool-guard";
 import { formatChatDate } from "@/lib/whatsapp-voice";
+import { displayUser } from "@/lib/username";
 import {
   buildTaskSnapshot,
   recordUndoable,
@@ -49,6 +50,7 @@ import {
   optionalNum,
   optionalStr,
   parseInputDueDate,
+  parseMentionRefsInput,
   parseTagsInput,
   resolveAssigneesHints,
   resolveAssigneesUpdate,
@@ -131,13 +133,13 @@ const createTaskTool: ToolDef = {
       .string()
       .optional()
       .describe(
-        "Single assignee: 'me' for the sender, or part of a member's name/email"
+        "Single assignee: 'me' for the sender, or a member @username from list_workspace_members (with or without @)"
       ),
     assignees: z
       .array(z.string())
       .optional()
       .describe(
-        "Multiple assignees: 'me', usernames, or parts of member names/emails"
+        "Multiple assignees: 'me', @usernames, or handles shown in list_workspace_members"
       ),
     workspace: workspaceParam,
   },
@@ -172,6 +174,9 @@ const createTaskTool: ToolDef = {
       const hints = [
         task.priority === "HIGH" ? "high priority" : "",
         task.dueDate ? `due ${formatChatDate(task.dueDate)}` : "",
+        task.assignees.length > 0
+          ? `assigned to ${task.assignees.map((a) => `@${displayUser(a.user)}`).join(", ")}`
+          : "",
       ].filter(Boolean);
       const message = `Added *${task.title}*${hints.length ? ` (${hints.join(", ")})` : ""}.`;
       recordUndoable({
@@ -430,15 +435,23 @@ const readTaskTool: ToolDef = {
   },
 };
 
+const mentionRefsParam = z
+  .array(z.string())
+  .optional()
+  .describe(
+    "Teammates the user is calling out or asking — workspace handles from list_workspace_members, without @. Use when they name someone in natural language ('tell gvvhbb31…', 'blocked waiting on sarvikiitd', 'ask lovish to review') even if body has no @."
+  );
+
 const addTaskUpdateTool: ToolDef = {
   name: "add_task_update",
   waDescription:
-    "Post a progress note on a task. Use when the user reports status, progress, or blockers ('I started…', 'just uploaded the files', 'blocked on X') or confirms posting something you offered. ALWAYS pass body.",
+    "Post a progress note on a task. Use when the user reports status, progress, or blockers ('I started…', 'just uploaded the files', 'blocked on X') or confirms posting something you offered. ALWAYS pass body (their words). When they name or address a teammate, pass mentions[] with handles from list_workspace_members — users won't type @ on WhatsApp.",
   mcpDescription:
-    "Post a team update on a task (#N) — blockers, questions, review notes. Not for editing the task description.",
+    "Post a team update on a task (#N) — blockers, questions, review notes. Not for editing the task description. Pass mentions[] when the user tags or addresses teammates by name.",
   inputShape: {
     shortId: z.number().int().positive().describe("Task short ID (#N)"),
     body: z.string().min(1).describe("Update message"),
+    mentions: mentionRefsParam,
     workspace: workspaceParam,
   },
   waInputShape: {
@@ -456,6 +469,7 @@ const addTaskUpdateTool: ToolDef = {
       .describe(
         "The update text — the user's words verbatim, or the exact text you offered if they confirmed posting it."
       ),
+    mentions: mentionRefsParam,
     workspace: workspaceParam,
   },
   run: async (input, ctx) => {
@@ -475,7 +489,8 @@ const addTaskUpdateTool: ToolDef = {
       ctx.userId,
       resolved.shortId,
       body,
-      ctx.channel
+      ctx.channel,
+      { mentionRefs: parseMentionRefsInput(input.mentions) }
     );
     recordUndoable({
       userId: ctx.userId,

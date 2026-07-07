@@ -8,41 +8,41 @@ import { displayUser } from "@/lib/username";
 import { MemoryEventCard } from "@/components/memory/memory-event-card";
 import { CopyField } from "@/components/ui/copy-field";
 import { CODING_AGENT_RULES_SNIPPET } from "@/lib/memory/rules-snippet";
-import { LinksContentSkeleton } from "@/components/ui/tab-content-skeleton";
+import { MemoryContentSkeleton } from "@/components/ui/tab-content-skeleton";
+import { ui } from "@/components/ui/ui";
 
 function SeedChecklist() {
   return (
-    <div className="flex flex-col items-center rounded-xl border border-dashed border-line/80 bg-paper px-8 py-14 text-center shadow-[0_1px_3px_rgba(26,26,26,0.04)]">
-      <p className="font-display text-lg text-ink">No project memory yet.</p>
-      <p className="mt-1 max-w-2xl text-sm text-ink-soft">
+    <div className={`${ui.contentPanel} text-center`}>
+      <p className="text-base font-medium text-ink">No project memory yet</p>
+      <p className={`${ui.fieldHint} mx-auto mt-2 max-w-2xl`}>
         Memory builds itself: when someone posts a task update that contains a
         decision, blocker, or milestone, it&apos;s captured automatically. To
         seed memory for a project that already has history:
       </p>
-      <ol className="mt-4 list-decimal space-y-2 pl-5 text-sm text-ink-soft">
+      <ol className="mx-auto mt-5 max-w-2xl list-decimal space-y-3 pl-5 text-left text-sm text-ink-soft">
         <li>
           <span className="font-medium text-ink">Backfill past updates</span> —
           run{" "}
-          <code className="rounded bg-paper-deep px-1 py-0.5 font-mono text-xs">
+          <code className="rounded bg-paper-deep px-1.5 py-0.5 font-mono text-xs text-ink">
             npm run backfill:memory
           </code>{" "}
           to extract decisions and blockers from existing task updates.
         </li>
         <li>
-          <span className="font-medium text-ink">Tell the bot what it can&apos;t read</span>{" "}
-          — on WhatsApp or Claude, say things like &quot;log a decision: we
-          use Supabase RLS for all reads because writes go through the service
-          layer&quot;. Key architectural choices, known constraints, things
-          newcomers trip over.
+          <span className="font-medium text-ink">
+            Tell the bot what it can&apos;t read
+          </span>{" "}
+          — on WhatsApp or Claude, say things like &quot;log a decision: we use
+          Supabase RLS for all reads because writes go through the service
+          layer&quot;.
         </li>
         <li>
-          <span className="font-medium text-ink">Wire up your coding agents</span>{" "}
+          <span className="font-medium text-ink">
+            Wire up your coding agents
+          </span>{" "}
           — add the rules block below to your repo&apos;s{" "}
-          <code className="rounded bg-paper-deep px-1 py-0.5 font-mono text-xs">
-            .cursor/rules
-          </code>{" "}
-          or{" "}
-          <code className="rounded bg-paper-deep px-1 py-0.5 font-mono text-xs">
+          <code className="rounded bg-paper-deep px-1.5 py-0.5 font-mono text-xs text-ink">
             AGENTS.md
           </code>{" "}
           so every session pulls context before working.
@@ -52,22 +52,34 @@ function SeedChecklist() {
   );
 }
 
+function EmptyPanel({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className={`${ui.contentPanel} border-dashed py-8 text-center text-sm text-ink-soft`}
+    >
+      {children}
+    </div>
+  );
+}
+
 function RulesSnippetSection() {
   return (
     <section className="mt-10 max-w-3xl">
-      <h2 className="text-sm font-semibold text-ink">
-        Coding-agent rules snippet
-      </h2>
-      <p className="mb-3 mt-1 text-sm text-ink-soft">
+      <h2 className={ui.settingsSectionTitle}>Coding-agent rules snippet</h2>
+      <p className={`${ui.fieldHint} mb-4`}>
         Run this once in each repo — it appends the rules to{" "}
-        <code className="rounded bg-paper-deep px-1 py-0.5 font-mono text-xs">AGENTS.md</code>{" "}
+        <code className="rounded bg-paper-deep px-1.5 py-0.5 font-mono text-xs text-ink">
+          AGENTS.md
+        </code>{" "}
         so agents connected to Euclis via MCP pull relevant decisions and
         blockers before starting work, and record what they did after.
       </p>
-      <RulesInstallCommand />
-      <pre className="mt-3 max-h-72 overflow-auto rounded-lg border border-line bg-paper-deep/50 p-4 font-mono text-xs leading-relaxed text-ink-soft">
-        {CODING_AGENT_RULES_SNIPPET}
-      </pre>
+      <div className={ui.contentPanel}>
+        <RulesInstallCommand />
+        <pre className="mt-4 max-h-72 overflow-auto rounded-lg border border-line bg-paper-deep/40 p-4 font-mono text-xs leading-relaxed text-ink-soft">
+          {CODING_AGENT_RULES_SNIPPET}
+        </pre>
+      </div>
     </section>
   );
 }
@@ -103,6 +115,7 @@ async function MemoryData({ workspaceId }: { workspaceId: string }) {
     status: e.status,
     summary: e.summary,
     reasoning: e.reasoning,
+    tags: e.tags,
     createdAt: e.createdAt.toISOString(),
     resolvedAt: e.resolvedAt ? e.resolvedAt.toISOString() : null,
     authorLabel: e.author ? displayUser(e.author) : null,
@@ -114,9 +127,9 @@ async function MemoryData({ workspaceId }: { workspaceId: string }) {
 
   return (
     <>
-      <section className="mb-8 max-w-3xl">
-        <h2 className="mb-1 text-sm font-semibold text-ink">Project memory</h2>
-        <p className="text-sm text-ink-soft">
+      <section className="mb-10 max-w-3xl">
+        <h2 className={ui.settingsSectionTitle}>Project memory</h2>
+        <p className={ui.fieldHint}>
           Decisions, blockers, dependencies, and milestones — captured
           automatically from task updates and queryable by anyone (or any
           agent) asking &quot;why&quot;, &quot;what&apos;s blocking&quot;, or
@@ -128,15 +141,12 @@ async function MemoryData({ workspaceId }: { workspaceId: string }) {
         <SeedChecklist />
       ) : (
         <>
-          <section className="mb-8">
-            <h3 className="mb-3 text-sm font-semibold text-ink">
-              Open blockers &amp; dependencies{" "}
-              <span className="font-normal text-ink-faint">({open.length})</span>
-            </h3>
+          <section className="mb-10">
+            <h2 className={`${ui.settingsSectionTitle} mb-4`}>
+              Open blockers &amp; dependencies ({open.length})
+            </h2>
             {open.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-line bg-paper px-4 py-3 text-sm text-ink-soft">
-                Nothing is blocked right now.
-              </p>
+              <EmptyPanel>Nothing is blocked right now.</EmptyPanel>
             ) : (
               <div className="flex flex-col gap-3">
                 {open.map((event) => (
@@ -150,16 +160,15 @@ async function MemoryData({ workspaceId }: { workspaceId: string }) {
             )}
           </section>
 
-          <section>
-            <h3 className="mb-3 text-sm font-semibold text-ink">
-              Timeline{" "}
-              <span className="font-normal text-ink-faint">({rest.length})</span>
-            </h3>
+          <section className="mb-10">
+            <h2 className={`${ui.settingsSectionTitle} mb-4`}>
+              Timeline ({rest.length})
+            </h2>
             {rest.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-line bg-paper px-4 py-3 text-sm text-ink-soft">
+              <EmptyPanel>
                 Decisions and milestones will appear here as they&apos;re
                 captured.
-              </p>
+              </EmptyPanel>
             ) : (
               <div className="flex flex-col gap-3">
                 {rest.map((event) => (
@@ -188,7 +197,7 @@ export default async function MemoryPage({
   const { workspaceId } = await params;
 
   return (
-    <Suspense fallback={<LinksContentSkeleton />}>
+    <Suspense fallback={<MemoryContentSkeleton />}>
       <MemoryData workspaceId={workspaceId} />
     </Suspense>
   );

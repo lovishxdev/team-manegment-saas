@@ -8,6 +8,10 @@ import { formatTaskTitle, normalizeTaskTitleAndDescription } from "@/lib/format-
 import { prisma } from "@/lib/prisma";
 import { ASSETS_BUCKET, getSupabaseAdmin } from "@/lib/supabase";
 import { displayUser } from "@/lib/username";
+import {
+  matchWorkspaceMember,
+  normalizeMemberRef,
+} from "@/lib/services/member-resolve";
 import { notifyTaskAssigned } from "@/lib/whatsapp-notify";
 import {
   listWorkspaceCategories,
@@ -166,31 +170,18 @@ async function resolveAssignee(
     include: { user: { select: { id: true, email: true, username: true } } },
   });
 
-  const byId = memberships.find((m) => m.user.id === idOrEmail);
-  if (byId) return byId.user.id;
-
-  const needle = idOrEmail.trim().toLowerCase();
-
-  // Exact username match wins outright.
-  const byUsername = memberships.find((m) => m.user.username === needle);
-  if (byUsername) return byUsername.user.id;
-
-  const matches = memberships.filter(
-    (m) =>
-      m.user.email?.toLowerCase().includes(needle) ||
-      m.user.username?.includes(needle)
-  );
-  if (matches.length === 1) return matches[0].user.id;
-  if (matches.length > 1) {
+  const matched = matchWorkspaceMember(memberships, idOrEmail);
+  if (matched.kind === "one") return matched.member.user.id;
+  if (matched.kind === "ambiguous") {
     throw new ServiceError(
-      `Multiple members match "${idOrEmail}": ${matches
+      `Multiple members match "${normalizeMemberRef(idOrEmail) || idOrEmail.trim()}": ${matched.members
         .map((m) => displayUser(m.user))
         .join(", ")}. Be more specific.`,
       "AMBIGUOUS_WORKSPACE"
     );
   }
   throw new ServiceError(
-    `No workspace member matches "${idOrEmail}"`,
+    `No workspace member matches "${normalizeMemberRef(idOrEmail) || idOrEmail.trim()}"`,
     "NOT_FOUND"
   );
 }
@@ -214,6 +205,9 @@ export const taskBoardInclude = {
   attachments: {
     select: { id: true, url: true, fileType: true },
     orderBy: { createdAt: "asc" as const },
+  },
+  _count: {
+    select: { updates: true },
   },
 };
 
@@ -888,6 +882,25 @@ export async function updateAssetTagsByRef(input: {
   });
 }
 
+/** Workspace name + categories for task create/edit forms (no task list). */
+export async function getWorkspaceTaskFormMeta(
+  workspaceId: string,
+  userId: string
+) {
+  await assertMembership(userId, workspaceId);
+
+  const [workspace, categories] = await Promise.all([
+    prisma.workspace.findUniqueOrThrow({
+      where: { id: workspaceId },
+      select: { id: true, name: true },
+    }),
+    listWorkspaceCategories(workspaceId),
+    touchLastActiveWorkspace(userId, workspaceId),
+  ]);
+
+  return { workspace, categories };
+}
+
 /** Web board tab: tasks + workspace + categories + caller role. No members/assets. */
 export async function getBoardView(workspaceId: string, userId: string) {
   const membership = await assertMembership(userId, workspaceId);
@@ -989,6 +1002,9 @@ export async function getTask(
       attachments: {
         select: { id: true, url: true, fileType: true },
         orderBy: { createdAt: "asc" },
+      },
+      _count: {
+        select: { updates: true },
       },
     },
   });
