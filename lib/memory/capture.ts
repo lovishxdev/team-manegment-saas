@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { getAnthropicApiKey } from "@/lib/anthropic-env";
 import { prisma } from "@/lib/prisma";
 import {
   createMemoryEvent,
@@ -22,7 +23,7 @@ const CAPTURE_MODEL =
 
 export function memoryCaptureEnabled(): boolean {
   if (process.env.MEMORY_CAPTURE === "0") return false;
-  return Boolean(process.env.ANTHROPIC_API_KEY?.trim());
+  return Boolean(getAnthropicApiKey());
 }
 
 export type CaptureAnalysis = {
@@ -108,7 +109,9 @@ async function analyzeUpdate(input: {
   assigneeUsernames: string[];
   existingEvents: MemoryEventRow[];
 }): Promise<CaptureAnalysis | null> {
-  const anthropic = new Anthropic();
+  const apiKey = getAnthropicApiKey();
+  if (!apiKey) return null;
+  const anthropic = new Anthropic({ apiKey });
 
   const userContent = [
     `Task: "${input.taskTitle}" (status: ${input.taskStatus})`,
@@ -335,7 +338,9 @@ export async function checkDecisionSupersession(eventId: string): Promise<void> 
   });
   if (candidates.length === 0) return;
 
-  const anthropic = new Anthropic();
+  const apiKey = getAnthropicApiKey();
+  if (!apiKey) return;
+  const anthropic = new Anthropic({ apiKey });
   const res = await anthropic.messages.create({
     model: CAPTURE_MODEL,
     max_tokens: 200,

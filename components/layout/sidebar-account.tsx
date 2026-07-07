@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { ChevronRight } from "lucide-react";
+import { OpenSettingsLink } from "@/components/settings/open-settings-link";
 import { Avatar } from "@/components/ui/ui";
 
 export function SidebarAccount({
@@ -14,8 +14,7 @@ export function SidebarAccount({
   const displayName = userLabel ?? "Account";
 
   return (
-    <Link
-      href="/settings"
+    <OpenSettingsLink
       className="flex items-center gap-2.5 rounded-lg px-2 py-2 transition hover:bg-white/60"
       title="Account settings"
     >
@@ -24,6 +23,6 @@ export function SidebarAccount({
         {displayName}
       </span>
       <ChevronRight className="h-4 w-4 shrink-0 text-ink-faint" strokeWidth={1.75} />
-    </Link>
+    </OpenSettingsLink>
   );
 }

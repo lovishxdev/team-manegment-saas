@@ -6,8 +6,21 @@ import type { ToolDef } from "@/lib/tools/types";
  * Generate Anthropic native tool schemas from the registry's Zod shapes.
  * Zod v4 ships a JSON Schema converter, so schemas never drift from dispatch.
  */
-export function toAnthropicTool(def: ToolDef): Anthropic.Tool {
-  const shape = def.waInputShape ?? def.inputShape;
+export type AnthropicToolShape = "wa" | "web" | "mcp";
+
+function pickInputShape(def: ToolDef, variant: AnthropicToolShape): z.ZodRawShape {
+  if (variant === "mcp") return def.inputShape;
+  if (variant === "web") {
+    return def.webInputShape ?? def.waInputShape ?? def.inputShape;
+  }
+  return def.waInputShape ?? def.inputShape;
+}
+
+export function toAnthropicTool(
+  def: ToolDef,
+  variant: AnthropicToolShape = "wa"
+): Anthropic.Tool {
+  const shape = pickInputShape(def, variant);
   const json = z.toJSONSchema(z.object(shape), {
     io: "input",
     target: "draft-7",
@@ -23,6 +36,9 @@ export function toAnthropicTool(def: ToolDef): Anthropic.Tool {
   };
 }
 
-export function toAnthropicTools(defs: ToolDef[]): Anthropic.Tool[] {
-  return defs.map(toAnthropicTool);
+export function toAnthropicTools(
+  defs: ToolDef[],
+  variant: AnthropicToolShape = "wa"
+): Anthropic.Tool[] {
+  return defs.map((def) => toAnthropicTool(def, variant));
 }

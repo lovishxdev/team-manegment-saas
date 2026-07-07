@@ -4,11 +4,18 @@ import { CopyField } from "@/components/ui/copy-field";
 import { ui } from "@/components/ui/ui";
 
 /**
- * One-click Cursor MCP install via the official deeplink:
- * cursor://anysphere.cursor-deeplink/mcp/install?name=…&config=<base64 JSON>
- * Cursor opens, registers the server, and runs the OAuth login on first use.
+ * Cursor setup: one-click MCP install (official deeplink), plus the
+ * ambient-memory hook installer — a per-repo command that makes memory
+ * build itself from agent sessions (capture on stop, brief injected into
+ * every new session) with zero tool calls in the loop.
  */
-export function AddToCursor({ mcpUrl }: { mcpUrl: string }) {
+export function AddToCursor({
+  mcpUrl,
+  mcpToken,
+}: {
+  mcpUrl: string;
+  mcpToken: string;
+}) {
   const config = btoa(JSON.stringify({ url: mcpUrl }));
   const deeplink = `cursor://anysphere.cursor-deeplink/mcp/install?name=euclis&config=${encodeURIComponent(config)}`;
 
@@ -19,6 +26,7 @@ export function AddToCursor({ mcpUrl }: { mcpUrl: string }) {
   );
 
   const origin = mcpUrl.replace(/\/api\/mcp\/?$/, "");
+  const hooksCommand = `curl -fsSL "${origin}/api/agent-hooks?agent=cursor" | bash -s -- ${mcpToken}`;
   const rulesCommand = `curl -fsSL ${origin}/api/agent-rules >> AGENTS.md`;
 
   return (
@@ -34,8 +42,16 @@ export function AddToCursor({ mcpUrl }: { mcpUrl: string }) {
       </p>
       <CopyField value={snippet} secret={false} />
       <p className="mt-1 text-xs text-ink-faint">
-        Then run this once in each repo so every agent session pulls project
-        memory before working and records what it did after:
+        <span className="font-medium text-ink">Ambient memory</span> — run this
+        once in each repo. After every agent session, Euclis quietly captures
+        decisions and blockers from the session itself and refreshes a live
+        project brief that loads into every new chat. No tool calls, nothing
+        to remember:
+      </p>
+      <CopyField value={hooksCommand} secret />
+      <p className="mt-1 text-xs text-ink-faint">
+        Optional: also install the rules snippet so the agent knows when to
+        use the Euclis tools directly (deep context pulls, posting updates):
       </p>
       <CopyField value={rulesCommand} secret={false} />
     </div>

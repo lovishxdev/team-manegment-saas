@@ -79,6 +79,10 @@ export type ToolDef = {
   inputShape: z.ZodRawShape;
   /** WhatsApp-specific shape when the channels genuinely differ (e.g. confirm param). */
   waInputShape?: z.ZodRawShape;
+  /** In-app web chat shape (e.g. taskRef instead of required shortId). */
+  webInputShape?: z.ZodRawShape;
+  /** Description for the in-app web chat agent. */
+  webDescription?: string;
   /** False for tools runnable without a workspace (create/list/switch workspace). */
   needsWorkspace?: boolean;
   /** Tool only exists on WhatsApp (e.g. interactive picker). */

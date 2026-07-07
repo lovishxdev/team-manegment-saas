@@ -1,3 +1,5 @@
+import { markdownToPlainText } from "@/lib/markdown/parse";
+
 /** Tokenize a task title or search phrase into comparable words. */
 function tokenize(text: string): string[] {
   return text
@@ -114,7 +116,8 @@ export function scoreTaskTitleQuery(
 
   const titleText = title.toLowerCase();
   const titleWords = tokenize(title);
-  const descWords = description ? tokenize(description) : [];
+  const plainDescription = description ? markdownToPlainText(description) : null;
+  const descWords = plainDescription ? tokenize(plainDescription) : [];
   const pool = [...new Set([...titleWords, ...descWords])];
 
   let total = 0;

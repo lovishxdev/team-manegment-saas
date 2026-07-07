@@ -18,7 +18,7 @@ export function DeleteAccount({
 
   return (
     <section className="rounded-lg border border-red-500/30 bg-red-500/5 p-5">
-      <h2 className="text-sm font-semibold text-red-300">Delete account</h2>
+      <h2 className="text-sm font-semibold text-red-700">Delete account</h2>
       <p className="mt-2 text-sm text-ink-soft">
         Permanently removes your account, OAuth tokens, and WhatsApp link.
         Workspaces where you&apos;re the only member are deleted. Tasks you

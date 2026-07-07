@@ -6,6 +6,7 @@ import {
   formatTaskListLine,
   formatTaskRef,
 } from "@/lib/whatsapp-task-ref";
+import { markdownToPlainText } from "@/lib/markdown/parse";
 
 export type BoardTask = {
   shortId: number;
@@ -26,6 +27,17 @@ export type BoardSnapshot = {
 };
 
 export type Channel = "whatsapp" | "mcp" | "web";
+
+function formatDescriptionForChannel(
+  description: string | null | undefined,
+  channel: Channel,
+  emptyLabel: string
+): string {
+  const trimmed = description?.trim();
+  if (!trimmed) return emptyLabel;
+  if (channel === "whatsapp") return markdownToPlainText(trimmed);
+  return trimmed;
+}
 
 function formatChatDate(date: Date): string {
   return date.toLocaleDateString("en-US", {
@@ -271,9 +283,11 @@ export function formatTaskDetail(
       ? "_None_"
       : "None";
 
-  const description =
-    task.description?.trim() ||
-    (channel === "whatsapp" ? "_No description_" : "No description");
+  const description = formatDescriptionForChannel(
+    task.description,
+    channel,
+    channel === "whatsapp" ? "_No description_" : "No description"
+  );
 
   const attachmentLines =
     task.attachments.length > 0
@@ -582,9 +596,11 @@ export function formatTaskContextPack(
         : `Match confidence: ${Math.round(pack.matchScore * 100)}%\n`
       : "";
 
-  const desc =
-    t.description?.trim() ||
-    (channel === "whatsapp" ? "_No description_" : "No description");
+  const desc = formatDescriptionForChannel(
+    t.description,
+    channel,
+    channel === "whatsapp" ? "_No description_" : "No description"
+  );
 
   let updatesBlock: string;
   if (pack.relevantUpdates.length === 0) {

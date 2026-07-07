@@ -77,7 +77,7 @@ export function OAuthButtons({ next }: { next?: string }) {
             }`}
           >
             {p.icon}
-            <span className="whitespace-nowrap">{p.label}</span>
+            {isLoading ? "Redirecting…" : p.label}
           </button>
         );
       })}

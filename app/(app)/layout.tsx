@@ -11,8 +11,10 @@ import { displayUser } from "@/lib/username";
  */
 export default async function AppLayout({
   children,
+  modal,
 }: {
   children: React.ReactNode;
+  modal: React.ReactNode;
 }) {
   const [user, cookieStore] = await Promise.all([requireUser(), cookies()]);
   const sidebarCollapsed = cookieStore.get(SIDEBAR_COOKIE)?.value === "1";
@@ -24,6 +26,7 @@ export default async function AppLayout({
       userPhone={user.phone}
       whatsappChatCached={Boolean(user.whatsappChatInitiatedAt)}
       sidebarCollapsed={sidebarCollapsed}
+      modal={modal}
     >
       {children}
     </AppShell>

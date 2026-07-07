@@ -44,7 +44,7 @@ export function AssetUploadForm({ workspaceId }: { workspaceId: string }) {
           aria-busy={pending}
           className={`${ui.btnPrimary} ${ui.btnShrink} w-full self-center sm:w-auto`}
         >
-          Upload
+          {pending ? "Uploading…" : "Upload"}
         </button>
       </div>
       {state.error && <p className="text-sm text-red-300">{state.error}</p>}

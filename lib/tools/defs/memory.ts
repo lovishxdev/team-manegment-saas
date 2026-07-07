@@ -15,6 +15,7 @@ import {
   type ToolDef,
 } from "@/lib/tools/types";
 import { scheduleDecisionSupersessionCheck } from "@/lib/memory/capture";
+import { buildWorkspaceBrief } from "@/lib/memory/brief";
 import { optionalNum, optionalStr, str, workspaceParam } from "@/lib/tools/helpers";
 
 /**
@@ -48,8 +49,10 @@ const recallMemoryTool: ToolDef = {
   inputShape: {
     query: z
       .string()
-      .min(1)
-      .describe("Topic or question, e.g. 'login redesign auth approach'"),
+      .optional()
+      .describe(
+        "Topic or question, e.g. 'login redesign auth approach'. Omit to list recent memory."
+      ),
     shortId: z
       .number()
       .int()
@@ -71,8 +74,27 @@ const recallMemoryTool: ToolDef = {
   },
   run: async (input, ctx) => {
     const ws = requireWorkspace(ctx);
-    const query = str(input.query);
-    if (!query) return soft("What should I look for in project memory?");
+    const query = optionalStr(input.query);
+
+    // No query = browse mode. Never fail the call — list recent memory.
+    if (!query) {
+      const events = await listMemoryEvents({
+        workspaceId: ws.workspaceId,
+        userId: ctx.userId,
+        taskShortId: optionalNum(input.shortId),
+        kind: optionalStr(input.kind) as MemoryEventKind | undefined,
+        limit: optionalNum(input.limit) ?? 10,
+      });
+      if (events.length === 0) {
+        return ok(
+          "No memory recorded yet. record_decision captures the first one."
+        );
+      }
+      return ok(
+        `Recent project memory (${events.length}):\n${formatMemoryEvents(events)}`,
+        { count: events.length }
+      );
+    }
 
     const hits = await recallMemory({
       workspaceId: ws.workspaceId,
@@ -278,12 +300,14 @@ const getProjectContextTool: ToolDef = {
   waDescription:
     "Compact project brief for a topic: relevant decisions + open blockers. Use when someone new asks for background on a piece of work.",
   mcpDescription:
-    "CALL THIS BEFORE STARTING WORK. Returns the compact project brief for what you're about to do: relevant recorded decisions (with reasoning) and open blockers/dependencies — a few hundred tokens instead of full chat history. Pass a description of the work (and the task #N if known).",
+    "CALL THIS BEFORE STARTING WORK. Returns the compact project brief: relevant recorded decisions (with reasoning) and open blockers/dependencies — a few hundred tokens instead of full chat history. Pass a description of the work (and the task #N if known), or call with no arguments for the general workspace brief.",
   inputShape: {
     query: z
       .string()
-      .min(1)
-      .describe("What you're about to work on, e.g. 'login page redesign'"),
+      .optional()
+      .describe(
+        "What you're about to work on, e.g. 'login page redesign'. Omit for the general workspace brief."
+      ),
     shortId: z
       .number()
       .int()
@@ -294,8 +318,17 @@ const getProjectContextTool: ToolDef = {
   },
   run: async (input, ctx) => {
     const ws = requireWorkspace(ctx);
-    const query = str(input.query);
-    if (!query) return soft("Describe the work you need context for.");
+    const query = optionalStr(input.query);
+    // No query = the agent just wants context. Never fail that — return the
+    // general workspace brief (open blockers + decisions + active tasks).
+    if (!query) {
+      const brief = await buildWorkspaceBrief({
+        workspaceId: ws.workspaceId,
+        workspaceName: ws.workspaceName,
+        userId: ctx.userId,
+      });
+      return ok(brief);
+    }
     const shortId = optionalNum(input.shortId);
 
     const [relevant, blockers] = await Promise.all([

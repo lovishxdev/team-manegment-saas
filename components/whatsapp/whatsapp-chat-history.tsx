@@ -11,12 +11,16 @@ function formatTime(date: Date): string {
 
 export function WhatsAppChatHistory({
   messages,
+  className = "",
 }: {
   messages: WhatsAppChatRow[];
+  className?: string;
 }) {
   if (messages.length === 0) {
     return (
-      <p className="rounded-lg border border-dashed border-line-strong bg-paper-deep/40 px-4 py-6 text-center text-sm text-ink-soft">
+      <p
+        className={`rounded-lg border border-dashed border-line-strong bg-paper-deep/40 px-4 py-6 text-center text-sm text-ink-soft ${className}`}
+      >
         No WhatsApp messages yet. Send{" "}
         <span className="font-medium text-ink">hi</span> to the bot to start.
       </p>
@@ -25,7 +29,7 @@ export function WhatsAppChatHistory({
 
   return (
     <div
-      className="max-h-80 space-y-2 overflow-y-auto rounded-xl border border-line bg-[#ECE5DD]/60 p-3"
+      className={`space-y-2 overflow-y-auto rounded-xl border border-line bg-[#ECE5DD]/60 p-3 ${className || "max-h-80"}`}
       aria-label="Recent WhatsApp messages"
     >
       {messages.map((msg, i) => {

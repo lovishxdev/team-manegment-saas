@@ -17,6 +17,12 @@ export function CopyField({
     setCopied(false);
   }, [value]);
 
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), 2000);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+
   async function copy() {
     await navigator.clipboard.writeText(value);
     setCopied(true);

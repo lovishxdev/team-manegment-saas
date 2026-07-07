@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   DndContext,
   DragOverlay,
@@ -21,8 +21,10 @@ import {
   updateTaskAction,
 } from "@/lib/actions/workspace";
 import { formatTaskTitle } from "@/lib/format-task-title";
-import { TaskDetailModal } from "@/components/board/task-detail-modal";
+import { markdownToPlainText } from "@/lib/markdown/parse";
+import { TaskModal } from "@/components/board/task-modal";
 import { Select } from "@/components/ui/select";
+import { LoadingCenter } from "@/components/ui/loading";
 import { tagColor } from "@/components/ui/ui";
 import { MemberAvatarStack } from "@/components/members/member-avatar-stack";
 
@@ -201,7 +203,7 @@ function TaskCardBody({ task }: { task: BoardTask }) {
       </p>
       {task.description && (
         <p className="mt-1.5 line-clamp-2 text-[13px] leading-relaxed text-ink-faint">
-          {task.description}
+          {markdownToPlainText(task.description)}
         </p>
       )}
 
@@ -467,9 +469,17 @@ export function TaskBoard({
   sortBy?: BoardSort;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [openTask, setOpenTask] = useState<BoardTask | null>(null);
+  const pendingTaskShortId = useMemo(() => {
+    const raw = searchParams.get("task");
+    if (!raw) return null;
+    const parsed = Number.parseInt(raw, 10);
+    return Number.isFinite(parsed) ? parsed : null;
+  }, [searchParams]);
   /** Status of the task currently being dragged, if any. */
   const [dragSource, setDragSource] = useState<BoardTask["status"] | null>(
     null
@@ -485,6 +495,25 @@ export function TaskBoard({
   const [localTasks, setLocalTasks] = useState(tasks);
   useEffect(() => setLocalTasks(tasks), [tasks]);
   useEffect(() => setMembers(seedMembersFromTasks(tasks)), [tasks]);
+
+  useEffect(() => {
+    if (pendingTaskShortId === null) return;
+    const match = localTasks.find((t) => t.shortId === pendingTaskShortId);
+    if (!match) return;
+    setOpenTask(match);
+    router.replace(pathname, { scroll: false });
+  }, [pendingTaskShortId, localTasks, pathname, router]);
+
+  useEffect(() => {
+    if (pendingTaskShortId === null || openTask) return;
+    const match = localTasks.find((t) => t.shortId === pendingTaskShortId);
+    if (match) return;
+
+    const timer = window.setTimeout(() => {
+      router.replace(pathname, { scroll: false });
+    }, 2500);
+    return () => window.clearTimeout(timer);
+  }, [pendingTaskShortId, openTask, localTasks, pathname, router]);
 
   useEffect(() => {
     if ((!filtersOpen && !openTask) || membersLoaded) return;
@@ -642,6 +671,13 @@ export function TaskBoard({
 
   return (
     <div>
+      {pendingTaskShortId !== null && !openTask ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/10 backdrop-blur-[1px]">
+          <div className="rounded-2xl border border-line bg-card px-8 py-6 shadow-lg">
+            <LoadingCenter label="Opening task…" className="min-h-0" />
+          </div>
+        </div>
+      ) : null}
       {filtersOpen && (
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <Select
@@ -735,7 +771,8 @@ export function TaskBoard({
       </DndContext>
 
       {openTask && (
-        <TaskDetailModal
+        <TaskModal
+          mode="edit"
           workspaceId={workspaceId}
           task={openTask}
           members={members}

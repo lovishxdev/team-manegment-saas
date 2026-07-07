@@ -103,8 +103,11 @@ const web = webChatTools();
 if (!web.some((t) => t.name === "get_app_navigation")) {
   console.log("✗ get_app_navigation missing from web chat surface");
   failed++;
+} else if (!web.some((t) => t.name === "update_task")) {
+  console.log("✗ update_task missing from web chat surface");
+  failed++;
 } else {
-  console.log(`✓ Web chat surface: ${web.length} tools (includes navigation)`);
+  console.log(`✓ Web chat surface: ${web.length} tools (includes navigation + mutations)`);
 }
 
 console.log(failed === 0 ? "\nAll registry checks passed." : `\n${failed} FAILURES`);

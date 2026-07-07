@@ -3,6 +3,7 @@
 import { type ReactNode } from "react";
 import { useSidebar } from "@/components/layout/sidebar-context";
 import { CollapsedTopBar } from "@/components/layout/sidebar-header";
+import { RouteLoadingBar } from "@/components/layout/route-loading-bar";
 import { SHELL_MAIN_X, SHELL_TOP } from "@/components/layout/app-shell-shared";
 
 /** Main scroll column — full width when the sidebar is collapsed. */
@@ -13,7 +14,8 @@ export function MainColumn({ children }: { children: ReactNode }) {
     <div className="flex min-w-0 flex-1 flex-col">
       <CollapsedTopBar />
 
-      <div className={`flex-1 overflow-y-auto ${collapsed ? "" : SHELL_TOP}`}>
+      <div className={`relative flex-1 overflow-y-auto ${collapsed ? "" : SHELL_TOP}`}>
+        <RouteLoadingBar />
         <div
           className={`${SHELL_MAIN_X} pb-10 ${collapsed ? "pt-4 sm:pt-5" : ""}`}
         >

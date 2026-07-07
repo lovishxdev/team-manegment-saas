@@ -70,7 +70,7 @@ export function LinkForm({ workspaceId }: { workspaceId: string }) {
           aria-busy={pending}
           className={`${ui.btnPrimary} w-full sm:w-auto`}
         >
-          Add link
+          {pending ? "Adding…" : "Add link"}
         </button>
       </div>
       {state.error && <p className={ui.errorText}>{state.error}</p>}

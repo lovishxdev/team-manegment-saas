@@ -148,6 +148,48 @@ body::before {
   }
 }
 
+@keyframes chat-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.chat-panel-enter {
+  animation: chat-panel-in 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-panel-enter {
+    animation: none;
+  }
+}
+
+@keyframes route-loading-slide {
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: translateX(420%);
+  }
+}
+
+.route-loading-bar {
+  animation: route-loading-slide 0.9s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-loading-bar {
+    animation: none;
+    width: 100%;
+    opacity: 0.35;
+  }
+}
+
 /* Text highlight — neutral ink tint (not mint accent). */
 ::selection {
   background: rgba(26, 26, 26, 0.14);

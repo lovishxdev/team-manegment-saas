@@ -90,6 +90,51 @@ export async function createWorkspaceWithInviteAction(
   }
 }
 
+export async function createTaskFromModalAction(
+  workspaceId: string,
+  edit: TaskEdit & { title: string }
+): Promise<ActionState> {
+  const user = await requireUser();
+  const title = edit.title.trim();
+  if (!title) return { error: "Task title is required" };
+
+  try {
+    let resolvedCategoryId = edit.categoryId;
+    let category: string | undefined;
+    if (edit.newCategory?.trim()) {
+      const created = await findOrCreateCategoryByName(
+        workspaceId,
+        edit.newCategory.trim()
+      );
+      resolvedCategoryId = created.id;
+    } else if (!resolvedCategoryId) {
+      category = "General";
+    }
+
+    let dueDate: Date | null | undefined = undefined;
+    if (edit.dueDate !== undefined) {
+      dueDate = edit.dueDate ? new Date(edit.dueDate) : null;
+    }
+
+    await createTask({
+      workspaceId,
+      title,
+      description: edit.description ?? undefined,
+      categoryId: resolvedCategoryId,
+      category,
+      priority: edit.priority,
+      dueDate,
+      assigneeIds: edit.assigneeIds,
+      tags: edit.tags,
+      userId: user.id,
+    });
+  } catch (err) {
+    return { error: errorMessage(err) };
+  }
+  revalidatePath(`/w/${workspaceId}`);
+  return {};
+}
+
 export async function createTaskAction(
   workspaceId: string,
   _prev: ActionState,
@@ -486,6 +531,7 @@ export type TaskUpdateView = {
   id: string;
   body: string;
   createdAt: string;
+  authorId: string;
   authorLabel: string;
 };
 
@@ -505,6 +551,7 @@ export async function fetchTaskUpdatesAction(
         id: u.id,
         body: u.body,
         createdAt: u.createdAt.toISOString(),
+        authorId: u.author.id,
         authorLabel: displayUser(u.author),
       })),
     };
@@ -590,6 +637,7 @@ export async function addTaskUpdateAction(
         id: created.id,
         body: created.body,
         createdAt: created.createdAt.toISOString(),
+        authorId: created.author.id,
         authorLabel: displayUser(created.author),
       },
     };

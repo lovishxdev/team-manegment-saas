@@ -1,3 +1,5 @@
+import { listSidebarWorkspaces } from "@/lib/services/workspace";
+
 export type AppNavTopic =
   | "dashboard"
   | "settings"
@@ -17,6 +19,47 @@ export type AppNavEntry = {
   path: string;
   keywords: string[];
 };
+
+const NAV_STOPWORDS = new Set([
+  "a",
+  "an",
+  "the",
+  "to",
+  "me",
+  "my",
+  "can",
+  "you",
+  "take",
+  "go",
+  "get",
+  "show",
+  "open",
+  "find",
+  "page",
+  "of",
+  "for",
+  "in",
+  "on",
+  "at",
+  "please",
+  "i",
+  "want",
+  "need",
+  "where",
+  "is",
+  "how",
+  "do",
+  "navigate",
+  "workspace",
+]);
+
+export function tokenizeNavQuery(query: string): string[] {
+  return query
+    .toLowerCase()
+    .split(/[\s,.:;!?]+/)
+    .map((token) => token.replace(/^[^\w]+|[^\w]+$/g, ""))
+    .filter((token) => token.length >= 2 && !NAV_STOPWORDS.has(token));
+}
 
 export function workspacePath(
   workspaceId: string,
@@ -96,7 +139,14 @@ export function buildAppNavCatalog(
       label: `${wsLabel} — settings`,
       description: "Workspace members, invites, and rename.",
       path: workspacePath(wsId, "settings"),
-      keywords: ["invite", "members", "team", "rename workspace"],
+      keywords: [
+        "settings",
+        "invite",
+        "invites",
+        "members",
+        "team",
+        "rename workspace",
+      ],
     },
     {
       topic: "integrations",
@@ -113,12 +163,96 @@ export function parseWorkspaceIdFromPath(pathname: string): string | null {
   return match?.[1] ?? null;
 }
 
+/** Find a workspace whose name appears in the query (longest match wins). */
+export async function findWorkspaceMentionInQuery(
+  userId: string,
+  query: string
+): Promise<{ workspaceId: string; workspaceName: string } | null> {
+  const memberships = await listSidebarWorkspaces(userId);
+  const q = query.toLowerCase();
+  let best: { workspaceId: string; workspaceName: string; len: number } | null =
+    null;
+
+  for (const membership of memberships) {
+    const name = membership.workspace.name.toLowerCase();
+    if (!q.includes(name)) continue;
+    if (!best || name.length > best.len) {
+      best = {
+        workspaceId: membership.workspace.id,
+        workspaceName: membership.workspace.name,
+        len: name.length,
+      };
+    }
+  }
+
+  return best
+    ? { workspaceId: best.workspaceId, workspaceName: best.workspaceName }
+    : null;
+}
+
+function scoreNavEntry(
+  entry: AppNavEntry,
+  tokens: string[],
+  fullQuery: string
+): number {
+  let score = 0;
+  const label = entry.label.toLowerCase();
+  const desc = entry.description.toLowerCase();
+  const topic = entry.topic.toLowerCase();
+
+  for (const token of tokens) {
+    if (label.includes(token)) score += 3;
+    if (topic.includes(token)) score += 2;
+    if (desc.includes(token)) score += 1;
+    if (entry.keywords.some((kw) => kw.includes(token) || token.includes(kw))) {
+      score += 2;
+    }
+  }
+
+  if (label.includes(fullQuery) || desc.includes(fullQuery)) score += 5;
+
+  return score;
+}
+
 export function searchAppNavigation(
   catalog: AppNavEntry[],
-  query?: string
+  query?: string,
+  options?: { workspaceResolved?: boolean }
 ): AppNavEntry[] {
   const q = query?.trim().toLowerCase();
   if (!q) return catalog;
+
+  const tokens = tokenizeNavQuery(q);
+  const mentionsWorkspace =
+    /\bworkspace\b/.test(q) || Boolean(options?.workspaceResolved);
+  const wantsSettings = tokens.some((token) =>
+    ["settings", "setting", "invite", "invites", "members"].includes(token)
+  );
+  const wantsAccount =
+    tokens.includes("account") ||
+    tokens.includes("profile") ||
+    (wantsSettings && !mentionsWorkspace);
+
+  if (wantsSettings && mentionsWorkspace) {
+    const workspaceSettings = catalog.filter(
+      (entry) => entry.topic === "workspace_settings"
+    );
+    if (workspaceSettings.length > 0) return workspaceSettings;
+  }
+
+  if (wantsAccount) {
+    const accountSettings = catalog.filter((entry) => entry.topic === "settings");
+    if (accountSettings.length > 0) return accountSettings;
+  }
+
+  const scored = catalog
+    .map((entry) => ({ entry, score: scoreNavEntry(entry, tokens, q) }))
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  if (scored.length > 0) {
+    return scored.map(({ entry }) => entry);
+  }
 
   return catalog.filter(
     (entry) =>

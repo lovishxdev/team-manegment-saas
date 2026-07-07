@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { MessageCircle, Send, X } from "lucide-react";
+import { MarkdownContent } from "@/components/markdown/markdown-content";
 import { ui } from "@/components/ui/ui";
 
 type ChatMessage = {
@@ -12,6 +13,20 @@ type ChatMessage = {
   content: string;
   links?: { href: string; label: string }[];
 };
+
+const OPEN_MS = 280;
+const CHAT_INPUT_MIN_H = 44;
+const CHAT_INPUT_MAX_H = 128;
+
+function syncChatInputHeight(el: HTMLTextAreaElement | null) {
+  if (!el) return;
+  el.style.height = "0px";
+  const next = Math.min(
+    Math.max(el.scrollHeight, CHAT_INPUT_MIN_H),
+    CHAT_INPUT_MAX_H
+  );
+  el.style.height = `${next}px`;
+}
 
 export function AppChatFab() {
   const pathname = usePathname();
@@ -22,7 +37,7 @@ export function AppChatFab() {
     {
       role: "assistant",
       content:
-        "Hi — I can look up tasks, memory, and help you find your way around Euclis. What do you need?",
+        "Hi — I can look up tasks, update them, and help you find your way around Euclis. What do you need?",
     },
   ]);
   const listRef = useRef<HTMLDivElement>(null);
@@ -30,8 +45,16 @@ export function AppChatFab() {
 
   useEffect(() => {
     if (!open) return;
-    inputRef.current?.focus();
+    const timer = window.setTimeout(() => {
+      inputRef.current?.focus();
+      syncChatInputHeight(inputRef.current);
+    }, OPEN_MS);
+    return () => window.clearTimeout(timer);
   }, [open]);
+
+  useEffect(() => {
+    syncChatInputHeight(inputRef.current);
+  }, [input]);
 
   useEffect(() => {
     if (!open || !listRef.current) return;
@@ -58,6 +81,7 @@ export function AppChatFab() {
     ];
     setMessages(nextMessages);
     setInput("");
+    syncChatInputHeight(inputRef.current);
     setPending(true);
 
     try {
@@ -115,6 +139,8 @@ export function AppChatFab() {
     }
   }
 
+  const canSend = input.trim().length > 0 && !pending;
+
   return (
     <>
       {open ? (
@@ -125,16 +151,16 @@ export function AppChatFab() {
         />
       ) : null}
 
-      <div className="fixed bottom-5 right-5 z-[49] flex flex-col items-end gap-3 sm:bottom-6 sm:right-6">
+      <div className="fixed bottom-5 right-5 z-[49] sm:bottom-6 sm:right-6">
         {open ? (
           <div
-            className="flex h-[min(32rem,calc(100dvh-6rem))] w-[min(100vw-2.5rem,24rem)] flex-col overflow-hidden rounded-2xl border border-line bg-card shadow-[0_24px_80px_rgba(26,26,26,0.2)]"
+            className="chat-panel-enter flex h-[min(32rem,calc(100dvh-6rem))] w-[min(100vw-2.5rem,24rem)] origin-bottom-right flex-col overflow-hidden rounded-2xl border border-line bg-card shadow-[0_24px_80px_rgba(26,26,26,0.2)]"
             onClick={(event) => event.stopPropagation()}
             role="dialog"
             aria-modal="true"
             aria-label="Euclis assistant"
           >
-            <header className="flex items-center justify-between border-b border-line px-4 py-3">
+            <header className="flex shrink-0 items-center justify-between border-b border-line px-4 py-3">
               <div className="flex items-center gap-2.5">
                 <Image
                   src="/euclis-logo.png"
@@ -174,7 +200,12 @@ export function AppChatFab() {
                         : "border border-line/80 bg-paper text-ink"
                     }`}
                   >
-                    <p className="whitespace-pre-wrap">{message.content}</p>
+                    <MarkdownContent
+                      source={message.content}
+                      variant={
+                        message.role === "user" ? "chat-user" : "chat-assistant"
+                      }
+                    />
                     {message.links && message.links.length > 0 ? (
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {message.links.map((link) => (
@@ -199,23 +230,29 @@ export function AppChatFab() {
 
             <form
               onSubmit={onSubmit}
-              className="border-t border-line p-3"
+              className="shrink-0 border-t border-line p-3"
             >
               <div className="flex items-end gap-2">
                 <textarea
                   ref={inputRef}
                   value={input}
-                  onChange={(event) => setInput(event.target.value)}
+                  onChange={(event) => {
+                    setInput(event.target.value);
+                    syncChatInputHeight(event.target);
+                  }}
                   onKeyDown={onInputKeyDown}
                   rows={1}
                   placeholder="Ask about tasks or where to go…"
+                  autoComplete="off"
+                  spellCheck
                   disabled={pending}
-                  className={`${ui.input} max-h-28 min-h-[2.75rem] resize-none py-2.5 text-sm`}
+                  className={`${ui.input} min-h-[2.75rem] min-w-0 flex-1 resize-none overflow-y-auto px-3 py-2.5 text-sm leading-5 hover:translate-y-0 focus:translate-y-0`}
+                  style={{ maxHeight: CHAT_INPUT_MAX_H }}
                 />
                 <button
                   type="submit"
-                  disabled={pending || !input.trim()}
-                  className={`${ui.btnPrimary} inline-flex h-[2.75rem] w-[2.75rem] shrink-0 items-center justify-center p-0`}
+                  disabled={!canSend}
+                  className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ink text-white shadow-[0_4px_16px_rgba(26,26,26,0.22)] transition hover:bg-ink/90 disabled:cursor-not-allowed disabled:opacity-45"
                   aria-label="Send message"
                 >
                   <Send className="h-4 w-4" strokeWidth={1.75} />
@@ -223,21 +260,17 @@ export function AppChatFab() {
               </div>
             </form>
           </div>
-        ) : null}
-
-        <button
-          type="button"
-          onClick={() => setOpen((value) => !value)}
-          className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-ink text-white shadow-[0_8px_28px_rgba(26,26,26,0.28)] transition hover:bg-ink/90 hover:shadow-[0_12px_32px_rgba(26,26,26,0.32)]"
-          aria-label={open ? "Close assistant" : "Open assistant"}
-          aria-expanded={open}
-        >
-          {open ? (
-            <X className="h-5 w-5" strokeWidth={1.75} />
-          ) : (
+        ) : (
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-ink text-white shadow-[0_8px_28px_rgba(26,26,26,0.28)] transition hover:bg-ink/90 hover:shadow-[0_12px_32px_rgba(26,26,26,0.32)]"
+            aria-label="Open assistant"
+            aria-expanded={false}
+          >
             <MessageCircle className="h-5 w-5" strokeWidth={1.75} />
-          )}
-        </button>
+          </button>
+        )}
       </div>
     </>
   );

@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
+import { getAnthropicApiKey } from "@/lib/anthropic-env";
 import { Role } from "@/lib/generated/prisma/client";
 import { getUserIdByPhone } from "@/lib/identity-cache";
 import {
@@ -1140,9 +1141,17 @@ async function handleMessage(
   // triage router. The model composes inquiry answers; mutations use the
   // deterministic tool output.
   let loop: AgentLoopResult;
+  const anthropicApiKey = getAnthropicApiKey();
+  if (!anthropicApiKey) {
+    await sendWhatsAppText(
+      from,
+      "The bot isn't configured yet (missing ANTHROPIC_API_KEY). Ask your workspace admin to add it."
+    );
+    return;
+  }
   try {
     loop = await runWhatsAppAgentLoop({
-      anthropic: new Anthropic(),
+      anthropic: new Anthropic({ apiKey: anthropicApiKey }),
       model: WHATSAPP_AGENT_MODEL,
       systemPrompt: buildSystemPrompt(activeCtx.workspaceName),
       tools: TOOLS,

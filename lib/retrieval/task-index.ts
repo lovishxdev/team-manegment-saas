@@ -5,6 +5,7 @@ import {
   embeddingsEnabled,
   hashContent,
 } from "@/lib/retrieval/embeddings";
+import { markdownToPlainText } from "@/lib/markdown/parse";
 
 export type TaskIndexDocument = {
   id: string;
@@ -21,7 +22,9 @@ export type TaskIndexDocument = {
 export function buildTaskIndexDocument(task: TaskIndexDocument): string {
   const lines = [
     `Task: ${task.title}`,
-    task.description ? `Details: ${task.description}` : null,
+    task.description
+      ? `Details: ${markdownToPlainText(task.description)}`
+      : null,
     task.tags.length > 0 ? `Tags: ${task.tags.join(", ")}` : null,
     `Category: ${task.category.name}`,
     `Status: ${task.status.replace("_", " ")}`,

@@ -53,7 +53,11 @@ export function InviteButton({
         aria-busy={pending}
         className={variant === "pill" ? pillCls : ui.btnPrimary}
       >
-        {variant === "pill" ? "+ Invite" : "+ Invite members"}
+        {pending
+          ? "Generating…"
+          : variant === "pill"
+            ? "+ Invite"
+            : "+ Invite members"}
       </button>
       {error && (
         <p

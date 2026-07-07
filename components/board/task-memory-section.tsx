@@ -7,12 +7,11 @@ import {
   type MemoryEventView,
 } from "@/lib/actions/workspace";
 import { MemoryEventCard } from "@/components/memory/memory-event-card";
+import { MemoryListSkeleton } from "@/components/ui/loading";
 import { ui } from "@/components/ui/ui";
 
 /**
- * Task-modal "Memory" section: this task's captured decisions/blockers with
- * an open-blocker badge. Hidden entirely while the task has no memory —
- * memory is quiet by design.
+ * Task-modal "Memory" tab: this task's captured decisions/blockers.
  */
 export function TaskMemorySection({
   workspaceId,
@@ -73,7 +72,17 @@ export function TaskMemorySection({
     };
   }, [taskId, load]);
 
-  if (!loaded || events.length === 0) return null;
+  if (!loaded) {
+    return <MemoryListSkeleton count={2} />;
+  }
+
+  if (events.length === 0) {
+    return (
+      <p className="text-sm text-ink-faint">
+        No memory captured for this task yet.
+      </p>
+    );
+  }
 
   const openCount = events.filter((e) => e.status === "OPEN").length;
 

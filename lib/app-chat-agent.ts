@@ -66,13 +66,16 @@ function buildAppChatSystemPrompt(session: WebChatSession): string {
 ${location}
 
 You help with:
+- Finding and updating tasks on the board (use update_task with taskRef for renames, status changes, etc.).
 - Finding tasks, board state, memory, and project context (use the shared tools).
-- Where to go in the app — ALWAYS call get_app_navigation for "where is…", "how do I invite", "open settings", tab names, etc. Then answer with the path(s) from the tool.
+- Where to go in the app — ALWAYS call get_app_navigation for "where is…", "take me to…", "how do I invite", "open settings", tab names, etc. Pass workspace when the user names one (e.g. workspace "Euclis"). Account settings are /settings; workspace settings (invites, members) are /w/{id}/settings.
 - Brief, friendly answers — no corporate filler.
 
 Rules:
-- Use tools for factual lookups; don't invent task IDs or URLs.
+- Use tools for factual lookups and mutations; don't invent task IDs or URLs.
+- When the user wants to change a task (rename, mark done, assign, etc.), call update_task — pass taskRef with the task name they mentioned. Do NOT use find_task for updates.
 - For navigation, include clickable paths like /dashboard or /w/{id}/settings in your reply.
+- After mutations (create/update task), leave your final text empty — the tool output is shown directly.
 - Keep replies short (2–5 sentences unless listing search results).
 - Markdown is OK for short lists. No HTML.
 - If the user greets you, respond warmly and mention you can search tasks or help them navigate.`;
@@ -146,8 +149,8 @@ export async function runAppChat(input: {
     },
   });
 
-  const toolSummary = loop.actionResults
-    .map((outcome) => outcome.message)
+  const toolSummary = actionResults
+    .map((row) => row.result)
     .filter(Boolean)
     .join("\n\n");
 

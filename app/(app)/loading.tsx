@@ -1,5 +1,6 @@
-import { AppShellLoading } from "@/components/ui/app-shell-skeleton";
+import { MainColumnSkeleton } from "@/components/ui/loading";
 
+/** Lightweight main-column skeleton — app shell layout stays mounted. */
 export default function AppLoading() {
-  return <AppShellLoading />;
+  return <MainColumnSkeleton />;
 }

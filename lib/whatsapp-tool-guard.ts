@@ -276,6 +276,52 @@ export async function resolveWhatsAppTaskShortId(
   return { ok: true, shortId };
 }
 
+/** Resolve task by #N or title match for the in-app web chat. */
+export async function resolveWebTaskShortId(
+  workspaceId: string,
+  rawShortId: unknown,
+  taskRef: unknown
+): Promise<ResolvedTaskShortId> {
+  const hinted = parsePositiveInt(rawShortId);
+  if (hinted) {
+    const onBoard = await prisma.task.findFirst({
+      where: { workspaceId, shortId: hinted },
+      select: { shortId: true },
+    });
+    if (onBoard) return { ok: true, shortId: onBoard.shortId };
+    return { ok: false, message: `Task #${hinted} wasn't found in this workspace.` };
+  }
+
+  const query = typeof taskRef === "string" ? taskRef.trim() : "";
+  if (!query) {
+    return {
+      ok: false,
+      message: "Which task? Name the task or give its #N number.",
+    };
+  }
+
+  const board = await loadBoardTasks(workspaceId);
+  const matched = resolveFromBoard(board, query);
+  if (matched.kind === "one") {
+    return { ok: true, shortId: matched.shortId };
+  }
+  if (matched.kind === "ambiguous") {
+    const lines = matched.tasks
+      .slice(0, 5)
+      .map((t) => `• ${t.title}`)
+      .join("\n");
+    return {
+      ok: false,
+      message: `Multiple tasks could match:\n${lines}\nWhich one did you mean?`,
+    };
+  }
+
+  return {
+    ok: false,
+    message: `No task matched "${query}" in this workspace.`,
+  };
+}
+
 /** Map server errors to safe WhatsApp copy — never leak stack traces or 500s. */
 export function formatToolExecutionError(err: unknown): string {
   if (err instanceof ServiceError) {

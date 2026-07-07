@@ -127,6 +127,58 @@ the account-level equivalents (`User.mcpScope`, `User.mcpWorkspaceId`,
 Settings → Personal token). The rules snippet is installable with one
 command: `curl -fsSL <origin>/api/agent-rules >> AGENTS.md`.
 
+## Ambient memory for coding agents (Cursor + Claude Code hooks)
+
+The MCP tools are pull-based — they only fire if the model decides to call
+them. Ambient memory removes that dependence entirely by riding the agent's
+hook system instead of the agent loop. One shared hook script
+([lib/memory/hooks-snippet.ts](../lib/memory/hooks-snippet.ts)) serves both
+supported agents; the payloads differ only in field names (Cursor `stop` /
+Claude Code `Stop`):
+
+- **Capture (session → memory):** the end-of-run hook reads the transcript
+  the agent already keeps on disk (its own dedicated context — nothing is
+  intercepted mid-session), extracts only user/agent message text (tool
+  output and diffs never leave the machine), and POSTs the delta since the
+  last run to `/api/ingest/agent-session`. Server-side, one judge call
+  ([lib/memory/agent-capture.ts](../lib/memory/agent-capture.ts)) applies
+  four tests — future-why, coordination, commitment, onboarding (see
+  [memory-architecture.md](memory-architecture.md#5-the-judge-criteria)) —
+  not phrase patterns. Most runs produce zero events. A session that
+  plausibly cleared an open blocker triggers the usual WhatsApp
+  confirmation ask, never an auto-resolve.
+- **Context (memory → session):** the ingest response returns the current
+  workspace brief ([lib/memory/brief.ts](../lib/memory/brief.ts)) — open
+  blockers, current decisions, active tasks — written where each agent
+  auto-loads context: Cursor → `.cursor/rules/euclis-memory.mdc`
+  (`alwaysApply`); Claude Code → `.claude/euclis-memory.md`, imported from
+  `CLAUDE.md` via an `@` line (added once by the installer, so the
+  committed `CLAUDE.md` never churns). Every new session is born
+  context-aware with zero tool calls.
+
+Cost/noise controls: the hook skips deltas under 300 chars (they accumulate
+into the next run), caps input at 24k chars, and the server enforces a
+2-minute judge cooldown per conversation. Same `MEMORY_CAPTURE=0` kill
+switch and `MEMORY_CAPTURE_MODEL` as thread capture.
+
+Install (Settings → AI agent connectors → Cursor / Claude Code, or manually
+per repo):
+
+```bash
+curl -fsSL "<origin>/api/agent-hooks?agent=cursor"      | bash -s -- <personal-token>
+curl -fsSL "<origin>/api/agent-hooks?agent=claude-code" | bash -s -- <personal-token>
+```
+
+Writes the hook script (`.cursor/hooks/` or `.claude/hooks/`), registers it
+(`.cursor/hooks.json` or `.claude/settings.json`, merging with existing
+hooks), stores the credential in `.euclis.json` (shared by both agents),
+and gitignores the credential + generated briefs. Auth accepts the personal
+`mcpToken` or an OAuth access token; a workspace-pinned credential is
+confined exactly like MCP tool calls. Other agents (Codex, OpenCode,
+Antigravity) fall back to the MCP + rules-snippet contract until their
+adapters exist — see the adapter matrix in
+[memory-architecture.md](memory-architecture.md).
+
 ## Onboarding a project with history
 
 - `npm run backfill:memory [workspaceId]` — runs the capture classifier over

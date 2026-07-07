@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { Suspense, useState } from "react";
 import { BoardToolbar } from "@/components/board/board-toolbar";
-import { NewTaskForm } from "@/components/board/new-task-form";
+import { TaskModal } from "@/components/board/task-modal";
 import { WorkspaceToolbarPortal } from "@/components/workspace/workspace-toolbar-slot";
+import { BoardContentSkeleton } from "@/components/ui/tab-content-skeleton";
 import {
   TaskBoard,
   type BoardSort,
@@ -32,8 +33,7 @@ export function BoardPageContent({
   const [assigneeFilter, setAssigneeFilter] = useState("");
   const [mineOnly, setMineOnly] = useState(false);
   const [sortBy, setSortBy] = useState<BoardSort>("default");
-  const [addTaskOpen, setAddTaskOpen] = useState(false);
-  const addTaskRef = useRef<HTMLDivElement>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const filtersApplied = Boolean(categoryFilter || assigneeFilter || mineOnly);
 
@@ -41,13 +41,6 @@ export function BoardPageContent({
     setSortBy((current) =>
       current === "default" ? "title" : current === "title" ? "due" : "default"
     );
-  }
-
-  function openAddTask() {
-    setAddTaskOpen(true);
-    requestAnimationFrame(() => {
-      addTaskRef.current?.querySelector<HTMLInputElement>("input")?.focus();
-    });
   }
 
   return (
@@ -59,33 +52,36 @@ export function BoardPageContent({
           onFilterClick={() => setFiltersOpen((open) => !open)}
           sortLabel={SORT_LABELS[sortBy]}
           onSortClick={cycleSort}
-          onAddTaskClick={() =>
-            addTaskOpen ? setAddTaskOpen(false) : openAddTask()
-          }
-          addTaskOpen={addTaskOpen}
+          onAddTaskClick={() => setCreateOpen(true)}
+          addTaskOpen={createOpen}
         />
       </WorkspaceToolbarPortal>
 
-      {addTaskOpen && (
-        <div ref={addTaskRef} className="mb-6 max-w-2xl">
-          <NewTaskForm workspaceId={workspaceId} categories={categories} />
-        </div>
-      )}
+      {createOpen ? (
+        <TaskModal
+          mode="create"
+          workspaceId={workspaceId}
+          categories={categories}
+          onClose={() => setCreateOpen(false)}
+        />
+      ) : null}
 
-      <TaskBoard
-        workspaceId={workspaceId}
-        tasks={tasks}
-        categories={categories}
-        currentUserId={currentUserId}
-        filtersOpen={filtersOpen}
-        categoryFilter={categoryFilter}
-        onCategoryFilterChange={setCategoryFilter}
-        assigneeFilter={assigneeFilter}
-        onAssigneeFilterChange={setAssigneeFilter}
-        mineOnly={mineOnly}
-        onMineOnlyChange={setMineOnly}
-        sortBy={sortBy}
-      />
+      <Suspense fallback={<BoardContentSkeleton />}>
+        <TaskBoard
+          workspaceId={workspaceId}
+          tasks={tasks}
+          categories={categories}
+          currentUserId={currentUserId}
+          filtersOpen={filtersOpen}
+          categoryFilter={categoryFilter}
+          onCategoryFilterChange={setCategoryFilter}
+          assigneeFilter={assigneeFilter}
+          onAssigneeFilterChange={setAssigneeFilter}
+          mineOnly={mineOnly}
+          onMineOnlyChange={setMineOnly}
+          sortBy={sortBy}
+        />
+      </Suspense>
     </>
   );
 }

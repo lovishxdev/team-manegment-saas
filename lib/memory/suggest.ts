@@ -24,7 +24,8 @@ const SUGGESTION_COOLDOWN_MS = 60 * 60 * 1000;
 
 export async function suggestBlockerResolution(input: {
   eventId: string;
-  triggerUpdateId: string;
+  /** TaskUpdate that triggered the suggestion; agent sessions have none. */
+  triggerUpdateId?: string;
   /** The user whose activity likely resolved the blocker — the one we ask. */
   triggerUserId: string;
 }): Promise<void> {

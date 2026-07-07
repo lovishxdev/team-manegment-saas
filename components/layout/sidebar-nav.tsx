@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { GripVertical } from "lucide-react";
 import { useCreateWorkspaceModal } from "@/components/layout/create-workspace-modal-provider";
+import { OpenSettingsLink } from "@/components/settings/open-settings-link";
+import { isAccountSettingsPath } from "@/lib/account-settings";
 import { ui } from "@/components/ui/ui";
 
 type WorkspaceEntry = {
@@ -53,7 +55,7 @@ export function SidebarNav({ workspaces }: { workspaces: WorkspaceEntry[] }) {
   const activeWorkspaceId = useActiveWorkspaceId();
   const { open: openCreateWorkspace } = useCreateWorkspaceModal();
   const onDashboard = pathname === "/dashboard";
-  const onSettings = pathname === "/settings";
+  const onSettings = isAccountSettingsPath(pathname);
 
   return (
     <nav className="flex min-h-0 flex-1 flex-col pb-4">
@@ -79,13 +81,12 @@ export function SidebarNav({ workspaces }: { workspaces: WorkspaceEntry[] }) {
           <span className="flex-1">Dashboard</span>
         </Link>
 
-        <Link
-          href="/settings"
+        <OpenSettingsLink
           className={`${ui.navItem} ${onSettings ? ui.navItemActive : ""}`}
         >
           <NavIcon name="settings" />
           <span className="flex-1">Settings</span>
-        </Link>
+        </OpenSettingsLink>
       </div>
 
       <div className="mt-4 flex min-h-0 flex-1 flex-col">

@@ -5,6 +5,7 @@ import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { updatePhoneAction, type SettingsState } from "@/lib/actions/settings";
 import { CopyField } from "@/components/ui/copy-field";
+import { OpenSettingsLink } from "@/components/settings/open-settings-link";
 import { PhoneNumberInput } from "@/components/settings/phone-number-input";
 import { ui } from "@/components/ui/ui";
 import { formatPhoneDisplay } from "@/lib/phone-countries";
@@ -202,9 +203,9 @@ export function IntegrationsPrompt({
               Pick your country code, then enter your mobile number without a
               leading zero. Must match the WhatsApp account you message from.
               Manage anytime in{" "}
-              <Link href="/settings" className={ui.linkText}>
+              <OpenSettingsLink section="whatsapp" className={ui.linkText}>
                 Settings
-              </Link>
+              </OpenSettingsLink>
               .
             </p>
           </div>
@@ -282,12 +283,12 @@ export function IntegrationsPrompt({
             <li>Approve access when Claude redirects you to sign in.</li>
           </ol>
 
-          <Link
-            href="/settings"
+          <OpenSettingsLink
+            section="integrations"
             className={`mt-4 inline-block text-sm ${ui.linkText}`}
           >
             More details in Settings →
-          </Link>
+          </OpenSettingsLink>
         </div>
       )}
     </section>

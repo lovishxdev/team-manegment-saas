@@ -24,7 +24,7 @@ export function JoinButton({ inviteId }: { inviteId: string }) {
         aria-busy={pending}
         className={`whitespace-nowrap px-6 ${ui.btnPrimary}`}
       >
-        Join workspace
+        {pending ? "Joining…" : "Join workspace"}
       </button>
       {error && <p className={ui.errorText}>{error}</p>}
     </div>

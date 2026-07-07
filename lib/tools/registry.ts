@@ -50,12 +50,21 @@ export function mcpTools(): ToolDef[] {
   return ALL_TOOLS.filter((t) => !t.whatsappOnly && !t.webOnly);
 }
 
+/** Task mutations available in the in-app chat (not MCP context scope). */
+export const WEB_CHAT_MUTATION_TOOL_NAMES: ReadonlySet<string> = new Set([
+  "create_task",
+  "update_task",
+  "undo_last_action",
+]);
+
 /** In-app floating chat — context-scope tools plus web navigation. */
 export function webChatTools(): ToolDef[] {
   return ALL_TOOLS.filter(
     (t) =>
       !t.whatsappOnly &&
-      (CONTEXT_SCOPE_TOOL_NAMES.has(t.name) || t.webOnly === true)
+      (CONTEXT_SCOPE_TOOL_NAMES.has(t.name) ||
+        WEB_CHAT_MUTATION_TOOL_NAMES.has(t.name) ||
+        t.webOnly === true)
   );
 }
 
@@ -64,10 +73,14 @@ let cachedWebChatTools: Anthropic.Tool[] | null = null;
 export function webChatAnthropicTools(): Anthropic.Tool[] {
   if (!cachedWebChatTools) {
     cachedWebChatTools = webChatTools().map((def) =>
-      toAnthropicTool({
-        ...def,
-        waDescription: def.mcpDescription ?? def.waDescription,
-      })
+      toAnthropicTool(
+        {
+          ...def,
+          waDescription:
+            def.webDescription ?? def.mcpDescription ?? def.waDescription,
+        },
+        "web"
+      )
     );
   }
   return cachedWebChatTools;
@@ -331,7 +344,11 @@ export async function dispatchWebChatTool(
       message: "That action isn't available in the app chat.",
     };
   }
-  if (!CONTEXT_SCOPE_TOOL_NAMES.has(def.name) && !def.webOnly) {
+  if (
+    !CONTEXT_SCOPE_TOOL_NAMES.has(def.name) &&
+    !WEB_CHAT_MUTATION_TOOL_NAMES.has(def.name) &&
+    !def.webOnly
+  ) {
     return {
       ok: false,
       message:

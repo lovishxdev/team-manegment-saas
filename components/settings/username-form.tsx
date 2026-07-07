@@ -43,7 +43,7 @@ export function UsernameForm({
           aria-busy={pending}
           className={`${ui.btnPrimary} ${ui.btnShrink} self-center`}
         >
-          Save
+          {pending ? "Saving…" : "Save"}
         </button>
       </div>
       <p className="text-xs text-ink-faint">

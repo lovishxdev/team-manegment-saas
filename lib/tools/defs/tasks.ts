@@ -23,7 +23,7 @@ import {
   formatTaskDetail,
   mapBoardSnapshot,
 } from "@/lib/channel-formatters";
-import { resolveWhatsAppTaskShortId } from "@/lib/whatsapp-tool-guard";
+import { resolveWhatsAppTaskShortId, resolveWebTaskShortId } from "@/lib/whatsapp-tool-guard";
 import { formatChatDate } from "@/lib/whatsapp-voice";
 import {
   buildTaskSnapshot,
@@ -84,6 +84,9 @@ async function resolveShortIdForChannel(
   const ws = requireWorkspace(ctx);
   if (ctx.wa) {
     return resolveWhatsAppTaskShortId(ws.workspaceId, input.shortId, ctx.wa.session);
+  }
+  if (ctx.channel === "web") {
+    return resolveWebTaskShortId(ws.workspaceId, input.shortId, input.taskRef);
   }
   const shortId = Number(input.shortId);
   if (!Number.isInteger(shortId) || shortId < 1) {
@@ -207,8 +210,53 @@ const updateTaskTool: ToolDef = {
     "Change any fields of an existing task referenced by its #N short ID. Only include fields the user wants changed.",
   mcpDescription:
     "Update any fields of an existing task, identified by its short ID (the #N number on the board). Only provided fields change.",
+  webDescription:
+    "Update a task — identify it by #N or taskRef (task name). Only include fields the user wants changed.",
   inputShape: {
     shortId: z.number().int().positive().describe("Task short ID (the N in #N)"),
+    title: z.string().optional().describe("New title"),
+    description: z.string().optional().describe("New description"),
+    status: z.enum(STATUSES).optional().describe("New status"),
+    category: z
+      .string()
+      .optional()
+      .describe("New category name (creates it if missing)"),
+    priority: z.enum(PRIORITIES).optional().describe("New priority"),
+    dueDate: z
+      .string()
+      .optional()
+      .describe(
+        "Due date as YYYY-MM-DD (resolve relative dates first), or empty string to clear"
+      ),
+    tags: z
+      .array(z.string())
+      .optional()
+      .describe("Full replacement list of free-form labels"),
+    assignee: z
+      .string()
+      .optional()
+      .describe(
+        "Single assignee: 'me', a member name/email, or empty string to clear all assignees"
+      ),
+    assignees: z
+      .array(z.string())
+      .optional()
+      .describe("Full replacement list of assignees"),
+    workspace: workspaceParam,
+  },
+  webInputShape: {
+    shortId: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Task #N if known"),
+    taskRef: z
+      .string()
+      .optional()
+      .describe(
+        "Task name or phrase to identify the task — e.g. 'login page redesign'. Use when shortId is unknown."
+      ),
     title: z.string().optional().describe("New title"),
     description: z.string().optional().describe("New description"),
     status: z.enum(STATUSES).optional().describe("New status"),
@@ -305,6 +353,28 @@ const updateTaskTool: ToolDef = {
         shortId: task.shortId,
         status: task.status,
       });
+    }
+
+    if (ctx.channel === "web") {
+      revalidateUserWorkspaces(ctx.userId, ws.workspaceId);
+      const newTitle = optionalStr(input.title);
+      const message = newTitle
+        ? `Renamed **${before.title}** → **${task.title}**.`
+        : `Updated **${task.title}**.`;
+      recordUndoable({
+        userId: ctx.userId,
+        workspaceId: ws.workspaceId,
+        channel: "mcp",
+        tool: "update_task",
+        summary: message,
+        inverse: {
+          kind: "restore_task",
+          taskId: task.id,
+          taskTitle: task.title,
+          prev: prevSnapshot,
+        },
+      });
+      return ok(message, { shortId: task.shortId, title: task.title });
     }
 
     recordUndoable({

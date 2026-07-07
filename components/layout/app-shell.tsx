@@ -8,10 +8,11 @@ import { AppShellSidebar } from "@/components/layout/app-shell-sidebar";
 import { AppShellIntegrations } from "@/components/layout/app-shell-integrations";
 import { SidebarProvider } from "@/components/layout/sidebar-context";
 import { CreateWorkspaceModalProvider } from "@/components/layout/create-workspace-modal-provider";
+import { AccountSettingsProvider } from "@/components/settings/account-settings-provider";
 import { AppChatFab } from "@/components/app-chat/app-chat-fab";
-import { SidebarFrameWithSuspense } from "@/components/layout/sidebar-frame";
+import { OpenSettingsLink } from "@/components/settings/open-settings-link";
+import { SidebarFrameForAppShell } from "@/components/layout/sidebar-frame-for-app-shell";
 import { MainColumn } from "@/components/layout/main-column";
-import { SidebarNavSkeleton } from "@/components/ui/app-shell-skeleton";
 
 export type { WorkspaceTab } from "@/components/layout/app-shell-shared";
 
@@ -22,6 +23,7 @@ export function AppShell({
   userPhone,
   whatsappChatCached,
   sidebarCollapsed = false,
+  modal,
   children,
 }: {
   userId: string;
@@ -29,15 +31,17 @@ export function AppShell({
   userPhone: string | null;
   whatsappChatCached: boolean;
   sidebarCollapsed?: boolean;
+  modal?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <SidebarProvider defaultCollapsed={sidebarCollapsed}>
-      <CreateWorkspaceModalProvider>
-      <div className="flex min-h-screen items-start">
-        <SidebarFrameWithSuspense fallback={<SidebarNavSkeleton />}>
+      <AccountSettingsProvider>
+        <CreateWorkspaceModalProvider>
+          <div className="flex min-h-screen items-start">
+        <SidebarFrameForAppShell>
           <AppShellSidebar userId={userId} userLabel={userLabel} />
-        </SidebarFrameWithSuspense>
+        </SidebarFrameForAppShell>
 
         {/* Main */}
         <div className="flex min-w-0 flex-1 flex-col">
@@ -54,12 +58,9 @@ export function AppShell({
               <span className="sr-only">Euclis</span>
             </Link>
             <div className="flex items-center gap-1">
-              <Link
-                href="/settings"
-                className="rounded-lg px-2 py-1 text-xs text-ink-soft"
-              >
+              <OpenSettingsLink className="rounded-lg px-2 py-1 text-xs text-ink-soft">
                 Settings
-              </Link>
+              </OpenSettingsLink>
               <Avatar seed={userId} label={userLabel} size="h-7 w-7 text-[10px]" />
               <form action={signOutAction}>
                 <button
@@ -95,9 +96,11 @@ export function AppShell({
             {children}
           </MainColumn>
         </div>
-      </div>
-      <AppChatFab />
-      </CreateWorkspaceModalProvider>
+          </div>
+          {modal}
+          <AppChatFab />
+        </CreateWorkspaceModalProvider>
+      </AccountSettingsProvider>
     </SidebarProvider>
   );
 }
