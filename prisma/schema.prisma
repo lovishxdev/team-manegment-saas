@@ -306,6 +306,26 @@ model MemoryEvent {
   @@index([workspaceId, createdAt])
 }
 
+/// Day-bucketed counters for the memory pipeline (capture funnel, recall
+/// usage, context token economy). Written fire-and-forget at each pipeline
+/// site; read only by the local admin dashboard.
+model MemoryMetric {
+  id          String   @id @default(uuid()) @db.Uuid
+  /// UTC day bucket.
+  day         DateTime @db.Date
+  workspaceId String   @db.Uuid
+  /// e.g. judge_run, event_created_agent, event_skipped_duplicate,
+  /// recall_query, context_pull, brief_built, resolution_ask,
+  /// resolution_confirmed.
+  metric      String
+  count       Int      @default(0)
+  /// Metric-specific accumulator (characters served, for token estimates).
+  sum         Float    @default(0)
+
+  @@unique([day, workspaceId, metric])
+  @@index([workspaceId, day])
+}
+
 /// Semantic index for task update RAG (Phase B).
 model TaskUpdateEmbedding {
   taskUpdateId String   @id @db.Uuid

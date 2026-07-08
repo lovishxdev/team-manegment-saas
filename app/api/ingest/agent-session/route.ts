@@ -11,6 +11,7 @@ import {
 import { memoryCaptureEnabled } from "@/lib/memory/capture";
 import { buildWorkspaceBrief } from "@/lib/memory/brief";
 import type { ClaimedSuggestion } from "@/lib/memory/suggest";
+import { bumpMemoryMetric } from "@/lib/memory/metrics";
 
 /**
  * Ambient ingest for coding-agent sessions. The agent's stop hook (Cursor /
@@ -163,6 +164,11 @@ export async function POST(req: Request) {
     workspaceName: workspace.workspaceName,
     userId: credential.userId,
   }).catch(() => null);
+  if (brief) {
+    bumpMemoryMetric(workspace.workspaceId, "brief_built", {
+      sum: brief.length,
+    });
+  }
 
   return NextResponse.json({
     ok: true,

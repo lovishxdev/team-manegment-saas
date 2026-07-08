@@ -7,6 +7,7 @@ import { ui } from "@/components/ui/ui";
 const links = [
   { href: "/admin", label: "Overview", exact: true },
   { href: "/admin/users", label: "Users", exact: false },
+  { href: "/admin/memory", label: "Memory", exact: false },
 ] as const;
 
 export function AdminNav() {

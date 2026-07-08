@@ -15,6 +15,7 @@ import {
 } from "@/lib/retrieval/embeddings";
 import { scoreTaskTitleQuery } from "@/lib/task-title-search";
 import { scheduleBackgroundTask } from "@/lib/background-task";
+import { bumpMemoryMetric } from "@/lib/memory/metrics";
 
 export const MAX_MEMORY_SUMMARY = 500;
 export const MAX_MEMORY_REASONING = 2000;
@@ -335,6 +336,8 @@ export async function resolveMemoryEvent(input: {
     },
     select: eventSelect,
   });
+
+  bumpMemoryMetric(input.workspaceId, "resolution_confirmed");
 
   scheduleBackgroundTask("blocker resolved notify", async () => {
     const { notifyBlockerResolved } = await import("@/lib/whatsapp-notify");

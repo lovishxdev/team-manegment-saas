@@ -8,6 +8,7 @@ import {
   type MemoryEventRow,
 } from "@/lib/services/memory";
 import { ServiceError } from "@/lib/services/project";
+import { bumpMemoryMetric } from "@/lib/memory/metrics";
 
 /**
  * Confirm-only resolution suggestions. Nothing here ever resolves a blocker;
@@ -89,6 +90,7 @@ export async function suggestBlockerResolution(input: {
     where: { id: input.eventId },
     select: {
       id: true,
+      workspaceId: true,
       status: true,
       kind: true,
       summary: true,
@@ -128,6 +130,8 @@ export async function suggestBlockerResolution(input: {
     { id: BUTTON.memoryResolveDismiss(event.id), title: "Not yet" },
   ]);
   if (!sent) return;
+
+  bumpMemoryMetric(event.workspaceId, "resolution_ask");
 
   await prisma.memoryEvent.update({
     where: { id: event.id },

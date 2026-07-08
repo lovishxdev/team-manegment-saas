@@ -16,6 +16,7 @@ import {
 } from "@/lib/tools/types";
 import { scheduleDecisionSupersessionCheck } from "@/lib/memory/capture";
 import { buildWorkspaceBrief } from "@/lib/memory/brief";
+import { bumpMemoryMetric } from "@/lib/memory/metrics";
 import { optionalNum, optionalStr, str, workspaceParam } from "@/lib/tools/helpers";
 import { clearNotedBlocker, noteBlocker } from "@/lib/whatsapp-cache";
 
@@ -98,10 +99,9 @@ const recallMemoryTool: ToolDef = {
           "No memory recorded yet. record_decision captures the first one."
         );
       }
-      return ok(
-        `Recent project memory (${events.length}):\n${formatMemoryEvents(events)}`,
-        { count: events.length }
-      );
+      const listing = `Recent project memory (${events.length}):\n${formatMemoryEvents(events)}`;
+      bumpMemoryMetric(ws.workspaceId, "recall_query", { sum: listing.length });
+      return ok(listing, { count: events.length });
     }
 
     const hits = await recallMemory({
@@ -119,10 +119,9 @@ const recallMemoryTool: ToolDef = {
         "No memory recorded about that yet. Try ask_task to search the raw update history, or record_decision to capture it now."
       );
     }
-    return ok(
-      `Project memory (${hits.length} match${hits.length === 1 ? "" : "es"}):\n${formatMemoryEvents(hits)}`,
-      { count: hits.length }
-    );
+    const body = `Project memory (${hits.length} match${hits.length === 1 ? "" : "es"}):\n${formatMemoryEvents(hits)}`;
+    bumpMemoryMetric(ws.workspaceId, "recall_query", { sum: body.length });
+    return ok(body, { count: hits.length });
   },
 };
 
@@ -274,6 +273,8 @@ const recordDecisionTool: ToolDef = {
       taskShortId: optionalNum(input.shortId),
     });
 
+    bumpMemoryMetric(ws.workspaceId, "event_created_explicit");
+
     // Explicitly recorded decisions may contradict an earlier one — capture
     // handles this for update-sourced events; do the same check here.
     if (kind === "DECISION") {
@@ -358,6 +359,7 @@ const getProjectContextTool: ToolDef = {
         workspaceName: ws.workspaceName,
         userId: ctx.userId,
       });
+      bumpMemoryMetric(ws.workspaceId, "context_pull", { sum: brief.length });
       return ok(
         brief +
           `\n\nThis is the general workspace brief (no query given). For ` +
@@ -403,7 +405,11 @@ const getProjectContextTool: ToolDef = {
       `\nWhile working: post add_task_update after meaningful progress; record_decision when a decision is made; resolve_blocker (after user confirmation) when a blocker clears.`
     );
 
-    return ok(sections.join("\n"), {
+    const contextBody = sections.join("\n");
+    bumpMemoryMetric(ws.workspaceId, "context_pull", {
+      sum: contextBody.length,
+    });
+    return ok(contextBody, {
       blockers: blockers.length,
       decisions: decisions.length,
     });

@@ -8,6 +8,7 @@ import {
 import { notifyBlockerDetected } from "@/lib/whatsapp-notify";
 import { suggestBlockerResolution } from "@/lib/memory/suggest";
 import { scheduleBackgroundTask } from "@/lib/background-task";
+import { bumpMemoryMetric } from "@/lib/memory/metrics";
 
 /**
  * Quiet, after-the-fact memory capture: one cheap classifier call per task
@@ -275,6 +276,9 @@ export async function captureFromTaskUpdate(
     supersedesEventId,
     ...(mode === "backfill" ? { createdAt: update.createdAt } : {}),
   });
+  if (mode === "live") {
+    bumpMemoryMetric(update.workspaceId, "event_created_thread");
+  }
 
   if (
     mode === "live" &&

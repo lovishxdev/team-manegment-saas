@@ -7,6 +7,7 @@ import {
   type MemoryEventRow,
 } from "@/lib/services/memory";
 import { memoryCaptureEnabled } from "@/lib/memory/capture";
+import { bumpMemoryMetric } from "@/lib/memory/metrics";
 import { notifyBlockerDetected } from "@/lib/whatsapp-notify";
 import {
   claimResolutionSuggestion,
@@ -42,7 +43,7 @@ const CAPTURE_MODEL =
 export const MIN_AGENT_TRANSCRIPT_CHARS = 300;
 /** Hard input cap; the hook sends the tail if a run was enormous. */
 export const MAX_AGENT_TRANSCRIPT_CHARS = 24_000;
-const MAX_EVENTS_PER_SESSION = 5;
+const MAX_EVENTS_PER_SESSION = 2;
 
 /** One judge call per conversation per window, even if runs stop rapidly. */
 const JUDGE_COOLDOWN_MS = 2 * 60 * 1000;
@@ -123,28 +124,33 @@ const SESSION_TOOL: Anthropic.Tool = {
 
 const SESSION_SYSTEM_PROMPT = `You are the memory judge for coding-agent work sessions. You read a transcript excerpt from an AI coding session and decide what — if anything — belongs in the team's persistent project memory.
 
-Apply judgment against these tests, not phrase patterns. A moment is memory-worthy if it passes ANY of them:
+The bar is DURABILITY: record a moment only if it will still constrain or explain work A MONTH from now. Having a rationale is not enough — every code change has one. Ask: if this entry silently disappeared, would anyone on the team notice within a month? If not, it is not memory.
+
+A durable moment also passes at least one of these tests:
 1. Future-why: someone will later ask "why is it this way?" and the code alone cannot answer — rationale, alternatives rejected, constraints discovered.
-2. Coordination: a teammate working on the project in parallel needs this to avoid conflicting or duplicated work, or to know they are blocked/unblocked — agreed interfaces, direction changes, blockers, dependencies.
-3. Commitment: it binds future work — a convention, contract, tool/library choice, or agreed plan the team is expected to honor going forward.
-4. Onboarding: someone joining the team months from now would need it to understand why the project is the way it is.
+2. Coordination: a teammate working in parallel needs it to avoid conflict or duplicated work, or to know they are blocked/unblocked.
+3. Commitment: it binds future work — a convention, contract, tool/library choice the team is expected to honor going forward.
+4. Onboarding: someone joining months from now needs it to understand why the project is the way it is.
+
+Only record what actually HAPPENED or was explicitly settled in this session. Suggestions, recommendations, plans, options discussed, and "should/could/we can" talk record NOTHING — a proposal is not a decision until the work is done or the user clearly agrees to adopt it.
 
 What qualifies maps to these kinds:
-- DECISION: a choice between alternatives was settled (library, approach, architecture, trade-off, convention), especially with reasoning. Includes reversals of earlier decisions.
-- BLOCKER: work cannot proceed (missing access/keys/files/approvals, broken external dependency, waiting on a person). A BLOCKER must still be true when the session ends — if the session itself fixed the problem, it is not a blocker (at most a DECISION or MILESTONE, or nothing).
+- DECISION: a choice between real alternatives was settled and future work must honor it (library, architecture, contract, convention, trade-off). Includes reversals of earlier decisions.
+- BLOCKER: work cannot proceed (missing access/keys/files/approvals, broken external dependency, waiting on a person). A BLOCKER must still be true when the session ends — if the session itself fixed the problem, it is not a blocker.
 - DEPENDENCY: the work depends on another piece of work or an external party.
-- MILESTONE: something significant shipped or was completed end-to-end.
+- MILESTONE: a major capability shipped end-to-end — something a teammate would mention in a standup, not a page or component.
 
-Fails every test (record nothing for these):
-- Progress narration: what files were edited, what functions were written, test results.
-- Anything recoverable by reading the repo (code structure, existing behavior).
-- Exploration, questions, dead ends that didn't settle anything.
-- Restatements of memory that is already recorded (listed below) — never duplicate, including rephrasings of a listed event.
-- Process state: "fix deployed, awaiting confirmation/verification/testing" is not memory. Pending verification of work from this session must never become a BLOCKER.
+Never memory (fails the durability bar):
+- Progress narration: files edited, functions written, tests passing, bugs fixed.
+- Implementation descriptions dressed as decisions: "X redesigned/refactored/improved to do Y" is changelog, not memory — git history already records it. It only qualifies if it sets a convention or contract others must follow.
+- Anything recoverable by reading the repo.
+- Exploration, questions, dead ends, and proposals that didn't get adopted.
+- Process state: "fix deployed, awaiting confirmation/verification/testing" must never become an event of any kind.
+- Restatements or rephrasings of already-recorded memory (listed below).
 
-Each distinct fact appears at most once: never emit two events that state the same thing with different wording.
+Each distinct fact appears at most once. At most ${MAX_EVENTS_PER_SESSION} events per session — if more seem to qualify, keep only the most durable. Most sessions produce ZERO events; an empty events array is the expected, correct output.
 
-Coding transcripts are verbose; be conservative. Most sessions produce ZERO events. An empty events array is the expected, correct output for routine work.
+task_short_id: only when the transcript explicitly works on that task (mentions #N or its title). Never attach an event to a task just because the task exists.
 
 If the session's work plausibly cleared one of the listed OPEN blockers/dependencies, return its id in resolved_event_ids — the user will be asked to confirm; nothing auto-resolves.
 
@@ -177,6 +183,20 @@ function isNearDuplicate(a: string, b: string): boolean {
   for (const w of ta) if (tb.has(w)) shared++;
   const union = ta.size + tb.size - shared;
   return shared / union >= NEAR_DUPLICATE_JACCARD;
+}
+
+/**
+ * Task links are only trusted when the transcript actually references the
+ * task — "#N" or its title. The judge is instructed the same way, but it
+ * demonstrably pins events to whatever tasks exist, so code decides.
+ */
+function transcriptMentionsTask(
+  transcript: string,
+  task: { shortId: number; title: string }
+): boolean {
+  if (new RegExp(`#${task.shortId}\\b`).test(transcript)) return true;
+  const title = task.title.trim().toLowerCase();
+  return title.length >= 4 && transcript.toLowerCase().includes(title);
 }
 
 function formatExistingEvents(events: MemoryEventRow[]): string {
@@ -307,6 +327,10 @@ export async function captureFromAgentSession(input: {
   ]);
   if (!user) return NO_RESULT;
 
+  bumpMemoryMetric(input.workspaceId, "judge_run", {
+    sum: transcript.length,
+  });
+
   const analysis = await judgeSession({
     transcript,
     workspaceName: input.workspaceName,
@@ -325,8 +349,6 @@ export async function captureFromAgentSession(input: {
   const openIds = new Set(
     existingEvents.filter((e) => e.status === "OPEN").map((e) => e.id)
   );
-  const taskShortIds = new Set(tasks.map((t) => t.shortId));
-
   // Confirm-only: a plausible clear becomes an ask, never a resolve. The
   // asks are returned to the ingest endpoint, which hands them to the hook
   // for delivery inside the editor session (the user confirms there and the
@@ -339,7 +361,10 @@ export async function captureFromAgentSession(input: {
       console.error("[agent-capture] suggestion claim failed:", err);
       return null;
     });
-    if (claimed) suggestions.push(claimed);
+    if (claimed) {
+      suggestions.push(claimed);
+      bumpMemoryMetric(input.workspaceId, "resolution_ask");
+    }
   }
 
   const events = (analysis.events ?? []).slice(0, MAX_EVENTS_PER_SESSION);
@@ -367,14 +392,18 @@ export async function captureFromAgentSession(input: {
       console.log(
         `[agent-capture] skipped near-duplicate event: "${summary.slice(0, 80)}"`
       );
+      bumpMemoryMetric(input.workspaceId, "event_skipped_duplicate");
       continue;
     }
     knownSummaries.push(summary);
 
+    const linkedTask =
+      typeof candidate.task_short_id === "number"
+        ? tasks.find((t) => t.shortId === candidate.task_short_id)
+        : undefined;
     const taskShortId =
-      typeof candidate.task_short_id === "number" &&
-      taskShortIds.has(candidate.task_short_id)
-        ? candidate.task_short_id
+      linkedTask && transcriptMentionsTask(transcript, linkedTask)
+        ? linkedTask.shortId
         : undefined;
 
     const supersedesEventId =
@@ -395,6 +424,7 @@ export async function captureFromAgentSession(input: {
         taskShortId,
         supersedesEventId,
       });
+      bumpMemoryMetric(input.workspaceId, "event_created_agent");
 
       if (
         event.status === "OPEN" &&
