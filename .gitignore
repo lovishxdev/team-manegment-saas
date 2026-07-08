@@ -18,7 +18,9 @@ lib/generated/
 
 # deployment
 .vercel/
-
+AGENT.md
+CLAUDE.md
+.claude/
 # turbo / caches
 .turbo/
 .fallow/

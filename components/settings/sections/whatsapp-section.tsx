@@ -1,7 +1,42 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { fetchWhatsAppHistoryAction } from "@/lib/actions/settings";
 import { PhoneForm } from "@/components/settings/phone-form";
 import { WhatsAppBotNumber } from "@/components/whatsapp/whatsapp-bot-number";
 import { WhatsAppChatHistory } from "@/components/whatsapp/whatsapp-chat-history";
 import type { AccountSettingsData } from "@/lib/settings/load-account-settings";
+
+function HistorySkeleton() {
+  return (
+    <div className="space-y-2" aria-hidden>
+      <div className="h-16 animate-pulse rounded-lg bg-paper-deep/70" />
+      <div className="h-16 animate-pulse rounded-lg bg-paper-deep/70" />
+    </div>
+  );
+}
+
+function WhatsAppHistoryPanel() {
+  const [messages, setMessages] = useState<
+    Awaited<ReturnType<typeof fetchWhatsAppHistoryAction>>["messages"] | null
+  >(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchWhatsAppHistoryAction().then((result) => {
+      if (!cancelled) setMessages(result.messages);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!messages) {
+    return <HistorySkeleton />;
+  }
+
+  return <WhatsAppChatHistory messages={messages} className="min-h-48" />;
+}
 
 export function WhatsAppSection({ data }: { data: AccountSettingsData }) {
   return (
@@ -46,10 +81,7 @@ export function WhatsAppSection({ data }: { data: AccountSettingsData }) {
             <p className="mb-3 mt-1 text-xs text-ink-faint">
               Last messages with the Euclis bot (synced from WhatsApp).
             </p>
-            <WhatsAppChatHistory
-              messages={data.whatsAppHistory}
-              className="min-h-48"
-            />
+            <WhatsAppHistoryPanel />
           </div>
         ) : null}
       </div>

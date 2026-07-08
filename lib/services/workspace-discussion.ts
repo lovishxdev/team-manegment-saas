@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getActorMembership, ServiceError } from "@/lib/services/project";
 import { resolveAllMentionUserIds, mentionLabelsForUsers } from "@/lib/mentions";
-import { notifyMentionedInDiscussion } from "@/lib/whatsapp-notify";
 import { displayUser } from "@/lib/username";
 
 export const MAX_WORKSPACE_MESSAGE_BODY = 8000;
@@ -152,20 +151,6 @@ export async function createWorkspaceMessage(input: {
       },
     },
   });
-
-  if (mentionedUserIds.length > 0) {
-    const workspace = await prisma.workspace.findUnique({
-      where: { id: input.workspaceId },
-      select: { name: true },
-    });
-    void notifyMentionedInDiscussion({
-      mentionedUserIds,
-      actorUserId: input.userId,
-      workspaceId: input.workspaceId,
-      workspaceName: workspace?.name ?? "your workspace",
-      body,
-    }).catch((err) => console.error("WhatsApp mention notify failed:", err));
-  }
 
   return {
     id: message.id,

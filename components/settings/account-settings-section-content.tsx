@@ -1,7 +1,6 @@
 import { AccountSettingsSectionBody } from "@/components/settings/account-settings-section-body";
 import {
   parseAccountSettingsSection,
-  type AccountSettingsSection,
 } from "@/lib/account-settings";
 import { loadAccountSettingsData } from "@/lib/settings/load-account-settings";
 

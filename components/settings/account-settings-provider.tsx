@@ -4,16 +4,15 @@ import { useRouter, usePathname } from "next/navigation";
 import {
   createContext,
   useCallback,
-  useContext,
   useEffect,
-  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
 import { Search, X } from "lucide-react";
-import { Spinner } from "@/components/ui/loading";
+import { fetchAccountSettingsAction } from "@/lib/actions/settings";
 import { useClientMounted } from "@/lib/use-client-mounted";
 import { AccountSettingsSectionBody } from "@/components/settings/account-settings-section-body";
 import {
@@ -27,14 +26,6 @@ import {
   type AccountSettingsSection,
 } from "@/lib/account-settings";
 import type { AccountSettingsData } from "@/lib/settings/load-account-settings";
-
-type AccountSettingsContextValue = {
-  setData: (data: AccountSettingsData | null) => void;
-};
-
-const AccountSettingsContext = createContext<AccountSettingsContextValue | null>(
-  null
-);
 
 function filterNavItems(query: string) {
   const q = query.trim().toLowerCase();
@@ -127,10 +118,26 @@ function SettingsSidebar({
   );
 }
 
-function SectionFallback() {
+function SectionContentSkeleton({ section }: { section: AccountSettingsSection }) {
+  if (section === "integrations") {
+    return (
+      <div className="flex h-full min-h-0 flex-col gap-3" aria-hidden>
+        <div className="h-10 w-full max-w-xs animate-pulse rounded-lg bg-paper-deep/70" />
+        <div className="grid flex-1 gap-3 sm:grid-cols-2">
+          <div className="h-28 animate-pulse rounded-xl bg-paper-deep/70" />
+          <div className="h-28 animate-pulse rounded-xl bg-paper-deep/70" />
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex h-full min-h-[12rem] items-center justify-center">
-      <Spinner />
+    <div className="space-y-4" aria-hidden>
+      <div className="h-4 w-full max-w-lg animate-pulse rounded bg-paper-deep/70" />
+      <div className="h-10 w-full max-w-md animate-pulse rounded-lg bg-paper-deep/70" />
+      {section === "account" ? (
+        <div className="h-24 w-full max-w-md animate-pulse rounded-lg bg-paper-deep/70" />
+      ) : null}
     </div>
   );
 }
@@ -138,13 +145,19 @@ function SectionFallback() {
 function AccountSettingsOverlay({
   section,
   data,
+  loading,
+  error,
   onClose,
   onNavigate,
+  onRetry,
 }: {
   section: AccountSettingsSection;
   data: AccountSettingsData | null;
+  loading: boolean;
+  error: string | null;
   onClose: () => void;
   onNavigate: (section: AccountSettingsSection) => void;
+  onRetry: () => void;
 }) {
   const [navSearch, setNavSearch] = useState("");
   const mounted = useClientMounted();
@@ -216,8 +229,21 @@ function AccountSettingsOverlay({
               <div className="min-h-0 flex-1">
                 {data ? (
                   <AccountSettingsSectionBody section={section} data={data} />
+                ) : loading ? (
+                  <SectionContentSkeleton section={section} />
+                ) : error ? (
+                  <div className="space-y-3 text-sm">
+                    <p className="text-red-600">{error}</p>
+                    <button
+                      type="button"
+                      onClick={onRetry}
+                      className="font-medium text-ink underline-offset-2 hover:underline"
+                    >
+                      Try again
+                    </button>
+                  </div>
                 ) : (
-                  <SectionFallback />
+                  <SectionContentSkeleton section={section} />
                 )}
               </div>
             </div>
@@ -233,15 +259,36 @@ export function AccountSettingsProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [data, setData] = useState<AccountSettingsData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fetchGeneration = useRef(0);
 
   const open = isAccountSettingsPath(pathname);
   const section = open ? sectionFromPathname(pathname) : "profile";
 
-  const setDataStable = useCallback((next: AccountSettingsData | null) => {
-    setData(next);
+  const loadData = useCallback(async () => {
+    const generation = ++fetchGeneration.current;
+    setLoading(true);
+    setError(null);
+
+    const result = await fetchAccountSettingsAction();
+    if (generation !== fetchGeneration.current) return;
+
+    if (result.error) {
+      setError(result.error);
+      setLoading(false);
+      return;
+    }
+
+    setData(result.data ?? null);
+    setLoading(false);
   }, []);
 
   const close = useCallback(() => {
+    fetchGeneration.current += 1;
+    setData(null);
+    setLoading(false);
+    setError(null);
     router.push(consumeSettingsReturnPath());
   }, [router]);
 
@@ -253,43 +300,33 @@ export function AccountSettingsProvider({ children }: { children: ReactNode }) {
     [router, section]
   );
 
-  const contextValue = useMemo(
-    () => ({ setData: setDataStable }),
-    [setDataStable]
-  );
-
   useEffect(() => {
-    if (!open) setData(null);
-  }, [open]);
+    if (!open) {
+      fetchGeneration.current += 1;
+      setData(null);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
+    if (data || loading || error) return;
+    void loadData();
+  }, [open, data, loading, error, loadData]);
 
   return (
-    <AccountSettingsContext.Provider value={contextValue}>
+    <>
       {children}
       {open ? (
         <AccountSettingsOverlay
           section={section}
           data={data}
+          loading={loading}
+          error={error}
           onClose={close}
           onNavigate={navigate}
+          onRetry={() => void loadData()}
         />
       ) : null}
-    </AccountSettingsContext.Provider>
+    </>
   );
-}
-
-/** Pushes server-loaded settings data into the app-wide overlay. */
-export function AccountSettingsDataBridge({
-  data,
-}: {
-  data: AccountSettingsData;
-}) {
-  const context = useContext(AccountSettingsContext);
-
-  useLayoutEffect(() => {
-    if (!context) return;
-    context.setData(data);
-    return () => context.setData(null);
-  }, [context, data]);
-
-  return null;
 }

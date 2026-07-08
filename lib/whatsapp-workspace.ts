@@ -7,15 +7,34 @@ import {
 } from "@/lib/whatsapp-messages";
 
 const WS_PICK_PREFIX = "ws_pick_";
+const LIST_ROW_TITLE_MAX = 24;
+const LIST_PICK_SUFFIX = /^use this workspace$/i;
+
+function cleanPickToken(text: string): string {
+  return text
+    .normalize("NFKC")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .trim();
+}
 
 export function workspacePickId(workspaceId: string): string {
   return `${WS_PICK_PREFIX}${workspaceId}`;
 }
 
 export function parseWorkspacePickId(buttonId: string): string | null {
-  if (!buttonId.startsWith(WS_PICK_PREFIX)) return null;
-  const id = buttonId.slice(WS_PICK_PREFIX.length);
-  return id.length > 0 ? id : null;
+  const raw = cleanPickToken(buttonId);
+  if (raw.startsWith(WS_PICK_PREFIX)) {
+    const id = raw.slice(WS_PICK_PREFIX.length);
+    return id.length > 0 ? id : null;
+  }
+  if (
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      raw
+    )
+  ) {
+    return raw;
+  }
+  return null;
 }
 
 /** Multiple memberships and no pinned active workspace — ask before acting. */
@@ -138,18 +157,39 @@ function escapeRegex(value: string): string {
 
 /** Strip list-row description when user copies "Name\nUse this workspace". */
 export function normalizeWorkspacePickReply(text: string): string {
-  return text
-    .trim()
-    .split("\n")[0]
-    .replace(/\s*use this workspace\s*$/i, "")
-    .trim();
+  const trimmed = cleanPickToken(text);
+  if (!trimmed) return "";
+
+  const singleLine = trimmed.replace(/\s+use this workspace\s*$/i, "").trim();
+  if (singleLine !== trimmed) return singleLine;
+
+  const lines = trimmed.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (lines.length >= 2 && LIST_PICK_SUFFIX.test(lines[lines.length - 1])) {
+    return lines[0];
+  }
+
+  return lines[0] ?? "";
+}
+
+function listRowTitle(name: string): string {
+  return name.trim().slice(0, LIST_ROW_TITLE_MAX).toLowerCase();
+}
+
+/** Match a workspace from picker text or list row title (exported for tests). */
+export function matchWorkspaceByPickReply(
+  workspaces: { id: string; name: string }[],
+  text: string
+): { id: string; name: string } | null {
+  const pickReply = normalizeWorkspacePickReply(text);
+  if (!pickReply) return null;
+  return matchWorkspaceByName(workspaces, pickReply);
 }
 
 function matchWorkspaceByName(
   workspaces: { id: string; name: string }[],
   needle: string
 ): { id: string; name: string } | null {
-  const n = needle.trim().toLowerCase();
+  const n = cleanPickToken(needle).toLowerCase();
   if (!n) return null;
 
   const exact = workspaces.filter(
@@ -157,9 +197,17 @@ function matchWorkspaceByName(
   );
   if (exact.length === 1) return exact[0];
 
+  const byListTitle = workspaces.filter(
+    (w) => listRowTitle(w.name) === n
+  );
+  if (byListTitle.length === 1) return byListTitle[0];
+
   const partial = workspaces.filter((w) => {
     const name = w.name.trim().toLowerCase();
-    return name.includes(n) || n.includes(name);
+    if (name === n) return true;
+    if (name.startsWith(n) && n.length >= 3) return true;
+    if (n.startsWith(name) && name.length >= 3) return true;
+    return false;
   });
   if (partial.length === 1) return partial[0];
 
@@ -178,12 +226,8 @@ export async function tryActivateWorkspaceFromText(
   if (memberships.length <= 1) return null;
 
   const workspaces = memberships.map((m) => m.workspace);
-  const pickReply = normalizeWorkspacePickReply(text);
-
-  if (pickReply.length > 0 && pickReply.length < 100) {
-    const direct = matchWorkspaceByName(workspaces, pickReply);
-    if (direct) return activateWorkspace(userId, direct.id);
-  }
+  const direct = matchWorkspaceByPickReply(workspaces, text);
+  if (direct) return activateWorkspace(userId, direct.id);
 
   const lower = text.toLowerCase();
   const embedded = workspaces.filter((w) => {

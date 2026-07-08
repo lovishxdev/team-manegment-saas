@@ -111,9 +111,11 @@ import {
   formatNoWorkspaceWhatsAppReply,
   listWorkspacePickerOptions,
   parseWorkspacePickId,
+  matchWorkspaceByPickReply,
   sendWorkspacePicker,
   shouldPromptWorkspacePick,
   tryActivateWorkspaceFromText,
+  normalizeWorkspacePickReply,
   userHasAnyWorkspace,
 } from "@/lib/whatsapp-workspace";
 import {
@@ -709,15 +711,47 @@ async function handleInteractiveMessage(
   const action = parseButtonId(buttonId);
 
   const workspacePickId = parseWorkspacePickId(buttonId);
-  if (workspacePickId) {
+  if (workspacePickId || title) {
     try {
-      const activated = await activateWorkspace(userId, workspacePickId);
+      let activated: { workspaceId: string; workspaceName: string } | null =
+        null;
+
+      if (workspacePickId) {
+        try {
+          activated = await activateWorkspace(userId, workspacePickId);
+        } catch (err) {
+          if (!(err instanceof ServiceError)) throw err;
+        }
+      }
+
+      if (!activated && title) {
+        activated = await tryActivateWorkspaceFromText(userId, title);
+      }
+
+      if (!activated && title) {
+        const options = await listWorkspacePickerOptions(userId);
+        const matched = matchWorkspaceByPickReply(
+          options.map((m) => m.workspace),
+          title
+        );
+        if (matched) {
+          activated = await activateWorkspace(userId, matched.id);
+        }
+      }
+
+      if (!activated) {
+        throw new ServiceError(
+          "Could not match that workspace. Tap *Pick workspace* and choose from the list.",
+          "NOT_FOUND"
+        );
+      }
+
       const pending = await consumeContinueMessage(from, userId);
       if (pending) {
         await recordExchange(
           userId,
           userText,
-          `Switched to ${activated.workspaceName}, continuing your request.`
+          `Switched to *${activated.workspaceName}* — on it.`
         ).catch(() => {});
         await handleMessage(from, pending);
         return;
@@ -1080,9 +1114,12 @@ async function handleMessage(
     if (pending) {
       const options = await listWorkspacePickerOptions(userId);
       const names = options.map((m) => `• *${m.workspace.name.trim()}*`).join("\n");
+      const pickHint = normalizeWorkspacePickReply(text);
       await sendWhatsAppText(
         from,
-        `Still waiting for a workspace pick.\n\nTap *Pick workspace* below, or reply with the exact name:\n${names}`
+        pickHint
+          ? `I couldn't match *${pickHint}* to a workspace.\n\nTap *Pick workspace* below, or reply with the exact name:\n${names}`
+          : `Still waiting for a workspace pick.\n\nTap *Pick workspace* below, or reply with the exact name:\n${names}`
       );
       await sendWorkspacePicker(
         from,

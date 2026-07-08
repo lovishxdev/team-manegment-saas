@@ -1,15 +1,8 @@
 import { requireUser } from "@/lib/auth";
-import { getMcpConnectorUrl } from "@/lib/app-origin";
 import { prisma } from "@/lib/prisma";
-import {
-  listWhatsAppChatHistory,
-  userHasInitiatedWhatsAppChat,
-} from "@/lib/services/conversation";
-import {
-  formatWhatsAppBotNumber,
-  getWhatsAppBotNumber,
-  whatsAppBotDeepLink,
-} from "@/lib/whatsapp-bot";
+import { userHasInitiatedWhatsAppChat } from "@/lib/services/conversation";
+import { staticAccountSettingsFields } from "@/lib/settings/account-settings-static";
+
 export type McpOAuthConnection = {
   /** OAuthClient id — the revocation handle (never the token itself). */
   clientId: string;
@@ -34,22 +27,19 @@ export type AccountSettingsData = {
   whatsAppBotDisplay: string | null;
   whatsAppDeepLink: string | null;
   showWhatsAppHistory: boolean;
-  whatsAppHistory: Awaited<ReturnType<typeof listWhatsAppChatHistory>>;
   mcpConnectorUrl: string;
   mcpOAuthConnections: McpOAuthConnection[];
   workspaces: { id: string; name: string }[];
   deleteConfirmLabel: string;
 };
 
+/** User-specific settings — no WhatsApp chat history (loaded per section). */
 export async function loadAccountSettingsData(): Promise<AccountSettingsData> {
   const user = await requireUser();
-  const whatsAppBotNumber = getWhatsAppBotNumber();
-  const mcpConnectorUrl = await getMcpConnectorUrl();
+  const staticFields = staticAccountSettingsFields();
   const showWhatsAppHistory =
     Boolean(user.phone) || (await userHasInitiatedWhatsAppChat(user.id));
-  const whatsAppHistory = showWhatsAppHistory
-    ? await listWhatsAppChatHistory(user.id)
-    : [];
+
   const workspaces = (
     await prisma.workspaceMembership.findMany({
       where: { userId: user.id },
@@ -67,8 +57,6 @@ export async function loadAccountSettingsData(): Promise<AccountSettingsData> {
     include: { client: { select: { id: true, name: true } } },
     orderBy: { createdAt: "desc" },
   });
-  // One row per client (a client can hold several tokens via refresh
-  // rotation); newest token's choices represent the connection.
   const byClient = new Map<string, McpOAuthConnection>();
   for (const token of activeTokens) {
     if (byClient.has(token.clientId)) continue;
@@ -80,7 +68,6 @@ export async function loadAccountSettingsData(): Promise<AccountSettingsData> {
       connectedAt: token.createdAt.toISOString(),
     });
   }
-  const mcpOAuthConnections = [...byClient.values()];
 
   return {
     user: {
@@ -91,17 +78,9 @@ export async function loadAccountSettingsData(): Promise<AccountSettingsData> {
       mcpWorkspaceId: user.mcpWorkspaceId,
       mcpToken: user.mcpToken,
     },
-    whatsAppBotNumber,
-    whatsAppBotDisplay: whatsAppBotNumber
-      ? formatWhatsAppBotNumber(whatsAppBotNumber)
-      : null,
-    whatsAppDeepLink: whatsAppBotNumber
-      ? whatsAppBotDeepLink(whatsAppBotNumber)
-      : null,
+    ...staticFields,
     showWhatsAppHistory,
-    whatsAppHistory,
-    mcpConnectorUrl,
-    mcpOAuthConnections,
+    mcpOAuthConnections: [...byClient.values()],
     workspaces,
     deleteConfirmLabel: user.email ?? "DELETE",
   };

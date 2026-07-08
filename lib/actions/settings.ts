@@ -10,8 +10,47 @@ import {
   deleteUserAccount,
 } from "@/lib/services/workspace";
 import { createSupabaseServer } from "@/lib/supabase-server";
+import { listWhatsAppChatHistory } from "@/lib/services/conversation";
+import {
+  loadAccountSettingsData,
+  type AccountSettingsData,
+} from "@/lib/settings/load-account-settings";
 
 export type SettingsState = { error?: string; message?: string };
+
+export async function fetchAccountSettingsAction(): Promise<{
+  data?: AccountSettingsData;
+  error?: string;
+}> {
+  try {
+    const data = await loadAccountSettingsData();
+    return { data };
+  } catch (err) {
+    return {
+      error:
+        err instanceof ServiceError ? err.message : "Failed to load settings",
+    };
+  }
+}
+
+export async function fetchWhatsAppHistoryAction(): Promise<{
+  messages: Awaited<ReturnType<typeof listWhatsAppChatHistory>>;
+  error?: string;
+}> {
+  try {
+    const user = await requireUser();
+    const messages = await listWhatsAppChatHistory(user.id);
+    return { messages };
+  } catch (err) {
+    return {
+      messages: [],
+      error:
+        err instanceof ServiceError
+          ? err.message
+          : "Failed to load WhatsApp history",
+    };
+  }
+}
 
 export async function updateUsernameAction(
   _prev: SettingsState,
