@@ -111,11 +111,8 @@ import {
   formatNoWorkspaceWhatsAppReply,
   listWorkspacePickerOptions,
   parseWorkspacePickId,
-  matchWorkspaceByPickReply,
   sendWorkspacePicker,
   shouldPromptWorkspacePick,
-  tryActivateWorkspaceFromText,
-  normalizeWorkspacePickReply,
   userHasAnyWorkspace,
 } from "@/lib/whatsapp-workspace";
 import {
@@ -162,12 +159,59 @@ async function sendNoWorkspaceHint(
   );
 }
 
-function buildSystemPrompt(activeWorkspaceName: string | null): string {
+type MultiWorkspacePrompt = {
+  workspaceNames: string[];
+  pendingIntent?: string;
+  pickReply?: string;
+};
+
+type HandleMessageOptions = {
+  /** Original request staged before the workspace picker */
+  stagedIntent?: string;
+  /** Workspace label from a list tap or typed pick reply */
+  workspacePickReply?: string;
+  /** Skip the first-touch picker gate (workspace already activated) */
+  skipWorkspacePicker?: boolean;
+};
+
+function buildWorkspaceContext(
+  activeWorkspaceName: string | null,
+  multi?: MultiWorkspacePrompt
+): string {
+  if (multi && multi.workspaceNames.length > 1) {
+    const names = multi.workspaceNames.map((n) => `"${n}"`).join(", ");
+    const lines = [
+      `The user has NO pinned active workspace but belongs to: ${names}.`,
+      "You MUST call switch_workspace with the correct workspace BEFORE any task, board, asset, link, or member mutation tools.",
+    ];
+    if (multi.pendingIntent) {
+      lines.push(
+        `Before the picker they asked: "${multi.pendingIntent}" — after switch_workspace, fulfill that request in this same turn.`
+      );
+    }
+    if (multi.pickReply) {
+      lines.push(
+        `Their workspace choice in this message: "${multi.pickReply}" — map it to the exact workspace name, then switch_workspace.`
+      );
+    }
+    lines.push(
+      "Do not call show_workspace_picker again unless they explicitly want to switch workspace."
+    );
+    return lines.join(" ");
+  }
+  if (activeWorkspaceName) {
+    return `The user's active workspace is "${activeWorkspaceName}". Omit the workspace parameter on all tools unless they explicitly name a different workspace.`;
+  }
+  return `The user has NO workspace yet. If they want to get started, call create_workspace (e.g. "create a workspace called Marketing"). Do not use task, board, asset, or link tools until a workspace exists.`;
+}
+
+function buildSystemPrompt(
+  activeWorkspaceName: string | null,
+  multi?: MultiWorkspacePrompt
+): string {
   const today = new Date().toISOString().slice(0, 10);
   const weekday = new Date().toLocaleDateString("en-US", { weekday: "long" });
-  const workspaceContext = activeWorkspaceName
-    ? `The user's active workspace is "${activeWorkspaceName}". Omit the workspace parameter on all tools unless they explicitly name a different workspace.`
-    : `The user has NO workspace yet. If they want to get started, call create_workspace (e.g. "create a workspace called Marketing"). Do not use task, board, asset, or link tools until a workspace exists.`;
+  const workspaceContext = buildWorkspaceContext(activeWorkspaceName, multi);
 
   return `You are Euclis on WhatsApp — a sharp, friendly teammate who helps manage tasks. Today is ${weekday}, ${today}. Sound human: short sentences, contractions, no corporate filler. Never say "Here's what happened", "I have successfully", or "Done." as a opener.
 
@@ -711,49 +755,19 @@ async function handleInteractiveMessage(
   const action = parseButtonId(buttonId);
 
   const workspacePickId = parseWorkspacePickId(buttonId);
-  if (workspacePickId || title) {
+  if (workspacePickId) {
     try {
-      let activated: { workspaceId: string; workspaceName: string } | null =
-        null;
-
-      if (workspacePickId) {
-        try {
-          activated = await activateWorkspace(userId, workspacePickId);
-        } catch (err) {
-          if (!(err instanceof ServiceError)) throw err;
-        }
-      }
-
-      if (!activated && title) {
-        activated = await tryActivateWorkspaceFromText(userId, title);
-      }
-
-      if (!activated && title) {
-        const options = await listWorkspacePickerOptions(userId);
-        const matched = matchWorkspaceByPickReply(
-          options.map((m) => m.workspace),
-          title
-        );
-        if (matched) {
-          activated = await activateWorkspace(userId, matched.id);
-        }
-      }
-
-      if (!activated) {
-        throw new ServiceError(
-          "Could not match that workspace. Tap *Pick workspace* and choose from the list.",
-          "NOT_FOUND"
-        );
-      }
-
+      const activated = await activateWorkspace(userId, workspacePickId);
       const pending = await consumeContinueMessage(from, userId);
       if (pending) {
         await recordExchange(
           userId,
           userText,
-          `Switched to *${activated.workspaceName}* — on it.`
+          `Using *${activated.workspaceName}* — on it.`
         ).catch(() => {});
-        await handleMessage(from, pending);
+        await handleMessage(from, pending, undefined, false, undefined, {
+          skipWorkspacePicker: true,
+        });
         return;
       }
       const reply = `Switched to *${activated.workspaceName}*. What would you like to do?`;
@@ -768,6 +782,19 @@ async function handleInteractiveMessage(
       await recordExchange(userId, userText, reply).catch(() => {});
     }
     return;
+  }
+
+  // List row without a parseable ws_pick id — let the agent resolve the title.
+  if (!action && title && (await shouldPromptWorkspacePick(userId))) {
+    const pending = await peekContinueMessage(from, userId);
+    if (pending) {
+      await consumeContinueMessage(from, userId);
+      await handleMessage(from, pending, undefined, false, undefined, {
+        stagedIntent: pending,
+        workspacePickReply: title,
+      });
+      return;
+    }
   }
 
   if (!action) {
@@ -1048,7 +1075,8 @@ async function handleMessage(
   text: string,
   progress?: WhatsAppProgress,
   queued = false,
-  _inboundMessageId?: string
+  _inboundMessageId?: string,
+  opts?: HandleMessageOptions
 ) {
   const userId = await getUserIdByPhone(from);
   if (!userId) {
@@ -1096,50 +1124,43 @@ async function handleMessage(
     }
   }
 
-  if (hasWorkspace && (await shouldPromptWorkspacePick(userId))) {
-    const activated = await tryActivateWorkspaceFromText(userId, text);
-    if (activated) {
-      const pending = await consumeContinueMessage(from, userId);
-      const toRun = pending ?? text;
-      await recordExchange(
-        userId,
-        text,
-        `Using *${activated.workspaceName}* — on it.`
-      ).catch(() => {});
-      await handleMessage(from, toRun, progress, queued, _inboundMessageId);
-      return;
-    }
+  let stagedIntent = opts?.stagedIntent;
+  let workspacePickReply = opts?.workspacePickReply;
 
-    const pending = await peekContinueMessage(from, userId);
-    if (pending) {
-      const options = await listWorkspacePickerOptions(userId);
-      const names = options.map((m) => `• *${m.workspace.name.trim()}*`).join("\n");
-      const pickHint = normalizeWorkspacePickReply(text);
-      await sendWhatsAppText(
-        from,
-        pickHint
-          ? `I couldn't match *${pickHint}* to a workspace.\n\nTap *Pick workspace* below, or reply with the exact name:\n${names}`
-          : `Still waiting for a workspace pick.\n\nTap *Pick workspace* below, or reply with the exact name:\n${names}`
-      );
-      await sendWorkspacePicker(
-        from,
-        options.map((m) => m.workspace),
-        "Before I continue, which workspace should this apply to?"
-      );
-      await recordExchange(userId, text, "[workspace picker reshown]").catch(() => {});
-      return;
+  if (
+    !opts?.skipWorkspacePicker &&
+    hasWorkspace &&
+    (await shouldPromptWorkspacePick(userId))
+  ) {
+    if (!stagedIntent && !workspacePickReply) {
+      const pending = await peekContinueMessage(from, userId);
+      if (!pending) {
+        const options = await listWorkspacePickerOptions(userId);
+        await stageContinueMessage(from, userId, text);
+        await sendWorkspacePicker(
+          from,
+          options.map((m) => m.workspace),
+          "Before I continue, which workspace should this apply to?"
+        );
+        await recordExchange(userId, text, "[workspace picker shown]").catch(
+          () => {}
+        );
+        return;
+      }
+      stagedIntent = pending;
+      workspacePickReply = text;
+      await consumeContinueMessage(from, userId);
     }
-
-    const options = await listWorkspacePickerOptions(userId);
-    await stageContinueMessage(from, userId, text);
-    await sendWorkspacePicker(
-      from,
-      options.map((m) => m.workspace),
-      "Before I continue, which workspace should this apply to?"
-    );
-    await recordExchange(userId, text, "[workspace picker shown]").catch(() => {});
-    return;
   }
+
+  const needsMultiWorkspacePrompt =
+    hasWorkspace &&
+    (await shouldPromptWorkspacePick(userId)) &&
+    Boolean(stagedIntent || workspacePickReply);
+
+  const multiWorkspaceNames = needsMultiWorkspacePrompt
+    ? (await listWorkspacePickerOptions(userId)).map((m) => m.workspace.name)
+    : [];
 
   // Recent exchanges give the agent the context to resolve follow-ups like
   // "make that one high priority" (the prior reply names the task).
@@ -1174,6 +1195,11 @@ async function handleMessage(
     lastDiscussedTaskShortId,
   };
 
+  const agentUserText =
+    workspacePickReply && stagedIntent
+      ? `Workspace pick: ${workspacePickReply}\n\nContinue with: ${stagedIntent}`
+      : text;
+
   // Single agent (MCP-style): one capable model, full registry tools, no
   // triage router. The model composes inquiry answers; mutations use the
   // deterministic tool output.
@@ -1190,9 +1216,18 @@ async function handleMessage(
     loop = await runWhatsAppAgentLoop({
       anthropic: new Anthropic({ apiKey: anthropicApiKey }),
       model: WHATSAPP_AGENT_MODEL,
-      systemPrompt: buildSystemPrompt(activeCtx.workspaceName),
+      systemPrompt: buildSystemPrompt(
+        activeCtx.workspaceName,
+        needsMultiWorkspacePrompt
+          ? {
+              workspaceNames: multiWorkspaceNames,
+              pendingIntent: stagedIntent,
+              pickReply: workspacePickReply,
+            }
+          : undefined
+      ),
       tools: TOOLS,
-      messages: [...history, { role: "user" as const, content: text }],
+      messages: [...history, { role: "user" as const, content: agentUserText }],
       maxTurns: MAX_TOOL_TURNS,
       runTool: (name, input) => executeAction(userId, name, input, session),
       onProgress: (action, result) => progress?.step(action, result),

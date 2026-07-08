@@ -13,7 +13,7 @@ const LIST_PICK_SUFFIX = /^use this workspace$/i;
 function cleanPickToken(text: string): string {
   return text
     .normalize("NFKC")
-    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/[\u200B-\u200D\uFEFF\u2060\u202F\u00A0]/g, "")
     .trim();
 }
 
