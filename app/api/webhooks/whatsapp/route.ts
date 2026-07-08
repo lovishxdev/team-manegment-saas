@@ -9,6 +9,7 @@ import {
   getTask,
   resolveUserWorkspaceContext,
   ServiceError,
+  touchLastActiveWorkspace,
   updateTask,
   uploadAsset,
 } from "@/lib/services/project";
@@ -113,6 +114,7 @@ import {
   parseWorkspacePickId,
   sendWorkspacePicker,
   shouldPromptWorkspacePick,
+  tryActivateWorkspaceFromText,
   userHasAnyWorkspace,
 } from "@/lib/whatsapp-workspace";
 import {
@@ -124,6 +126,13 @@ import {
   dismissSuggestedResolution,
 } from "@/lib/memory/suggest";
 import type { WhatsAppSessionState } from "@/lib/tools/types";
+import {
+  applyWhatsAppCacheToSession,
+  cachePatchFromSession,
+  formatWhatsAppCacheForPrompt,
+  loadWhatsAppCache,
+  persistWhatsAppCache,
+} from "@/lib/whatsapp-cache";
 
 /**
  * WhatsApp bot interface (Meta Cloud API webhook).
@@ -207,11 +216,13 @@ function buildWorkspaceContext(
 
 function buildSystemPrompt(
   activeWorkspaceName: string | null,
-  multi?: MultiWorkspacePrompt
+  multi?: MultiWorkspacePrompt,
+  cacheSnippet?: string
 ): string {
   const today = new Date().toISOString().slice(0, 10);
   const weekday = new Date().toLocaleDateString("en-US", { weekday: "long" });
   const workspaceContext = buildWorkspaceContext(activeWorkspaceName, multi);
+  const cacheContext = cacheSnippet?.trim() ? `\n\n${cacheSnippet.trim()}` : "";
 
   return `You are Euclis on WhatsApp — a sharp, friendly teammate who helps manage tasks. Today is ${weekday}, ${today}. Sound human: short sentences, contractions, no corporate filler. Never say "Here's what happened", "I have successfully", or "Done." as a opener.
 
@@ -227,7 +238,7 @@ Voice examples:
 - Bad: "Marked #1 as done" or "You've got #1 Seo Queries" — never use #N in user-facing text; use *task titles*.
 - Good tool outcomes: "Added *Return From Gym*." / "Updated *Seo Queries* → done." / board lists *Title* · status
 
-${workspaceContext}
+${workspaceContext}${cacheContext}
 
 Convert the user's message into tool calls when they want to act on their board:
 - create_task: when they want to add/create a task. Use a SHORT title (a few words, under ~80 chars). Put bullet lists, long paragraphs, SEO keywords, and detailed requirements in description — never dump them all into title.
@@ -1153,6 +1164,10 @@ async function handleMessage(
     }
   }
 
+  if (workspacePickReply) {
+    await tryActivateWorkspaceFromText(userId, workspacePickReply).catch(() => {});
+  }
+
   const needsMultiWorkspacePrompt =
     hasWorkspace &&
     (await shouldPromptWorkspacePick(userId)) &&
@@ -1164,7 +1179,10 @@ async function handleMessage(
 
   // Recent exchanges give the agent the context to resolve follow-ups like
   // "make that one high priority" (the prior reply names the task).
-  const history = await getRecentConversation(userId);
+  const [history, whatsappCache] = await Promise.all([
+    getRecentConversation(userId),
+    loadWhatsAppCache(userId),
+  ]);
   const activeCtx = hasWorkspace
     ? await resolveUserWorkspaceContext(userId)
     : { workspaceId: null, workspaceName: null };
@@ -1193,7 +1211,18 @@ async function handleMessage(
     userMessage: text,
     conversationTurns: history,
     lastDiscussedTaskShortId,
+    lastDiscussedTaskTitle: null,
+    lastPostedUpdate: null,
+    lastNotedBlocker: null,
+    clearedBlocker: false,
   };
+
+  applyWhatsAppCacheToSession(whatsappCache, session, activeCtx.workspaceId);
+  if (!session.lastDiscussedTaskTitle && whatsappCache?.lastDiscussedTask) {
+    session.lastDiscussedTaskTitle = whatsappCache.lastDiscussedTask.title;
+  }
+
+  const cacheSnippet = formatWhatsAppCacheForPrompt(whatsappCache);
 
   const agentUserText =
     workspacePickReply && stagedIntent
@@ -1224,7 +1253,8 @@ async function handleMessage(
               pendingIntent: stagedIntent,
               pickReply: workspacePickReply,
             }
-          : undefined
+          : undefined,
+        cacheSnippet
       ),
       tools: TOOLS,
       messages: [...history, { role: "user" as const, content: agentUserText }],
@@ -1281,16 +1311,23 @@ async function handleMessage(
     );
   }
 
-  // Tools update session.lastDiscussedTaskShortId as they run; persist it so
+  // Tools update session.lastDiscussedTaskShortId as they run; persist cache so
   // the next message resolves "post that" without re-parsing chat history.
-  if (
+  if (session.workspaceId && actionResults.some((o) => o.ok)) {
+    await persistWhatsAppCache(
+      userId,
+      cachePatchFromSession(session)
+    ).catch((err) => console.error("Failed to persist WhatsApp cache:", err));
+    await touchLastActiveWorkspace(userId, session.workspaceId).catch(() => {});
+  } else if (
     session.lastDiscussedTaskShortId &&
     session.lastDiscussedTaskShortId !== lastDiscussedTaskShortId
   ) {
     await setLastDiscussedTask(
       userId,
       session.workspaceId,
-      session.lastDiscussedTaskShortId
+      session.lastDiscussedTaskShortId,
+      session.lastDiscussedTaskTitle
     ).catch((err) =>
       console.error("Failed to persist chat state:", err)
     );

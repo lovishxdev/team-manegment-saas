@@ -468,14 +468,23 @@ model BotActionLog {
   @@index([userId, workspaceId, createdAt])
 }
 
-/// Rolling WhatsApp chat state — the task the user last discussed, so
-/// follow-ups ("post that", "mark it done") resolve deterministically
-/// instead of being re-parsed out of previous bot replies.
+/// Rolling WhatsApp session cache — latest workspace, tasks, updates, and
+/// blockers so follow-ups resolve deterministically without re-parsing chat.
 model WhatsAppChatState {
   userId          String   @id @db.Uuid
+  workspaceId     String?  @db.Uuid
+  workspaceName   String?
   /// Task shortId last referenced in chat; only valid within workspaceId.
   lastTaskShortId Int?
-  workspaceId     String?  @db.Uuid
+  lastTaskTitle   String?
+  lastCreatedTaskShortId Int?
+  lastCreatedTaskTitle   String?
+  lastUpdateTaskShortId  Int?
+  lastUpdateTaskTitle    String?
+  lastUpdateBody         String?
+  lastUpdateAt           DateTime?
+  lastBlockerEventId     String?  @db.Uuid
+  lastBlockerSummary     String?
   updatedAt       DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

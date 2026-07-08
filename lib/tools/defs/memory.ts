@@ -17,6 +17,7 @@ import {
 import { scheduleDecisionSupersessionCheck } from "@/lib/memory/capture";
 import { buildWorkspaceBrief } from "@/lib/memory/brief";
 import { optionalNum, optionalStr, str, workspaceParam } from "@/lib/tools/helpers";
+import { clearNotedBlocker, noteBlocker } from "@/lib/whatsapp-cache";
 
 /**
  * Decision-memory tools — the Recall side of the memory layer. Available on
@@ -153,6 +154,12 @@ const listBlockersTool: ToolDef = {
     if (events.length === 0) {
       return ok("No open blockers or dependencies. 🎉");
     }
+    if (ctx.wa) {
+      const top =
+        events.find((e) => e.kind === "BLOCKER" || e.kind === "DEPENDENCY") ??
+        events[0];
+      noteBlocker(ctx.wa.session, top.id, top.summary);
+    }
     return ok(
       `Open blockers/dependencies (${events.length}):\n${formatMemoryEvents(events)}`,
       { count: events.length }
@@ -275,6 +282,9 @@ const recordDecisionTool: ToolDef = {
 
     const kindLabel = kind.toLowerCase();
     if (ctx.wa) {
+      if (kind === "BLOCKER" || kind === "DEPENDENCY") {
+        noteBlocker(ctx.wa.session, event.id, event.summary);
+      }
       // Human-facing confirmation (deterministic mutation reply) — no ids,
       // no bracket notation.
       return ok(
@@ -310,6 +320,7 @@ const resolveBlockerTool: ToolDef = {
       userId: ctx.userId,
       eventId,
     });
+    if (ctx.wa) clearNotedBlocker(ctx.wa.session);
     return ok(`Resolved ✅ — "${event.summary}"`, { eventId: event.id });
   },
 };

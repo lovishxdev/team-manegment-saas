@@ -131,7 +131,7 @@ Apply judgment against these tests, not phrase patterns. A moment is memory-wort
 
 What qualifies maps to these kinds:
 - DECISION: a choice between alternatives was settled (library, approach, architecture, trade-off, convention), especially with reasoning. Includes reversals of earlier decisions.
-- BLOCKER: work cannot proceed (missing access/keys/files/approvals, broken external dependency, waiting on a person).
+- BLOCKER: work cannot proceed (missing access/keys/files/approvals, broken external dependency, waiting on a person). A BLOCKER must still be true when the session ends — if the session itself fixed the problem, it is not a blocker (at most a DECISION or MILESTONE, or nothing).
 - DEPENDENCY: the work depends on another piece of work or an external party.
 - MILESTONE: something significant shipped or was completed end-to-end.
 
@@ -139,13 +139,45 @@ Fails every test (record nothing for these):
 - Progress narration: what files were edited, what functions were written, test results.
 - Anything recoverable by reading the repo (code structure, existing behavior).
 - Exploration, questions, dead ends that didn't settle anything.
-- Restatements of memory that is already recorded (listed below) — never duplicate.
+- Restatements of memory that is already recorded (listed below) — never duplicate, including rephrasings of a listed event.
+- Process state: "fix deployed, awaiting confirmation/verification/testing" is not memory. Pending verification of work from this session must never become a BLOCKER.
+
+Each distinct fact appears at most once: never emit two events that state the same thing with different wording.
 
 Coding transcripts are verbose; be conservative. Most sessions produce ZERO events. An empty events array is the expected, correct output for routine work.
 
 If the session's work plausibly cleared one of the listed OPEN blockers/dependencies, return its id in resolved_event_ids — the user will be asked to confirm; nothing auto-resolves.
 
 Write summaries in third person, self-contained, naming the actual thing.`;
+
+/**
+ * Deterministic near-duplicate guard. The judge is told not to duplicate
+ * listed events, but parallel sessions and rephrasings slip through — two
+ * hooks stopping together each fetch existing events before either commits.
+ * Token-overlap (Jaccard) on normalized summaries catches rewordings that
+ * exact content hashes miss.
+ */
+const NEAR_DUPLICATE_JACCARD = 0.5;
+
+function summaryTokens(text: string): Set<string> {
+  return new Set(
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter((w) => w.length > 2)
+  );
+}
+
+function isNearDuplicate(a: string, b: string): boolean {
+  const ta = summaryTokens(a);
+  const tb = summaryTokens(b);
+  if (ta.size === 0 || tb.size === 0) return false;
+  let shared = 0;
+  for (const w of ta) if (tb.has(w)) shared++;
+  const union = ta.size + tb.size - shared;
+  return shared / union >= NEAR_DUPLICATE_JACCARD;
+}
 
 function formatExistingEvents(events: MemoryEventRow[]): string {
   if (events.length === 0) return "(none)";
@@ -311,10 +343,33 @@ export async function captureFromAgentSession(input: {
   }
 
   const events = (analysis.events ?? []).slice(0, MAX_EVENTS_PER_SESSION);
+  // Existing summaries + everything committed in this loop; grows as we
+  // create, so the judge emitting the same fact twice also dedupes.
+  const knownSummaries = existingEvents.map((e) => e.summary);
+  if (events.length > 0) {
+    // The judge call takes seconds — a parallel session may have committed
+    // events since our first fetch. Pick up anything new before creating.
+    const fresh = await prisma.memoryEvent.findMany({
+      where: {
+        workspaceId: input.workspaceId,
+        createdAt: { gte: new Date(Date.now() - 5 * 60 * 1000) },
+      },
+      select: { summary: true },
+    });
+    for (const e of fresh) knownSummaries.push(e.summary);
+  }
   for (const candidate of events) {
     const summary = candidate.summary?.trim();
     const kind = candidate.kind;
     if (!summary || !kind) continue;
+
+    if (knownSummaries.some((known) => isNearDuplicate(summary, known))) {
+      console.log(
+        `[agent-capture] skipped near-duplicate event: "${summary.slice(0, 80)}"`
+      );
+      continue;
+    }
+    knownSummaries.push(summary);
 
     const taskShortId =
       typeof candidate.task_short_id === "number" &&

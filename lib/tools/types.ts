@@ -36,6 +36,15 @@ export type WhatsAppSessionState = {
   userMessage: string;
   conversationTurns: ConversationTurn[];
   lastDiscussedTaskShortId: number | null;
+  lastDiscussedTaskTitle: string | null;
+  lastPostedUpdate: {
+    taskShortId: number;
+    taskTitle: string;
+    body: string;
+    at: Date;
+  } | null;
+  lastNotedBlocker: { eventId: string; summary: string } | null;
+  clearedBlocker: boolean;
 };
 
 export type WorkspaceCtx = {

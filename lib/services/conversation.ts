@@ -1,12 +1,18 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import {
+  loadWhatsAppCache,
+  persistWhatsAppCache,
+  WHATSAPP_CACHE_TTL_MS,
+  type WhatsAppCacheTaskRef,
+} from "@/lib/whatsapp-cache";
 
 /**
  * WhatsApp conversation memory. Keeps a short rolling window per user so
  * Haiku can resolve follow-up references ("make that one high priority").
  */
 
-const WINDOW_MS = 2 * 60 * 60 * 1000; // 2 hours of context
+const WINDOW_MS = WHATSAPP_CACHE_TTL_MS;
 const MAX_TURNS = 12; // messages (user + assistant combined) sent to the model
 const KEEP_PER_USER = 30; // stored rows before pruning
 
@@ -97,24 +103,25 @@ export async function getLastDiscussedTask(
   workspaceId: string | null
 ): Promise<number | null> {
   if (!workspaceId) return null;
-  const state = await prisma.whatsAppChatState.findUnique({
-    where: { userId },
-  });
-  if (!state?.lastTaskShortId) return null;
-  if (state.workspaceId !== workspaceId) return null;
-  if (state.updatedAt.getTime() < Date.now() - WINDOW_MS) return null;
-  return state.lastTaskShortId;
+  const cache = await loadWhatsAppCache(userId);
+  if (!cache?.lastDiscussedTask) return null;
+  if (cache.workspaceId !== workspaceId) return null;
+  return cache.lastDiscussedTask.shortId;
 }
 
 export async function setLastDiscussedTask(
   userId: string,
   workspaceId: string | null,
-  shortId: number | null
+  shortId: number | null,
+  title?: string | null
 ): Promise<void> {
-  await prisma.whatsAppChatState.upsert({
-    where: { userId },
-    create: { userId, workspaceId, lastTaskShortId: shortId },
-    update: { workspaceId, lastTaskShortId: shortId },
+  const task: WhatsAppCacheTaskRef | null =
+    shortId != null
+      ? { shortId, title: title?.trim() || `task #${shortId}` }
+      : null;
+  await persistWhatsAppCache(userId, {
+    workspaceId,
+    lastDiscussedTask: task,
   });
 }
 

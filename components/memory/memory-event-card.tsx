@@ -71,13 +71,7 @@ export function MemoryEventCard({
   }
 
   return (
-    <article
-      className={`${cardCls} ${
-        isOpen && isBlockerLike
-          ? "border-l-[3px] border-l-rose-400"
-          : ""
-      }`}
-    >
+    <article className={cardCls}>
       <div className="flex flex-wrap items-center gap-1.5">
         <span className={`${chipCls} ${KIND_STYLES[event.kind] ?? "bg-paper-deep text-ink-soft"}`}>
           {KIND_LABELS[event.kind] ?? event.kind}

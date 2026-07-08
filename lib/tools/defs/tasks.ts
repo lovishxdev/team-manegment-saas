@@ -37,6 +37,10 @@ import { revalidateUserWorkspaces } from "@/lib/revalidate-nav";
 import { workspaceUrl } from "@/lib/app-url";
 import { waWebhookLog } from "@/lib/whatsapp-webhook-log";
 import {
+  noteDiscussedTask,
+  notePostedUpdate,
+} from "@/lib/whatsapp-cache";
+import {
   ok,
   soft,
   requireWorkspace,
@@ -165,6 +169,7 @@ const createTaskTool: ToolDef = {
         workspaceId: ws.workspaceId,
         title: task.title,
       };
+      noteDiscussedTask(session, task.shortId, task.title);
       revalidateUserWorkspaces(ctx.userId, ws.workspaceId);
       waWebhookLog("task created", {
         workspaceId: ws.workspaceId,
@@ -334,6 +339,7 @@ const updateTaskTool: ToolDef = {
 
     if (ctx.wa) {
       revalidateUserWorkspaces(ctx.userId, ws.workspaceId);
+      noteDiscussedTask(ctx.wa.session, task.shortId, task.title);
       const statusLabel =
         task.status === "DONE"
           ? "done"
@@ -506,6 +512,13 @@ const addTaskUpdateTool: ToolDef = {
     });
     if (ctx.wa) {
       ctx.wa.session.lastDiscussedTaskShortId = resolved.shortId;
+      noteDiscussedTask(ctx.wa.session, resolved.shortId, posted.taskTitle);
+      notePostedUpdate(
+        ctx.wa.session,
+        resolved.shortId,
+        posted.taskTitle,
+        body
+      );
       revalidateUserWorkspaces(ctx.userId, ws.workspaceId);
       return ok(posted.message, { shortId: resolved.shortId });
     }
@@ -691,6 +704,9 @@ const askTaskTool: ToolDef = {
     const resolvedShortId = idMatch ? Number(idMatch[1]) : shortId;
 
     if (ctx.wa && resolvedShortId !== undefined) {
+      const titleMatch = message.match(/\*([^*]+)\*/);
+      const title = titleMatch?.[1]?.trim() || `task #${resolvedShortId}`;
+      noteDiscussedTask(ctx.wa.session, resolvedShortId, title);
       ctx.wa.session.lastDiscussedTaskShortId = resolvedShortId;
     }
 
