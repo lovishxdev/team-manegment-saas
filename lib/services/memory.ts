@@ -155,6 +155,8 @@ export type CreateMemoryEventInput = {
   taskShortId?: number;
   /** Provenance: the TaskUpdate this was extracted from. */
   sourceUpdateId?: string;
+  /** Provenance: the PostMessage this was extracted from. */
+  sourcePostMessageId?: string;
   /** Original speaker when the capture pipeline records on someone's behalf. */
   authorId?: string;
   /** Older decision this event supersedes (linked, never deleted). */
@@ -198,6 +200,7 @@ export async function createMemoryEvent(
       workspaceId: input.workspaceId,
       taskId,
       sourceUpdateId: input.sourceUpdateId ?? null,
+      sourcePostMessageId: input.sourcePostMessageId ?? null,
       kind: input.kind,
       status,
       resolvedAt: status === "RESOLVED" ? new Date() : null,
@@ -238,17 +241,23 @@ export type ListMemoryEventsInput = {
   taskShortId?: number;
   kind?: MemoryEventKind;
   status?: MemoryEventStatus;
+  /** Exclude events with this status (e.g. timeline = everything except OPEN). */
+  statusNot?: MemoryEventStatus;
   /** Filter to events carrying this topic tag. */
   tag?: string;
   includeSuperseded?: boolean;
   limit?: number;
+  offset?: number;
 };
 
-export async function listMemoryEvents(
-  input: ListMemoryEventsInput
-): Promise<MemoryEventRow[]> {
-  await requireMembership(input.userId, input.workspaceId);
+export type ListMemoryEventsPage = {
+  events: MemoryEventRow[];
+  total: number;
+};
 
+async function buildMemoryEventWhere(
+  input: Omit<ListMemoryEventsInput, "limit" | "offset">
+): Promise<Prisma.MemoryEventWhereInput> {
   const where: Prisma.MemoryEventWhereInput = {
     workspaceId: input.workspaceId,
   };
@@ -257,20 +266,43 @@ export async function listMemoryEvents(
   }
   if (input.kind) where.kind = input.kind;
   if (input.status) where.status = input.status;
+  if (input.statusNot) where.status = { not: input.statusNot };
   if (input.tag) where.tags = { has: input.tag.trim().toLowerCase() };
   if (!input.includeSuperseded) where.supersededByEventId = null;
+  return where;
+}
 
+export async function listMemoryEventsPaginated(
+  input: ListMemoryEventsInput
+): Promise<ListMemoryEventsPage> {
+  await requireMembership(input.userId, input.workspaceId);
+
+  const where = await buildMemoryEventWhere(input);
   const limit = Math.min(
     Math.max(1, input.limit ?? DEFAULT_LIST_LIMIT),
     MAX_LIST_LIMIT
   );
+  const offset = Math.max(0, input.offset ?? 0);
 
-  return prisma.memoryEvent.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
-    take: limit,
-    select: eventSelect,
-  });
+  const [events, total] = await Promise.all([
+    prisma.memoryEvent.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: limit,
+      skip: offset,
+      select: eventSelect,
+    }),
+    prisma.memoryEvent.count({ where }),
+  ]);
+
+  return { events, total };
+}
+
+export async function listMemoryEvents(
+  input: ListMemoryEventsInput
+): Promise<MemoryEventRow[]> {
+  const { events } = await listMemoryEventsPaginated(input);
+  return events;
 }
 
 /** Open blockers/dependencies for a task — used to enrich read_task/ask_task. */
@@ -309,6 +341,7 @@ export async function resolveMemoryEvent(input: {
   userId: string;
   eventId: string;
   resolvedByUpdateId?: string;
+  resolvedByPostMessageId?: string;
 }): Promise<MemoryEventRow> {
   await requireMembership(input.userId, input.workspaceId);
 
@@ -333,6 +366,7 @@ export async function resolveMemoryEvent(input: {
       resolvedAt: new Date(),
       resolvedById: input.userId,
       resolvedByUpdateId: input.resolvedByUpdateId ?? null,
+      resolvedByPostMessageId: input.resolvedByPostMessageId ?? null,
     },
     select: eventSelect,
   });

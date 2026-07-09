@@ -7,4 +7,9 @@ export type ChatMessageView = {
   authorLabel: string;
   mentionedLabels: string[];
   saved: boolean;
+  /** Set on discussion thread messages for reply threading. */
+  parentMessageId?: string | null;
+  isAgentGenerated?: boolean;
+  isAgentPrivate?: boolean;
+  agentTriggeredByLabel?: string | null;
 };

@@ -2,6 +2,7 @@ import { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ServiceError, resolveBatchAwareTaskShortId } from "@/lib/services/project";
 import type { ConversationTurn } from "@/lib/services/conversation";
+import { WHATSAPP_TOOL_NAMES } from "@/lib/tools/catalog";
 import {
   resolveTaskFromBoard,
   type TaskMatchRow,
@@ -13,54 +14,8 @@ import {
   lastTaskShortIdFromTurns,
 } from "@/lib/whatsapp-task-context";
 
-/** Every tool Haiku may call on WhatsApp — reject unknown names early. */
-export const KNOWN_WHATSAPP_ACTIONS = new Set([
-  "create_workspace",
-  "list_workspaces",
-  "switch_workspace",
-  "create_task",
-  "update_task",
-  "read_task",
-  "add_task_update",
-  "list_task_updates",
-  "delete_task",
-  "get_board_state",
-  "rename_workspace",
-  "list_assets",
-  "attach_asset_to_task",
-  "add_link",
-  "list_links",
-  "show_workspace_picker",
-  "update_asset_tags",
-  "invite_members",
-  "list_workspace_members",
-  "create_invite_link",
-  "promote_member",
-  "demote_member",
-  "list_my_tasks",
-  "ask_task",
-  "find_task",
-  "search_tasks",
-  "workspace_summary",
-  "read_asset",
-  "delete_asset",
-  "delete_link",
-  "update_link",
-  "pin_link",
-  "remove_member",
-  "list_categories",
-  "create_category",
-  "leave_workspace",
-  "bulk_update_tasks",
-  "unassign_task",
-  "export_whiteboard",
-  "recall_memory",
-  "list_blockers",
-  "record_decision",
-  "resolve_blocker",
-  "get_project_context",
-  "undo_last_action",
-]);
+/** @deprecated Use WHATSAPP_TOOL_NAMES from lib/tools/catalog — kept for imports. */
+export { WHATSAPP_TOOL_NAMES as KNOWN_WHATSAPP_ACTIONS } from "@/lib/tools/catalog";
 
 export type WhatsAppToolSession = {
   userMessage: string;
@@ -146,7 +101,7 @@ export function validateWhatsAppToolInput(
   input: Record<string, unknown>,
   session: WhatsAppToolSession
 ): ToolPreflight {
-  if (!KNOWN_WHATSAPP_ACTIONS.has(action)) {
+  if (!WHATSAPP_TOOL_NAMES.has(action)) {
     return {
       ok: false,
       message:
@@ -206,6 +161,24 @@ export function validateWhatsAppToolInput(
       const url = String(input.url ?? "").trim();
       if (!url) {
         return { ok: false, message: "Send me the URL to save." };
+      }
+      break;
+    }
+    case "create_post": {
+      const body = String(input.body ?? "").trim();
+      if (!body) {
+        return { ok: false, message: "What should the discussion say?" };
+      }
+      break;
+    }
+    case "reply_to_post": {
+      const discussion = String(input.discussion ?? "").trim();
+      const body = String(input.body ?? "").trim();
+      if (!discussion) {
+        return { ok: false, message: "Which discussion should I reply in?" };
+      }
+      if (!body) {
+        return { ok: false, message: "What should the reply say?" };
       }
       break;
     }

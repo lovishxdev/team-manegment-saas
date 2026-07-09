@@ -1,30 +1,27 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchWorkspaceMemberLabelsAction } from "@/lib/actions/workspace";
-import type { MentionMember } from "@/lib/mentions";
-import { WorkspaceDiscussionSection } from "@/components/workspace/workspace-discussion-section";
+import { DiscussionFeed } from "@/components/discussion/discussion-feed";
 
 export function WorkspaceDiscussionLoader({
   workspaceId,
   currentUserId,
+  canManageDiscussions = false,
 }: {
   workspaceId: string;
   currentUserId: string;
+  canManageDiscussions?: boolean;
 }) {
-  const [members, setMembers] = useState<MentionMember[]>([]);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
-  useEffect(() => {
-    fetchWorkspaceMemberLabelsAction(workspaceId).then((loaded) => {
-      setMembers(loaded);
-    });
-  }, [workspaceId]);
+  if (!mounted) return null;
 
   return (
-    <WorkspaceDiscussionSection
+    <DiscussionFeed
       workspaceId={workspaceId}
       currentUserId={currentUserId}
-      members={members}
+      canManageDiscussions={canManageDiscussions}
     />
   );
 }

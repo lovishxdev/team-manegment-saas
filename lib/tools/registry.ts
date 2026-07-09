@@ -6,13 +6,11 @@ import {
 } from "@/lib/whatsapp-tool-guard";
 import { waWebhookLog } from "@/lib/whatsapp-webhook-log";
 import { toAnthropicTool, toAnthropicTools } from "@/lib/tools/anthropic";
-import { taskTools } from "@/lib/tools/defs/tasks";
-import { workspaceTools } from "@/lib/tools/defs/workspace";
-import { memberTools } from "@/lib/tools/defs/members";
-import { assetTools } from "@/lib/tools/defs/assets";
-import { miscTools } from "@/lib/tools/defs/misc";
-import { memoryTools } from "@/lib/tools/defs/memory";
-import { navigationTools } from "@/lib/tools/defs/navigation";
+import {
+  ALL_TOOLS,
+  KNOWN_TOOL_NAMES,
+  WHATSAPP_TOOL_NAMES,
+} from "@/lib/tools/catalog";
 import type {
   ToolContext,
   ToolDef,
@@ -25,22 +23,9 @@ import type {
  * WhatsApp Anthropic schemas, MCP registrations, and dispatch all derive
  * from this list. Adding a tool = adding one ToolDef.
  */
-export const ALL_TOOLS: ToolDef[] = [
-  ...taskTools,
-  ...workspaceTools,
-  ...memberTools,
-  ...assetTools,
-  ...miscTools,
-  ...memoryTools,
-  ...navigationTools,
-];
+export { ALL_TOOLS, KNOWN_TOOL_NAMES, WHATSAPP_TOOL_NAMES } from "@/lib/tools/catalog";
 
 const TOOLS_BY_NAME = new Map(ALL_TOOLS.map((t) => [t.name, t]));
-
-/** Replaces KNOWN_WHATSAPP_ACTIONS — derived, cannot drift. */
-export const KNOWN_TOOL_NAMES: ReadonlySet<string> = new Set(
-  ALL_TOOLS.map((t) => t.name)
-);
 
 export function getToolDef(name: string): ToolDef | undefined {
   return TOOLS_BY_NAME.get(name);
@@ -113,6 +98,7 @@ export const CONTEXT_SCOPE_TOOL_NAMES: ReadonlySet<string> = new Set([
   "list_assets",
   "read_asset",
   "list_links",
+  "list_discussions",
   // Memory layer
   "recall_memory",
   "list_blockers",
@@ -121,6 +107,8 @@ export const CONTEXT_SCOPE_TOOL_NAMES: ReadonlySet<string> = new Set([
   "get_project_context",
   // Reflecting work back into Euclis
   "add_task_update",
+  "create_post",
+  "reply_to_post",
 ]);
 
 export function isToolAllowedForScope(
@@ -254,7 +242,7 @@ export async function dispatchMcpTool(
       message:
         `This credential has "context" scope: read/query tools, memory tools ` +
         `(recall_memory, list_blockers, record_decision, resolve_blocker, ` +
-        `get_project_context), and add_task_update. Management actions like ` +
+        `get_project_context, create_post, reply_to_post), and add_task_update. Management actions like ` +
         `${def.name} aren't available on this connection — reconnect and ` +
         `choose "All workspaces" on the Euclis consent screen for full access.`,
     };
@@ -323,6 +311,88 @@ async function resolvePinnedWorkspace(
     workspaceId: membership.workspace.id,
     workspaceName: membership.workspace.name,
   };
+}
+
+export const DISCUSSION_BRANCH_EXCLUDED_TOOL_NAMES: ReadonlySet<string> =
+  new Set(["create_post", "reply_to_post"]);
+
+export function discussionBranchToolDefs(scope: McpToolScope): ToolDef[] {
+  return ALL_TOOLS.filter(
+    (tool) =>
+      !tool.whatsappOnly &&
+      !tool.webOnly &&
+      isToolAllowedForScope(tool.name, scope) &&
+      !DISCUSSION_BRANCH_EXCLUDED_TOOL_NAMES.has(tool.name)
+  );
+}
+
+let cachedDiscussionBranchTools: Anthropic.Tool[] | null = null;
+
+export function discussionBranchAnthropicTools(
+  scope: McpToolScope = "context"
+): Anthropic.Tool[] {
+  if (scope === "context" && cachedDiscussionBranchTools) {
+    return cachedDiscussionBranchTools;
+  }
+  const tools = discussionBranchToolDefs(scope).map((def) =>
+    toAnthropicTool(
+      {
+        ...def,
+        waDescription: def.mcpDescription ?? def.waDescription,
+      },
+      "mcp"
+    )
+  );
+  if (scope === "context") {
+    cachedDiscussionBranchTools = tools;
+  }
+  return tools;
+}
+
+/**
+ * Run one MCP tool for an in-thread discussion agent branch.
+ * Workspace is pinned to the discussion workspace (same confinement as MCP).
+ */
+export async function dispatchDiscussionBranchTool(
+  def: ToolDef,
+  input: Record<string, unknown>,
+  userId: string,
+  workspaceId: string,
+  workspaceName: string,
+  credential: McpCredential
+): Promise<ToolResult> {
+  if (!isToolAllowedForScope(def.name, credential.scope)) {
+    return {
+      ok: false,
+      message: `Tool ${def.name} isn't available on your MCP credential scope.`,
+    };
+  }
+  if (DISCUSSION_BRANCH_EXCLUDED_TOOL_NAMES.has(def.name)) {
+    return {
+      ok: false,
+      message:
+        "The discussion agent can't start separate threads — it replies inline only.",
+    };
+  }
+
+  if (credential.workspaceId && credential.workspaceId !== workspaceId) {
+    return {
+      ok: false,
+      message:
+        `Your MCP connection is pinned to a different workspace. ` +
+        `Branch to agent only works inside the workspace your credential allows.`,
+    };
+  }
+
+  if (def.needsWorkspace === false) {
+    return def.run(input, { userId, channel: "mcp", workspace: null });
+  }
+
+  return def.run(input, {
+    userId,
+    channel: "mcp",
+    workspace: { workspaceId, workspaceName },
+  });
 }
 
 export type WebChatSession = {

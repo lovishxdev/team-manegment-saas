@@ -39,7 +39,7 @@ import {
   runRemoveMemberConfirmed,
   MAX_BULK_TASK_UPDATES,
 } from "@/lib/bot/extended-tools";
-import { sendWhatsAppImageBuffer } from "@/lib/whatsapp-media";
+import { sendWhatsAppImageBuffer, sendWhatsAppMediaBuffer } from "@/lib/whatsapp-media";
 import { revalidateUserWorkspaces } from "@/lib/revalidate-nav";
 import {
   claimInboundMessage,
@@ -249,12 +249,16 @@ Convert the user's message into tool calls when they want to act on their board:
 - list_task_updates: when they ask what's happening, what's pending, or recent activity on a task (#N). Prefer this over read_task for status questions.
 - read_task: full task metadata (status, assignees, tags, description). Skip if list_task_updates already answers their question.
 - add_task_update: post a progress note on a task (#N) — "I started X", "blocked on Y", "shipped Z". Use the user's words as body. When they name or address a teammate ("tell gvvhbb31…", "waiting on sarvikiitd", "ask lovish to review"), pass mentions[] with handles from list_workspace_members — do NOT require @ in body. ALWAYS call this when they report progress or confirm they want to post an update. Never tell them to use the web app instead.
+- create_post: start a team-wide discussion on the Discussion tab (announcement, question, proposal) — for messages meant for the whole workspace, NOT progress on one task. Use kind=QUESTION for "why did we…" product questions, ANNOUNCEMENT for team-wide news. Optional task # to link. Pass mentions[] when they name teammates.
+- reply_to_post: reply in an existing discussion (pass discussion title or opening words + body). Use when they want to continue a thread, not a task update.
+- list_discussions: list recent team discussions (pinned first). Inquiry only — compose a short summary for the user.
 - delete_task: when they explicitly want to remove/delete a task (only when clearly intended). This stages a Confirm/Cancel button flow — never claim the task is deleted until they confirm.
 - get_board_state: when they ask what's on the board, task lists, or progress
 - create_workspace: when they want to create/start a new workspace, project, or board (e.g. "create a workspace called Marketing")
 - rename_workspace: when they want to rename an existing workspace (leader only)
-- list_assets: when they ask about uploaded files, photos, or documents in the workspace
-- attach_asset_to_task: when they want to attach a previously uploaded file/photo to a task (e.g. "add the image I uploaded to task #1"). Use latest=true for "the image I uploaded" / "last photo". Call list_assets first if you need to confirm the file exists.
+- list_assets: when they want to browse uploaded file names only — not when they want the file sent
+- send_asset: when they want a workspace file delivered in WhatsApp ("send me the file", "share the pdf", "can you send that document"). Use latest=true for the only/recent upload, or fileName to match. ALWAYS use this instead of list_assets when they want to receive/download a file.
+- attach_asset_to_task: when they want to attach a previously uploaded file/photo to a task (e.g. "add the image I uploaded to task #1"). Use latest=true for "the image I uploaded" / "last photo".
 - add_link: when they want to save, bookmark, or store a URL for the team (docs, Figma, staging sites, etc.). ALWAYS call this tool to save a link — never claim a link was saved without a tool result in this turn.
 - list_links: when they ask what links, bookmarks, or URLs are saved. Call only list_links — do not call add_link in the same turn unless they also asked to save a new link.
 - show_workspace_picker: when they want to choose or switch workspace, ask which workspace they're on, or pick a different board — but NOT when they already named a specific workspace to act on (use the workspace parameter on other tools instead). Sends an interactive picker to the chat.
@@ -268,7 +272,7 @@ Convert the user's message into tool calls when they want to act on their board:
 - list_workspaces: when they ask which workspaces they're in
 - switch_workspace: when they want to change the active workspace by name
 - workspace_summary: when they want a quick overview (open tasks, members, counts)
-- read_asset: when they ask about a specific uploaded file (latest upload or by name)
+- read_asset: metadata for one uploaded file (latest or fileName) — does NOT send the file; use send_asset to deliver it
 - delete_asset: when they want to remove an uploaded file. Stages Confirm/Cancel buttons.
 - delete_link: when they want to remove a saved link (by title or URL)
 - update_link: when they want to edit a link's title, URL, description, or pin state
@@ -294,7 +298,7 @@ Rules:
 - When the user says "task 1", "task 2", etc. referring to tasks they just asked you to create in THIS message, they mean the 1st/2nd/... task created in this request — use the #N shortId from each create_task tool result, NOT the literal number N. But "previous task", "the other task", or a task named by title (e.g. "go to the gym") always means an EXISTING task from before the new creates — look up its #N via get_board_state or use the title match; never mark a newly created task done when they asked about a previous one.
 - "Previous task" / "the task before" / a task referenced by title is NEVER the task you just created in the same message unless they explicitly mean the new one.
 - After MUTATIONS (create/update/delete/post/invite) and board lists: leave your final text EMPTY — the app sends the formatted tool output directly. Never restate confirmations.
-- After INQUIRY tools (ask_task, read_task, list_task_updates, find_task, search_tasks): ALWAYS write the final answer yourself. 2–5 short sentences or up to 4 bullets. Lead with exactly what they asked. Use facts from the tool result only — never invent, never paste the raw thread or labeled dumps (Status:, Updates (N):), never use #N.
+- After INQUIRY tools (ask_task, read_task, list_task_updates, find_task, search_tasks, list_discussions): ALWAYS write the final answer yourself. 2–5 short sentences or up to 4 bullets. Lead with exactly what they asked. Use facts from the tool result only — never invent, never paste the raw thread or labeled dumps (Status:, Updates (N):), never use #N.
 - Compound requests (multiple things in one message): call a tool for every actionable part. If you cannot do a part (missing info, no matching task, ambiguous target), do NOT skip silently — either let the tool fail with a clear error, or end your turn with a short note listing what could NOT be done and why (e.g. "Could not attach image: no task specified").
 - Infer category from context (e.g. marketing, ops, frontend) only when clear; otherwise omit it.
 - Infer priority only when stated or strongly implied (e.g. "urgent" = HIGH); otherwise omit it.
@@ -304,8 +308,9 @@ Rules:
 - Never ask the user for "#N" or "short ID" — they use task names. If unclear, list task titles.
 - If the user names a specific workspace/project that is NOT "${activeWorkspaceName}", pass it as the workspace parameter; otherwise always omit workspace.
 - If the message is NOT an actionable board request (greetings, questions, chit-chat), do not call a tool. Reply with one warm, brief sentence — not a feature list.
-- Task description = stable requirements/spec. Task updates = chronological team notes.
+- Task description = stable requirements/spec. Task updates = chronological team notes on ONE task. Discussions = workspace-wide threads on the Discussion tab (create_post / reply_to_post) — use for team questions and announcements that aren't task progress.
 - Progress reports ("I started…", "blocked on…", "finished…", "just uploaded/fixed/sent…") on the task you just discussed → add_task_update with body = their message (verbatim). If they name someone in the message, also pass mentions[] with that member's handle — even without @. When someone says they uploaded/added/sent files IN A TEXT MESSAGE, that is a progress report to post — never claim files were attached, and never mention captions or tags.
+- Workspace-wide questions or debates ("why didn't we use X", "should we switch to Y") with no specific task → create_post with kind=QUESTION (or PROPOSAL if they're suggesting a change), NOT add_task_update — unless they explicitly say to post it on a named task.
 - Decision statements are NOT progress reports: "we're switching to X", "we decided Y", "actually we'll use Z instead", "going with A because B" → record_decision (workspace-level; add shortId only if they name a specific task), NOT add_task_update — even if a task was just discussed. Only post a decision as a task update when they explicitly say to post/note it on the task.
 - When you're genuinely unsure how to route a message — progress note vs decision, or WHICH task it belongs to — do NOT guess. Ask ONE short question instead, e.g. "Post that on *Login page redesign*, or save it as a project decision?" Then act on their answer. Asking once beats writing to the wrong place; but don't ask when the routing is obvious.
 - If you offered to post an update and they confirm ("yes", "post that") → add_task_update with body = the exact text you offered, phrased in their first person.
@@ -611,7 +616,24 @@ async function sendPostActionFollowUps(
   _userText: string,
   session: WhatsAppSession
 ) {
-  if (session.whiteboardImages && session.whiteboardImages.length > 0) {
+  if (session.assetsToSend && session.assetsToSend.length > 0) {
+    for (const file of session.assetsToSend) {
+      const sent = await sendWhatsAppMediaBuffer(
+        from,
+        file.buffer,
+        file.mimeType,
+        file.fileName,
+        file.caption
+      ).catch(() => false);
+      if (!sent && file.fallbackUrl) {
+        await sendWhatsAppText(
+          from,
+          `Couldn't attach *${file.fileName}* here (too large or unsupported). Open:\n${file.fallbackUrl}`
+        ).catch(() => {});
+      }
+    }
+    session.assetsToSend = null;
+  } else if (session.whiteboardImages && session.whiteboardImages.length > 0) {
     const total = session.whiteboardImages.length;
     const name = session.workspaceName ?? "workspace";
     for (let i = 0; i < total; i++) {
@@ -1206,6 +1228,7 @@ async function handleMessage(
     pendingDeleteAsset: false,
     pendingInviteMembers: false,
     whiteboardImages: null,
+    assetsToSend: null,
     lastCreatedTask: null,
     workspacePickerSent: false,
     userMessage: text,

@@ -7,9 +7,9 @@ import "dotenv/config";
 import {
   ALL_TOOLS,
   KNOWN_TOOL_NAMES,
-  whatsappAnthropicTools,
-} from "../lib/tools/registry";
-import { KNOWN_WHATSAPP_ACTIONS } from "../lib/whatsapp-tool-guard";
+  WHATSAPP_TOOL_NAMES,
+} from "../lib/tools/catalog";
+import { whatsappAnthropicTools } from "../lib/tools/registry";
 
 let failed = 0;
 
@@ -17,7 +17,7 @@ const tools = whatsappAnthropicTools();
 console.log(`Registry: ${ALL_TOOLS.length} defs → ${tools.length} Anthropic schemas\n`);
 
 // 1. Every legacy action name exists in the registry, and vice versa.
-for (const name of KNOWN_WHATSAPP_ACTIONS) {
+for (const name of WHATSAPP_TOOL_NAMES) {
   if (!KNOWN_TOOL_NAMES.has(name)) {
     console.log(`✗ legacy action missing from registry: ${name}`);
     failed++;
@@ -26,12 +26,12 @@ for (const name of KNOWN_WHATSAPP_ACTIONS) {
 for (const name of KNOWN_TOOL_NAMES) {
   const def = ALL_TOOLS.find((t) => t.name === name);
   if (def?.webOnly) continue;
-  if (!KNOWN_WHATSAPP_ACTIONS.has(name)) {
-    console.log(`✗ registry tool not in legacy set: ${name}`);
+  if (!WHATSAPP_TOOL_NAMES.has(name)) {
+    console.log(`✗ registry tool not in WhatsApp surface: ${name}`);
     failed++;
   }
 }
-if (failed === 0) console.log(`✓ tool names match legacy set (${KNOWN_TOOL_NAMES.size})`);
+if (failed === 0) console.log(`✓ WhatsApp surface matches registry (${WHATSAPP_TOOL_NAMES.size} tools)`);
 
 // 2. Spot-check generated schemas.
 const expectations: Record<string, { required: string[]; props: string[] }> = {

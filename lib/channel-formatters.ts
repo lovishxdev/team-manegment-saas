@@ -456,6 +456,55 @@ export function formatLinkList(
   return `${header}\n\n${lines.join("\n\n")}`;
 }
 
+export type DiscussionFeedRow = {
+  id: string;
+  title: string;
+  preview: string;
+  kind: string;
+  pinned: boolean;
+  authorLabel: string;
+  replyCount: number;
+  lastActivityAt: Date;
+  taskShortId: number | null;
+};
+
+export function formatDiscussionList(
+  workspaceName: string,
+  posts: DiscussionFeedRow[],
+  channel: Channel
+): string {
+  if (posts.length === 0) {
+    return channel === "whatsapp"
+      ? `💬 No discussions in *${workspaceName}* yet.`
+      : `No discussions in "${workspaceName}" yet.`;
+  }
+
+  const header =
+    channel === "whatsapp"
+      ? `💬 Discussions · *${workspaceName}* (${posts.length})`
+      : `Discussions in "${workspaceName}" (${posts.length}):`;
+
+  const lines = posts.map((post) => {
+    const kind = post.kind.toLowerCase();
+    const task =
+      post.taskShortId !== null ? ` · task #${post.taskShortId}` : "";
+    const replies =
+      post.replyCount > 0
+        ? ` · ${post.replyCount} ${post.replyCount === 1 ? "reply" : "replies"}`
+        : "";
+    if (channel === "whatsapp") {
+      return `${post.pinned ? "📌 " : ""}*${post.title}* [${kind}]${task}${replies}\n_${post.preview}_\nby ${post.authorLabel}`;
+    }
+    return (
+      `- ${post.pinned ? "[pinned] " : ""}${post.title} (${kind})${task}${replies}\n` +
+      `  ${post.preview}\n` +
+      `  by ${post.authorLabel}`
+    );
+  });
+
+  return `${header}\n\n${lines.join("\n\n")}`;
+}
+
 export type WorkspaceMemberRow = {
   role: string;
   user: { email: string | null; username: string | null };

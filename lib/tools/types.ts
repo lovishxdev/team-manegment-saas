@@ -27,6 +27,13 @@ export type WhatsAppSessionState = {
   pendingDeleteAsset: boolean;
   pendingInviteMembers: boolean;
   whiteboardImages: Buffer[] | null;
+  assetsToSend: {
+    buffer: Buffer;
+    fileName: string;
+    mimeType: string;
+    caption?: string;
+    fallbackUrl?: string;
+  }[] | null;
   lastCreatedTask: {
     shortId: number;
     workspaceId: string;

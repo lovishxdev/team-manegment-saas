@@ -741,6 +741,34 @@ export function assetFileName(url: string): string {
   );
 }
 
+/** Storage object path from a public asset URL, if hosted in our assets bucket. */
+export function assetStoragePathFromUrl(url: string): string | null {
+  const prefix = `/storage/v1/object/public/${ASSETS_BUCKET}/`;
+  const idx = url.indexOf(prefix);
+  if (idx === -1) return null;
+  return decodeURIComponent(url.slice(idx + prefix.length));
+}
+
+/** Download workspace asset bytes (Supabase storage first, then public URL). */
+export async function downloadAssetBuffer(url: string): Promise<Buffer> {
+  const path = assetStoragePathFromUrl(url);
+  if (path) {
+    const supabase = getSupabaseAdmin();
+    const { data, error } = await supabase.storage
+      .from(ASSETS_BUCKET)
+      .download(path);
+    if (!error && data) {
+      return Buffer.from(await data.arrayBuffer());
+    }
+  }
+
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new ServiceError("Could not download that file", "NOT_FOUND");
+  }
+  return Buffer.from(await res.arrayBuffer());
+}
+
 export function normalizeAssetTags(tags: string[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];

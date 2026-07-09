@@ -4,10 +4,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Send } from "lucide-react";
 import {
   applyMentionSelection,
+  AGENT_MENTION_MEMBER_ID,
   filterMentionMembers,
   mentionComposeState,
   type MentionMember,
 } from "@/lib/mentions";
+import { AgentAvatar } from "@/components/discussion/agent-avatar";
 import { Avatar, ui } from "@/components/ui/ui";
 
 export function UpdateCompose({
@@ -19,6 +21,7 @@ export function UpdateCompose({
   textareaRef: externalRef,
   placeholder = "Share progress, blockers, or context… (@ to mention)",
   inputId = "task-update-compose",
+  className = "relative mt-3 sm:mt-4",
 }: {
   members: MentionMember[];
   value: string;
@@ -28,6 +31,7 @@ export function UpdateCompose({
   textareaRef?: React.RefObject<HTMLTextAreaElement | null>;
   placeholder?: string;
   inputId?: string;
+  className?: string;
 }) {
   const internalRef = useRef<HTMLTextAreaElement>(null);
   const textareaRef = externalRef ?? internalRef;
@@ -102,7 +106,7 @@ export function UpdateCompose({
   }
 
   return (
-    <div className="relative mt-4 rounded-xl border border-line bg-paper-deep/35 p-3">
+    <div className={`${className} rounded-xl border border-line bg-paper-deep/35 p-3`}>
       {mentionOpen ? (
         <div
           className="absolute bottom-full left-0 right-0 z-20 mb-1.5 overflow-hidden rounded-lg border border-line bg-white shadow-[0_8px_24px_rgba(26,26,26,0.12)]"
@@ -129,11 +133,15 @@ export function UpdateCompose({
                           : "text-ink-soft hover:bg-ink/[0.04] hover:text-ink"
                       }`}
                     >
-                      <Avatar
-                        seed={member.id}
-                        label={member.label}
-                        size="h-7 w-7 text-[10px]"
-                      />
+                      {member.id === AGENT_MENTION_MEMBER_ID ? (
+                        <AgentAvatar size="sm" />
+                      ) : (
+                        <Avatar
+                          seed={member.id}
+                          label={member.label}
+                          size="h-7 w-7 text-[10px]"
+                        />
+                      )}
                       <span className="font-medium">@{member.label}</span>
                     </button>
                   </li>
@@ -161,12 +169,12 @@ export function UpdateCompose({
         onKeyDown={handleKeyDown}
         rows={2}
         placeholder={placeholder}
-        className="w-full resize-none border-0 bg-transparent px-1 py-1 text-[15px] leading-relaxed text-ink placeholder:text-ink-faint focus:outline-none focus:ring-0"
+        className="min-h-[3.25rem] w-full resize-none border-0 bg-transparent px-1 py-1 text-[15px] leading-relaxed text-ink placeholder:text-ink-faint focus:outline-none focus:ring-0"
       />
 
       <div className="mt-2 flex items-center justify-between gap-3 border-t border-line/60 pt-2">
         <span className="text-xs text-ink-faint">
-          @ mention · ⌘/Ctrl+Enter to post
+          @ teammate · @euclis agent · ⌘/Ctrl+Enter to post
         </span>
         <button
           type="button"

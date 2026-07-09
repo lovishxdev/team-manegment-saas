@@ -7,7 +7,14 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 //
 // Next.js hot-reload in dev re-evaluates modules; cache the client on
 // globalThis so we don't exhaust the connection pool.
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
+const globalForPrisma = globalThis as unknown as {
+  prisma?: PrismaClient;
+  /** Bump when a migration requires `npx prisma generate` + client refresh in dev. */
+  prismaClientBuild?: string;
+};
+
+/** Keep in sync with the latest migration that changes the generated client. */
+const PRISMA_CLIENT_BUILD = "20260709180000_post_message_agent_private";
 
 function createClient(): PrismaClient {
   const adapter = new PrismaPg({
@@ -20,15 +27,20 @@ function getClient(): PrismaClient {
   // Next.js dev hot-reload re-evaluates modules but keeps globalThis.prisma
   // from before schema changes — recreate when expected delegates are missing.
   const cached = globalForPrisma.prisma;
-  if (
+  const staleBuild =
+    process.env.NODE_ENV !== "production" &&
+    globalForPrisma.prismaClientBuild !== PRISMA_CLIENT_BUILD;
+  const missingDelegates =
     cached &&
     process.env.NODE_ENV !== "production" &&
     (!("whatsAppInboundDedup" in cached) ||
-      !("whatsAppInboundQueue" in cached))
-  ) {
+      !("whatsAppInboundQueue" in cached) ||
+      !("memoryMetric" in cached) ||
+      !("workspaceDiscussionTag" in cached));
+
+  if (!cached || staleBuild || missingDelegates) {
     globalForPrisma.prisma = createClient();
-  } else if (!cached) {
-    globalForPrisma.prisma = createClient();
+    globalForPrisma.prismaClientBuild = PRISMA_CLIENT_BUILD;
   }
   return globalForPrisma.prisma!;
 }

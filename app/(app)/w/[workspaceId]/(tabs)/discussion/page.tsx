@@ -12,27 +12,30 @@ async function DiscussionData({ workspaceId }: { workspaceId: string }) {
   try {
     const membership = await getActorMembership(user.id, workspaceId);
     if (!membership) notFound();
+    const canManageDiscussions =
+      membership.role === "LEADER" || membership.role === "SUB_LEADER";
+
+    return (
+      <>
+        <header className="mb-6">
+          <h2 className={ui.settingsSectionTitle}>Discussion</h2>
+          <p className={`${ui.fieldHint} mt-1 max-w-2xl`}>
+            Team-wide conversations for announcements, questions, and proposals —
+            separate from task-scoped updates on the board.
+          </p>
+        </header>
+
+        <WorkspaceDiscussionLoader
+          workspaceId={workspaceId}
+          currentUserId={user.id}
+          canManageDiscussions={canManageDiscussions}
+        />
+      </>
+    );
   } catch (err) {
     if (err instanceof ServiceError) notFound();
     throw err;
   }
-
-  return (
-    <>
-      <header className="mb-6">
-        <h2 className={ui.settingsSectionTitle}>Discussion</h2>
-        <p className={`${ui.fieldHint} mt-1 max-w-2xl`}>
-          Team-wide conversation for updates, questions, and context that
-          don&apos;t belong on a specific task.
-        </p>
-      </header>
-
-      <WorkspaceDiscussionLoader
-        workspaceId={workspaceId}
-        currentUserId={user.id}
-      />
-    </>
-  );
 }
 
 export default async function DiscussionPage({

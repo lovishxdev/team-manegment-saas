@@ -185,7 +185,7 @@ do $$
 declare
   t text;
 begin
-  foreach t in array array['Task', 'Workspace', 'WorkspaceMembership', 'Asset', 'WorkspaceLink', 'TaskUpdate', 'WorkspaceMessage', 'MemoryEvent']
+  foreach t in array array['Task', 'Workspace', 'WorkspaceMembership', 'Asset', 'WorkspaceLink', 'TaskUpdate', 'WorkspaceMessage', 'Post', 'PostMessage', 'MemoryEvent']
   loop
     if not exists (
       select 1 from pg_publication_tables
@@ -207,5 +207,7 @@ alter table public."Asset" replica identity full;
 alter table public."WorkspaceLink" replica identity full;
 alter table public."TaskUpdate" replica identity full;
 alter table public."WorkspaceMessage" replica identity full;
+alter table public."Post" replica identity full;
+alter table public."PostMessage" replica identity full;
 alter table public."Workspace" replica identity full;
 alter table public."MemoryEvent" replica identity full;

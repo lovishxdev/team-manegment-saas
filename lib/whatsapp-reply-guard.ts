@@ -50,6 +50,7 @@ export const INQUIRY_TOOLS: ReadonlySet<string> = new Set([
   "recall_memory",
   "list_blockers",
   "get_project_context",
+  "list_discussions",
 ]);
 
 /**

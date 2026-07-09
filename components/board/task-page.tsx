@@ -18,6 +18,7 @@ import {
   type CategoryOption,
 } from "@/components/board/category-field";
 import { TaskUpdatesSection } from "@/components/board/task-updates-section";
+import { TaskLinkedDiscussions } from "@/components/discussion/task-linked-discussions";
 import { TaskMemorySection } from "@/components/board/task-memory-section";
 import { MarkdownEditor } from "@/components/markdown/markdown-editor";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -675,7 +676,7 @@ export function TaskPage(props: TaskPageProps) {
             {!isCreate && task ? (
               <section
                 id={SECTION_IDS.updates}
-                className="scroll-mt-24 mt-8"
+                className="scroll-mt-24 mt-8 space-y-8"
               >
                 <TaskUpdatesSection
                   workspaceId={workspaceId}
@@ -691,6 +692,11 @@ export function TaskPage(props: TaskPageProps) {
                     scrollToUpdatesOnReady.current = false;
                     selectSection("updates");
                   }}
+                />
+                <TaskLinkedDiscussions
+                  workspaceId={workspaceId}
+                  taskId={task.id}
+                  taskShortId={task.shortId}
                 />
               </section>
             ) : null}

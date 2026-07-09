@@ -40,6 +40,11 @@ export const ui = {
   card: "rounded-2xl bg-paper shadow-sm",
   /** Solid paper section on the shell canvas (settings, forms). */
   contentPanel: "content-panel",
+  /** Chat / thread: fixed-height column — messages scroll, composer stays pinned. */
+  chatShell:
+    "flex min-h-[18rem] max-h-[min(36rem,calc(100dvh-14rem))] flex-col overflow-hidden",
+  chatShellTall:
+    "flex min-h-[22rem] max-h-[min(40rem,calc(100dvh-11rem))] flex-col overflow-hidden",
   /** @deprecated Use class `dashboard-panel` from globals.css */
   dashboardPanel: "dashboard-panel",
   /** Frosted glass surface (sidebar, mobile header). */

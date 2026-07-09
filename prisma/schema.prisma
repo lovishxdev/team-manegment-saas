@@ -37,6 +37,18 @@ enum MemoryEventStatus {
   RESOLVED
 }
 
+enum PostKind {
+  DISCUSSION
+  QUESTION
+  ANNOUNCEMENT
+  PROPOSAL
+}
+
+enum PostStatus {
+  OPEN
+  RESOLVED
+}
+
 /// Identity (passwords, OAuth) lives in Supabase Auth (auth.users).
 /// This table is the app profile; its id mirrors auth.users.id, kept in
 /// sync by the handle_new_user trigger (supabase/setup.sql).
@@ -75,6 +87,11 @@ model User {
   workspaceMessages WorkspaceMessage[]
   workspaceMessageMentions WorkspaceMessageMention[]
   workspaceMessageSaves WorkspaceMessageSave[]
+  posts             Post[]
+  postMessages      PostMessage[]
+  postMessageMentions PostMessageMention[]
+  postMessageSaves  PostMessageSave[]
+  agentTriggeredPostMessages PostMessage[] @relation("PostMessageAgentTrigger")
   uploadedAssets Asset[]
   createdLinks   WorkspaceLink[]
   oauthCodes     OAuthCode[]
@@ -100,6 +117,8 @@ model Workspace {
   categories      WorkspaceCategory[]
   taskUpdates     TaskUpdate[]
   messages        WorkspaceMessage[]
+  posts           Post[]
+  discussionTags  WorkspaceDiscussionTag[]
   memoryEvents    MemoryEvent[]
   lastActiveUsers User[]                @relation("LastActiveWorkspace")
   mcpPinnedUsers  User[]                @relation("McpPinnedWorkspace")
@@ -163,6 +182,7 @@ model Task {
   updates     TaskUpdate[]
   embedding   TaskEmbedding?
   memoryEvents MemoryEvent[]
+  posts       Post[]
 
   @@unique([workspaceId, shortId])
   @@index([workspaceId, status])
@@ -258,6 +278,8 @@ model MemoryEvent {
   taskId      String?           @db.Uuid
   /// TaskUpdate this event was extracted from (provenance).
   sourceUpdateId String?        @db.Uuid
+  /// PostMessage this event was extracted from (discussion provenance).
+  sourcePostMessageId String?   @db.Uuid
   kind        MemoryEventKind
   /// OPEN is only meaningful for BLOCKER/DEPENDENCY; decisions and
   /// milestones are created RESOLVED (they're facts, not open work).
@@ -274,6 +296,7 @@ model MemoryEvent {
 
   resolvedAt         DateTime?
   resolvedByUpdateId String?   @db.Uuid
+  resolvedByPostMessageId String? @db.Uuid
   resolvedById       String?   @db.Uuid
 
   /// Decisions evolve: a contradicting decision links the old one here
@@ -297,6 +320,8 @@ model MemoryEvent {
   workspace    Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   task         Task?       @relation(fields: [taskId], references: [id], onDelete: SetNull)
   sourceUpdate TaskUpdate? @relation("MemoryEventSource", fields: [sourceUpdateId], references: [id], onDelete: SetNull)
+  sourcePostMessage PostMessage? @relation("MemoryEventPostSource", fields: [sourcePostMessageId], references: [id], onDelete: SetNull)
+  resolvedByPostMessage PostMessage? @relation("MemoryEventPostResolution", fields: [resolvedByPostMessageId], references: [id], onDelete: SetNull)
   author       User?       @relation("AuthoredMemoryEvents", fields: [authorId], references: [id], onDelete: SetNull)
   supersededBy MemoryEvent?  @relation("MemoryEventSupersession", fields: [supersededByEventId], references: [id], onDelete: SetNull)
   supersedes   MemoryEvent[] @relation("MemoryEventSupersession")
@@ -399,6 +424,106 @@ model WorkspaceMessageMention {
 
   message WorkspaceMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
   user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId])
+}
+
+/// Standalone workspace discussion thread (not a task).
+model Post {
+  id             String   @id @default(uuid()) @db.Uuid
+  workspaceId    String   @db.Uuid
+  authorId       String   @db.Uuid
+  /// Optional display title; auto-derived from opener when unset.
+  title          String?
+  kind           PostKind @default(DISCUSSION)
+  status         PostStatus @default(OPEN)
+  pinned         Boolean  @default(false)
+  /// Optional link to a related task.
+  taskId         String?  @db.Uuid
+  /// Workspace-defined topic tags (slugs from WorkspaceDiscussionTag).
+  tags           String[] @default([])
+  replyCount     Int      @default(0)
+  lastActivityAt DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  author    User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  task      Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  messages  PostMessage[]
+
+  @@index([workspaceId, pinned, lastActivityAt])
+  @@index([workspaceId, status, lastActivityAt])
+  @@index([workspaceId, kind, lastActivityAt])
+  @@index([taskId, lastActivityAt])
+}
+
+/// Workspace vocabulary for discussion topic tags (filter + label posts).
+model WorkspaceDiscussionTag {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  name        String
+  slug        String
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId])
+}
+
+/// Message in a Post thread. Exactly one opener per post has parentMessageId = null.
+model PostMessage {
+  id              String   @id @default(uuid()) @db.Uuid
+  postId          String   @db.Uuid
+  authorId        String   @db.Uuid
+  body            String
+  parentMessageId String?  @db.Uuid
+  /// True when posted by the in-thread agent branch (not a human author).
+  isAgentGenerated Boolean @default(false)
+  /// True for @euclis user messages — visible only to the author.
+  isAgentPrivate Boolean @default(false)
+  /// Who triggered the agent branch; mirrors authorId for agent messages.
+  agentTriggeredByUserId String? @db.Uuid
+  createdAt       DateTime @default(now())
+
+  post          Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author        User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  agentTriggeredBy User? @relation("PostMessageAgentTrigger", fields: [agentTriggeredByUserId], references: [id], onDelete: SetNull)
+  parentMessage PostMessage?  @relation("PostMessageThread", fields: [parentMessageId], references: [id], onDelete: SetNull)
+  replies       PostMessage[] @relation("PostMessageThread")
+  mentions      PostMessageMention[]
+  saves         PostMessageSave[]
+  memorySources MemoryEvent[] @relation("MemoryEventPostSource")
+  memoryResolutions MemoryEvent[] @relation("MemoryEventPostResolution")
+
+  @@index([postId, createdAt])
+  @@index([parentMessageId])
+}
+
+model PostMessageSave {
+  id        String   @id @default(uuid()) @db.Uuid
+  messageId String   @db.Uuid
+  userId    String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  message PostMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId, createdAt])
+}
+
+model PostMessageMention {
+  id        String   @id @default(uuid()) @db.Uuid
+  messageId String   @db.Uuid
+  userId    String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  message PostMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([messageId, userId])
   @@index([userId])

@@ -6,6 +6,7 @@ import {
   assetFileName,
   bulkUpdateTasks,
   deleteAsset,
+  downloadAssetBuffer,
   getAsset,
   listMyTasks,
   MAX_BULK_TASK_UPDATES,
@@ -216,6 +217,48 @@ export async function runReadAsset(
     latest: input.latest === true,
   });
   return formatAssetDetail(asset, ctx.workspaceName, channel);
+}
+
+export async function runSendAsset(
+  ctx: BotWorkspaceCtx,
+  userId: string,
+  input: Record<string, unknown>,
+  channel: Channel,
+  session?: {
+    assetsToSend: {
+      buffer: Buffer;
+      fileName: string;
+      mimeType: string;
+      caption?: string;
+      fallbackUrl?: string;
+    }[] | null;
+  }
+): Promise<string> {
+  const latest = input.latest === true;
+  const fileName = input.fileName ? String(input.fileName).trim() : "";
+  const asset = await getAsset({
+    workspaceId: ctx.workspaceId,
+    userId,
+    fileName: fileName || undefined,
+    latest: latest || !fileName,
+  });
+  const name = assetFileName(asset.url);
+  const mimeType = asset.fileType?.trim() || "application/octet-stream";
+
+  if (channel !== "whatsapp" || !session) {
+    return `Download "${name}" from ${ctx.workspaceName}: ${asset.url}`;
+  }
+
+  const buffer = await downloadAssetBuffer(asset.url);
+  if (!session.assetsToSend) session.assetsToSend = [];
+  session.assetsToSend.push({
+    buffer,
+    fileName: name,
+    mimeType,
+    caption: ctx.workspaceName,
+    fallbackUrl: asset.url,
+  });
+  return `Sending *${name}*…`;
 }
 
 export type RemoveMemberStage = {

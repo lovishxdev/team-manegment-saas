@@ -1,11 +1,16 @@
 import { Suspense } from "react";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { ServiceError } from "@/lib/services/project";
-import { listMemoryEvents } from "@/lib/services/memory";
+import { listMemoryEventsPaginated } from "@/lib/services/memory";
 import type { MemoryEventView } from "@/lib/actions/workspace";
 import { displayUser } from "@/lib/username";
 import { MemoryEventCard } from "@/components/memory/memory-event-card";
+import {
+  MEMORY_TIMELINE_PAGE_SIZE,
+  MemoryPagination,
+} from "@/components/memory/memory-pagination";
 import { CopyField } from "@/components/ui/copy-field";
 import { CODING_AGENT_RULES_SNIPPET } from "@/lib/memory/rules-snippet";
 import { MemoryContentSkeleton } from "@/components/ui/tab-content-skeleton";
@@ -94,22 +99,43 @@ async function RulesInstallCommand() {
   );
 }
 
-async function MemoryData({ workspaceId }: { workspaceId: string }) {
+async function MemoryData({
+  workspaceId,
+  page,
+}: {
+  workspaceId: string;
+  page: number;
+}) {
   const user = await requireUser();
 
-  let events;
+  let openEvents;
+  let timelineEvents;
+  let timelineTotal;
   try {
-    events = await listMemoryEvents({
-      workspaceId,
-      userId: user.id,
-      limit: 100,
-    });
+    const [openResult, timelineResult] = await Promise.all([
+      listMemoryEventsPaginated({
+        workspaceId,
+        userId: user.id,
+        status: "OPEN",
+        limit: 100,
+      }),
+      listMemoryEventsPaginated({
+        workspaceId,
+        userId: user.id,
+        statusNot: "OPEN",
+        limit: MEMORY_TIMELINE_PAGE_SIZE,
+        offset: (page - 1) * MEMORY_TIMELINE_PAGE_SIZE,
+      }),
+    ]);
+    openEvents = openResult.events;
+    timelineEvents = timelineResult.events;
+    timelineTotal = timelineResult.total;
   } catch (err) {
     if (err instanceof ServiceError) notFound();
     throw err;
   }
 
-  const views: MemoryEventView[] = events.map((e) => ({
+  const toView = (e: (typeof openEvents)[number]): MemoryEventView => ({
     id: e.id,
     kind: e.kind,
     status: e.status,
@@ -120,10 +146,11 @@ async function MemoryData({ workspaceId }: { workspaceId: string }) {
     resolvedAt: e.resolvedAt ? e.resolvedAt.toISOString() : null,
     authorLabel: e.author ? displayUser(e.author) : null,
     task: e.task,
-  }));
+  });
 
-  const open = views.filter((v) => v.status === "OPEN");
-  const rest = views.filter((v) => v.status !== "OPEN");
+  const open = openEvents.map(toView);
+  const timeline = timelineEvents.map(toView);
+  const hasAnyMemory = open.length > 0 || timelineTotal > 0;
 
   return (
     <>
@@ -137,7 +164,7 @@ async function MemoryData({ workspaceId }: { workspaceId: string }) {
         </p>
       </section>
 
-      {views.length === 0 ? (
+      {!hasAnyMemory ? (
         <SeedChecklist />
       ) : (
         <>
@@ -162,22 +189,39 @@ async function MemoryData({ workspaceId }: { workspaceId: string }) {
 
           <section className="mb-10">
             <h2 className={`${ui.settingsSectionTitle} mb-4`}>
-              Timeline ({rest.length})
+              Timeline ({timelineTotal})
             </h2>
-            {rest.length === 0 ? (
+            {timelineTotal === 0 ? (
               <EmptyPanel>
                 Decisions and milestones will appear here as they&apos;re
                 captured.
               </EmptyPanel>
+            ) : timeline.length === 0 ? (
+              <EmptyPanel>
+                No events on this page.{" "}
+                <Link
+                  href={`/w/${workspaceId}/memory`}
+                  className="font-medium text-ink underline-offset-2 hover:underline"
+                >
+                  Go to first page
+                </Link>
+                .
+              </EmptyPanel>
             ) : (
               <div className="flex flex-col gap-3">
-                {rest.map((event) => (
+                {timeline.map((event) => (
                   <MemoryEventCard
                     key={event.id}
                     workspaceId={workspaceId}
                     event={event}
                   />
                 ))}
+                <MemoryPagination
+                  workspaceId={workspaceId}
+                  page={page}
+                  pageSize={MEMORY_TIMELINE_PAGE_SIZE}
+                  total={timelineTotal}
+                />
               </div>
             )}
           </section>
@@ -191,14 +235,18 @@ async function MemoryData({ workspaceId }: { workspaceId: string }) {
 
 export default async function MemoryPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ workspaceId: string }>;
+  searchParams: Promise<{ page?: string }>;
 }) {
   const { workspaceId } = await params;
+  const { page: pageParam } = await searchParams;
+  const page = Math.max(1, Number.parseInt(pageParam ?? "1", 10) || 1);
 
   return (
     <Suspense fallback={<MemoryContentSkeleton />}>
-      <MemoryData workspaceId={workspaceId} />
+      <MemoryData workspaceId={workspaceId} page={page} />
     </Suspense>
   );
 }

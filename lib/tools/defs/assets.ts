@@ -2,6 +2,8 @@ import { z } from "zod";
 import {
   assetFileName,
   attachAssetToTask,
+  downloadAssetBuffer,
+  getAsset,
   listAssets,
   updateAssetTagsByRef,
 } from "@/lib/services/project";
@@ -15,6 +17,7 @@ import {
   runDeleteLink,
   runPinLink,
   runReadAsset,
+  runSendAsset,
   runUpdateLink,
 } from "@/lib/bot/extended-tools";
 import { formatAssetList, formatLinkList } from "@/lib/channel-formatters";
@@ -33,7 +36,7 @@ import { optionalStr, str, workspaceParam } from "@/lib/tools/helpers";
 const listAssetsTool: ToolDef = {
   name: "list_assets",
   waDescription:
-    "List files/assets uploaded to the workspace (images, documents)",
+    "List files/assets uploaded to the workspace (images, documents). Use only when they want to browse names — NOT when they ask to receive/send/download a file (use send_asset).",
   inputShape: { workspace: workspaceParam },
   run: async (_input, ctx) => {
     const ws = requireWorkspace(ctx);
@@ -160,7 +163,7 @@ const updateAssetTagsTool: ToolDef = {
 const readAssetTool: ToolDef = {
   name: "read_asset",
   waDescription:
-    "Get details for one uploaded file (use latest=true for last upload, or fileName)",
+    "Get metadata for one uploaded file (use latest=true for last upload, or fileName). Does NOT send the file — use send_asset when they want it in chat.",
   mcpDescription: "Get details for one uploaded file",
   inputShape: {
     latest: z.boolean().optional().describe("Most recent upload"),
@@ -170,6 +173,33 @@ const readAssetTool: ToolDef = {
   run: async (input, ctx) => {
     const ws = requireWorkspace(ctx);
     return ok(await runReadAsset(ws, ctx.userId, input, ctx.channel));
+  },
+};
+
+const sendAssetTool: ToolDef = {
+  name: "send_asset",
+  waDescription:
+    "Send an uploaded workspace file to the user in WhatsApp so they can download it ('send me the file', 'share the pdf', 'can you send that document'). Use latest=true for the only/recent upload, or fileName to match. Delivers the actual file — do not use list_assets for this.",
+  whatsappOnly: true,
+  inputShape: {
+    latest: z
+      .boolean()
+      .optional()
+      .describe(
+        "Send the most recent upload (default when they say 'the file' and there's one)"
+      ),
+    fileName: z
+      .string()
+      .optional()
+      .describe("Part of the file name when not using latest"),
+    workspace: workspaceParam,
+  },
+  run: async (input, ctx) => {
+    const ws = requireWorkspace(ctx);
+    if (!ctx.wa) return soft("File delivery is only available on WhatsApp.");
+    return ok(
+      await runSendAsset(ws, ctx.userId, input, ctx.channel, ctx.wa.session)
+    );
   },
 };
 
@@ -330,6 +360,7 @@ const pinLinkTool: ToolDef = {
 
 export const assetTools: ToolDef[] = [
   listAssetsTool,
+  sendAssetTool,
   attachAssetToTaskTool,
   updateAssetTagsTool,
   readAssetTool,

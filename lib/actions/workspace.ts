@@ -12,6 +12,7 @@ import {
   createTask,
   deleteAsset,
   deleteTask,
+  searchTasks,
   ServiceError,
   updateAssetTags,
   updateTask,
@@ -533,6 +534,37 @@ export async function acceptInviteAction(inviteId: string): Promise<ActionState>
   redirect(`/w/${workspaceId}`);
 }
 
+export type TaskLinkOption = {
+  shortId: number;
+  title: string;
+  status: TaskStatus;
+};
+
+/** Searchable task list for linking discussions to board tasks. */
+export async function searchWorkspaceTasksAction(
+  workspaceId: string,
+  query?: string
+): Promise<{ tasks: TaskLinkOption[]; error?: string }> {
+  try {
+    const user = await requireUser();
+    const tasks = await searchTasks({
+      workspaceId,
+      userId: user.id,
+      query: query?.trim() || undefined,
+      limit: 8,
+    });
+    return {
+      tasks: tasks.map((task) => ({
+        shortId: task.shortId,
+        title: task.title,
+        status: task.status,
+      })),
+    };
+  } catch (err) {
+    return { tasks: [], error: errorMessage(err) };
+  }
+}
+
 /** Loaded on demand when opening board filters or a task — not on initial page load. */
 export async function fetchWorkspaceMemberLabelsAction(workspaceId: string) {
   const user = await requireUser();
@@ -699,7 +731,6 @@ export async function setTaskUpdateSavedAction(
       updateId,
       saved,
     });
-    revalidatePath(`/w/${workspaceId}`);
     return { saved: nextSaved };
   } catch (err) {
     return { error: errorMessage(err) };
@@ -731,7 +762,6 @@ export async function addWorkspaceMessageAction(
       userId: user.id,
       body,
     });
-    revalidatePath(`/w/${workspaceId}/discussion`);
     return {
       message: toChatMessageView(created),
     };
@@ -751,7 +781,6 @@ export async function deleteWorkspaceMessageAction(
       userId: user.id,
       messageId,
     });
-    revalidatePath(`/w/${workspaceId}/discussion`);
     return {};
   } catch (err) {
     return { error: errorMessage(err) };
@@ -771,7 +800,6 @@ export async function setWorkspaceMessageSavedAction(
       messageId,
       saved,
     });
-    revalidatePath(`/w/${workspaceId}/discussion`);
     return { saved: nextSaved };
   } catch (err) {
     return { error: errorMessage(err) };

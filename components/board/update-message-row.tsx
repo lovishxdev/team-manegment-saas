@@ -82,28 +82,27 @@ export function UpdateMessageRow({
   }, [menuOpen]);
 
   return (
-    <article className="group rounded-xl bg-paper-deep/30 px-4 py-3 transition-colors hover:bg-paper-deep/50">
-      <div className="flex gap-3">
+    <article className="group rounded-xl border border-line bg-white px-3.5 py-2.5 shadow-[0_1px_3px_rgba(26,26,26,0.04)] transition-[border-color,box-shadow] hover:border-line-strong sm:px-4 sm:py-3">
+      <div className="flex gap-2.5 sm:gap-3">
         <Avatar
           seed={message.authorId}
           label={message.authorLabel}
-          size="h-9 w-9 text-xs"
+          size="h-8 w-8 text-[11px] sm:h-9 sm:w-9 sm:text-xs"
         />
         <div className="min-w-0 flex-1">
-          <header className="mb-1.5 flex items-start gap-2">
-            <span className="min-w-0 flex-1 text-[15px] font-semibold text-ink">
+          <header className="mb-0.5 flex items-baseline gap-1.5 sm:mb-1">
+            <span className="text-sm font-semibold text-ink sm:text-[15px]">
               {isOwn ? "Me" : message.authorLabel}
             </span>
+            <time
+              className="text-[11px] text-ink-faint sm:text-xs"
+              dateTime={message.createdAt}
+              title={new Date(message.createdAt).toLocaleString()}
+            >
+              {formatMessageTimestamp(message.createdAt)}
+            </time>
 
-            <div className="flex shrink-0 items-center gap-0.5">
-              <time
-                className="whitespace-nowrap text-xs text-ink-faint"
-                dateTime={message.createdAt}
-                title={new Date(message.createdAt).toLocaleString()}
-              >
-                {formatMessageTimestamp(message.createdAt)}
-              </time>
-
+            <div className="ml-auto flex shrink-0 items-center gap-0.5">
               <div className="relative" ref={menuRef}>
                 <button
                   type="button"
@@ -123,6 +122,7 @@ export function UpdateMessageRow({
                   <div className="absolute right-0 top-full z-30 mt-1 min-w-[9.5rem] overflow-hidden rounded-lg border border-line bg-white py-1 shadow-[0_8px_24px_rgba(26,26,26,0.12)]">
                     <button
                       type="button"
+                      onMouseDown={(event) => event.preventDefault()}
                       onClick={() => {
                         setMenuOpen(false);
                         onToggleSave(message);
@@ -138,6 +138,7 @@ export function UpdateMessageRow({
                     </button>
                     <button
                       type="button"
+                      onMouseDown={(event) => event.preventDefault()}
                       onClick={() => {
                         setMenuOpen(false);
                         onReply(message);
@@ -150,6 +151,7 @@ export function UpdateMessageRow({
                     {isOwn ? (
                       <button
                         type="button"
+                        onMouseDown={(event) => event.preventDefault()}
                         onClick={() => {
                           setMenuOpen(false);
                           onDelete(message);
@@ -169,7 +171,7 @@ export function UpdateMessageRow({
           <MentionText
             body={message.body}
             members={members}
-            className="text-[15px] leading-relaxed text-ink"
+            className="text-sm leading-snug text-ink sm:text-[15px] sm:leading-relaxed"
           />
           {message.mentionedLabels.length > 0 ? (
             <MentionTags labels={message.mentionedLabels} body={message.body} />

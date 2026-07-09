@@ -128,6 +128,32 @@ function buildTimeline(messages: ChatMessageView[]) {
   return items;
 }
 
+type ScrollSnapshot = {
+  messagesEl: HTMLDivElement | null;
+  messagesScrollTop: number;
+  pageScrollY: number;
+};
+
+function captureScrollSnapshot(
+  messagesRef: React.RefObject<HTMLDivElement | null>
+): ScrollSnapshot {
+  const messagesEl = messagesRef.current;
+  return {
+    messagesEl,
+    messagesScrollTop: messagesEl?.scrollTop ?? 0,
+    pageScrollY: window.scrollY,
+  };
+}
+
+function restoreScrollSnapshot(snapshot: ScrollSnapshot) {
+  requestAnimationFrame(() => {
+    if (snapshot.messagesEl) {
+      snapshot.messagesEl.scrollTop = snapshot.messagesScrollTop;
+    }
+    window.scrollTo(0, snapshot.pageScrollY);
+  });
+}
+
 export type DiscussionSectionProps = {
   workspaceId: string;
   currentUserId: string;
@@ -168,9 +194,11 @@ export function DiscussionSection({
   const [draft, setDraft] = useState("");
   const [tab, setTab] = useState<DiscussionTab>("messages");
   const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  const [postPending, startPostTransition] = useTransition();
+  const [, startActionTransition] = useTransition();
   const messagesRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const skipRealtimeUntilRef = useRef(0);
   const onReadyRef = useRef(onReady);
   const readyFired = useRef(false);
 
@@ -196,14 +224,12 @@ export function DiscussionSection({
 
   const visibleMessages = tab === "saved" ? savedMessages : messages;
   const timeline = useMemo(() => buildTimeline(visibleMessages), [visibleMessages]);
+  const timelineReversed = useMemo(() => [...timeline].reverse(), [timeline]);
 
-  const scrollMessagesToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
-    const el = messagesRef.current;
-    if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior });
-  }, []);
-
-  const load = useCallback(async () => {
+  const load = useCallback(async (options?: { preserveScroll?: boolean }) => {
+    const snapshot = options?.preserveScroll
+      ? captureScrollSnapshot(messagesRef)
+      : null;
     const result = await loadMessages();
     if (result.error) {
       setError(result.error);
@@ -212,6 +238,7 @@ export function DiscussionSection({
     }
     setMessages(result.messages);
     setLoading(false);
+    if (snapshot) restoreScrollSnapshot(snapshot);
   }, [loadMessages]);
 
   useEffect(() => {
@@ -243,7 +270,8 @@ export function DiscussionSection({
             filter: realtime.filter,
           },
           () => {
-            void load();
+            if (Date.now() < skipRealtimeUntilRef.current) return;
+            void load({ preserveScroll: true });
           }
         )
         .subscribe();
@@ -256,27 +284,28 @@ export function DiscussionSection({
     };
   }, [realtime.channelName, realtime.filter, realtime.table, load]);
 
-  useEffect(() => {
-    if (loading || tab !== "messages") return;
-    requestAnimationFrame(() => scrollMessagesToBottom("auto"));
-  }, [loading, messages.length, tab, scrollMessagesToBottom]);
-
   function post() {
     const body = draft.trim();
     if (!body) return;
     setError(null);
-    startTransition(async () => {
+    setDraft("");
+    skipRealtimeUntilRef.current = Date.now() + 2500;
+    const snapshot = captureScrollSnapshot(messagesRef);
+    startPostTransition(async () => {
       const result = await postMessage(body);
       if (result.error) {
         setError(result.error);
+        setDraft(body);
+        restoreScrollSnapshot(snapshot);
         return;
       }
       if (result.message) {
         setMessages((current) => [...current, result.message!]);
-        requestAnimationFrame(() => scrollMessagesToBottom());
       }
-      setDraft("");
-      textareaRef.current?.focus();
+      restoreScrollSnapshot(snapshot);
+      requestAnimationFrame(() => {
+        textareaRef.current?.focus({ preventScroll: true });
+      });
     });
   }
 
@@ -289,7 +318,7 @@ export function DiscussionSection({
       return `${current.trimEnd()}\n\n${prefix}`;
     });
     requestAnimationFrame(() => {
-      textareaRef.current?.focus();
+      textareaRef.current?.focus({ preventScroll: true });
       const len = textareaRef.current?.value.length ?? 0;
       textareaRef.current?.setSelectionRange(len, len);
     });
@@ -298,19 +327,34 @@ export function DiscussionSection({
   function handleToggleSave(message: ChatMessageView) {
     setError(null);
     const nextSaved = !message.saved;
-    startTransition(async () => {
+    const snapshot = captureScrollSnapshot(messagesRef);
+
+    setMessages((current) =>
+      current.map((item) =>
+        item.id === message.id ? { ...item, saved: nextSaved } : item
+      )
+    );
+    restoreScrollSnapshot(snapshot);
+
+    startActionTransition(async () => {
       const result = await toggleSaved(message.id, nextSaved);
       if (result.error) {
         setError(result.error);
+        setMessages((current) =>
+          current.map((item) =>
+            item.id === message.id ? { ...item, saved: message.saved } : item
+          )
+        );
+        restoreScrollSnapshot(snapshot);
         return;
       }
+      const saved = result.saved ?? nextSaved;
       setMessages((current) =>
         current.map((item) =>
-          item.id === message.id
-            ? { ...item, saved: result.saved ?? nextSaved }
-            : item
+          item.id === message.id ? { ...item, saved } : item
         )
       );
+      restoreScrollSnapshot(snapshot);
     });
   }
 
@@ -319,71 +363,81 @@ export function DiscussionSection({
       return;
     }
     setError(null);
-    startTransition(async () => {
+    const snapshot = captureScrollSnapshot(messagesRef);
+    startActionTransition(async () => {
       const result = await deleteMessage(message.id);
       if (result.error) {
         setError(result.error);
+        restoreScrollSnapshot(snapshot);
         return;
       }
       setMessages((current) => current.filter((item) => item.id !== message.id));
+      restoreScrollSnapshot(snapshot);
     });
   }
 
   return (
-    <section className={ui.contentPanel}>
-      <DiscussionTabs
-        active={tab}
-        onChange={setTab}
-        savedCount={savedMessages.length}
-      />
-
-      <div
-        ref={messagesRef}
-        className="updates-scroll max-h-[min(28rem,calc(100dvh-18rem))] min-h-[12rem] space-y-3 overflow-y-auto overscroll-contain"
-      >
-        {loading ? (
-          <ChatBubbleSkeleton count={2} />
-        ) : visibleMessages.length === 0 ? (
-          <DiscussionEmptyState
-            tab={tab}
-            emptyMessagesHint={emptyMessagesHint}
-            emptySavedHint={emptySavedHint}
-          />
-        ) : (
-          <div className="space-y-3">
-            {timeline.map((item) =>
-              item.type === "divider" ? (
-                <DayDivider key={item.key} label={item.label} />
-              ) : (
-                <UpdateMessageRow
-                  key={item.message.id}
-                  message={item.message}
-                  members={members}
-                  currentUserId={currentUserId}
-                  onReply={handleReply}
-                  onToggleSave={handleToggleSave}
-                  onDelete={handleDelete}
-                />
-              )
-            )}
-          </div>
-        )}
+    <section className={`${ui.contentPanel} ${ui.chatShell} !p-0`}>
+      <div className="shrink-0 border-b border-line px-4 pt-4 sm:px-5 sm:pt-5">
+        <DiscussionTabs
+          active={tab}
+          onChange={setTab}
+          savedCount={savedMessages.length}
+        />
       </div>
 
-      {tab === "messages" ? (
-        <UpdateCompose
-          members={mentionOptions}
-          value={draft}
-          onChange={setDraft}
-          onPost={post}
-          pending={pending}
-          textareaRef={textareaRef}
-          placeholder={composePlaceholder}
-          inputId={`discussion-compose-${workspaceId}`}
-        />
-      ) : null}
+      <div className="flex min-h-0 flex-1 flex-col px-4 sm:px-5">
+        <div
+          ref={messagesRef}
+          className="updates-scroll flex min-h-0 flex-1 flex-col-reverse gap-3 overflow-y-auto overscroll-contain py-3 [overflow-anchor:none]"
+        >
+          {loading ? (
+            <ChatBubbleSkeleton count={2} />
+          ) : visibleMessages.length === 0 ? (
+            <DiscussionEmptyState
+              tab={tab}
+              emptyMessagesHint={emptyMessagesHint}
+              emptySavedHint={emptySavedHint}
+            />
+          ) : (
+            <div className="flex flex-col-reverse gap-3">
+              {timelineReversed.map((item) =>
+                item.type === "divider" ? (
+                  <DayDivider key={item.key} label={item.label} />
+                ) : (
+                  <UpdateMessageRow
+                    key={item.message.id}
+                    message={item.message}
+                    members={members}
+                    currentUserId={currentUserId}
+                    onReply={handleReply}
+                    onToggleSave={handleToggleSave}
+                    onDelete={handleDelete}
+                  />
+                )
+              )}
+            </div>
+          )}
+        </div>
 
-      {error ? <p className={`mt-3 ${ui.errorText}`}>{error}</p> : null}
+        {tab === "messages" ? (
+          <div className="shrink-0 border-t border-line bg-white py-3">
+            <UpdateCompose
+              members={mentionOptions}
+              value={draft}
+              onChange={setDraft}
+              onPost={post}
+              pending={postPending}
+              textareaRef={textareaRef}
+              placeholder={composePlaceholder}
+              inputId={`discussion-compose-${workspaceId}`}
+              className="relative mt-0"
+            />
+          </div>
+        ) : null}
+
+        {error ? <p className={`shrink-0 pb-3 ${ui.errorText}`}>{error}</p> : null}
+      </div>
     </section>
   );
 }

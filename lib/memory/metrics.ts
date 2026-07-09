@@ -14,6 +14,7 @@ export type MemoryMetricName =
   /** Event committed, by capture source. */
   | "event_created_agent"
   | "event_created_thread"
+  | "event_created_post"
   | "event_created_explicit"
   /** Near-duplicate caught by the deterministic guard. */
   | "event_skipped_duplicate"

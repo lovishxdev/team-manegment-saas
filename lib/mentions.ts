@@ -9,7 +9,32 @@ import { displayUser } from "@/lib/username";
 /** @handle tokens in update text (lowercase username / display handle). */
 const MENTION_REF_PATTERN = /@([a-z0-9_]{3,24})/gi;
 
+/** @mention handle for the in-thread Euclis agent (discussions only). */
+export const AGENT_MENTION_HANDLE = "euclis";
+export const AGENT_MENTION_MEMBER_ID = "__euclis_agent__";
+
 export type WorkspaceMemberRef = MembershipRow & { role?: string };
+
+export function isAgentMentionRef(ref: string): boolean {
+  return ref.toLowerCase() === AGENT_MENTION_HANDLE;
+}
+
+export function bodyMentionsAgent(body: string): boolean {
+  return extractMentionRefs(body).some(isAgentMentionRef);
+}
+
+/** Resolve @mentions for discussions — @euclis is the agent, not a teammate. */
+export function resolveDiscussionMentionUserIds(
+  memberships: WorkspaceMemberRef[],
+  body: string,
+  explicitRefs?: string[]
+): string[] {
+  const refs = [
+    ...extractMentionRefs(body),
+    ...(explicitRefs ?? []).map((ref) => ref.toLowerCase()),
+  ].filter((ref) => !isAgentMentionRef(ref));
+  return resolveMentionUserIdsFromRefs(memberships, [...new Set(refs)]);
+}
 
 export function extractMentionRefs(body: string): string[] {
   const refs = new Set<string>();
@@ -108,6 +133,11 @@ export function parseMentionText(
     }
 
     const handle = match[1].toLowerCase();
+    if (isAgentMentionRef(handle)) {
+      parts.push({ type: "mention", handle, label: AGENT_MENTION_HANDLE });
+      lastIndex = index + match[0].length;
+      continue;
+    }
     const label = labels.get(handle);
     if (label) {
       parts.push({ type: "mention", handle, label });
@@ -166,6 +196,17 @@ export function mentionableMembers(
   currentUserId: string
 ): MentionMember[] {
   return members.filter((member) => member.id !== currentUserId);
+}
+
+/** Discussion compose: @euclis agent first, then teammates (excludes self). */
+export function discussionMentionMembers(
+  members: MentionMember[],
+  currentUserId: string
+): MentionMember[] {
+  return [
+    { id: AGENT_MENTION_MEMBER_ID, label: AGENT_MENTION_HANDLE },
+    ...mentionableMembers(members, currentUserId),
+  ];
 }
 
 export function applyMentionSelection(
