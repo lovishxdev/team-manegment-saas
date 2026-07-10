@@ -1160,6 +1160,21 @@ async function handleMessage(
   let stagedIntent = opts?.stagedIntent;
   let workspacePickReply = opts?.workspacePickReply;
 
+  // If the message already names a workspace in plain language
+  // ("add this to euclis tasks"), pin it and skip the picker.
+  if (
+    !opts?.skipWorkspacePicker &&
+    hasWorkspace &&
+    (await shouldPromptWorkspacePick(userId))
+  ) {
+    const fromMessage = await tryActivateWorkspaceFromText(userId, text).catch(
+      () => null
+    );
+    if (fromMessage) {
+      opts = { ...opts, skipWorkspacePicker: true };
+    }
+  }
+
   if (
     !opts?.skipWorkspacePicker &&
     hasWorkspace &&
@@ -1205,6 +1220,17 @@ async function handleMessage(
     getRecentConversation(userId),
     loadWhatsAppCache(userId),
   ]);
+
+  // Heal a missing User.lastActiveWorkspaceId from the durable WhatsApp cache
+  // so the picker doesn't reappear after the session cache TTL for tasks.
+  if (
+    hasWorkspace &&
+    whatsappCache?.workspaceId &&
+    (await shouldPromptWorkspacePick(userId))
+  ) {
+    await activateWorkspace(userId, whatsappCache.workspaceId).catch(() => {});
+  }
+
   const activeCtx = hasWorkspace
     ? await resolveUserWorkspaceContext(userId)
     : { workspaceId: null, workspaceName: null };

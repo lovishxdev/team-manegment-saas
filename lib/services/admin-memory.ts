@@ -40,13 +40,28 @@ export type AdminMemoryWorkspace = {
   rawHistoryTokens: number;
 };
 
+export type AdminDreamRun = {
+  id: string;
+  workspaceName: string;
+  reviewed: number;
+  merged: number;
+  superseded: number;
+  insights: number;
+  archived: number;
+  skipped: string | null;
+  durationMs: number;
+  createdAt: string;
+};
+
 export type AdminMemoryAnalytics = {
   generatedAt: string;
   capture: AdminMemoryStat[];
   recall: AdminMemoryStat[];
+  dreaming: AdminMemoryStat[];
   tokens: AdminMemoryStat[];
   days: AdminMemoryDay[];
   workspaces: AdminMemoryWorkspace[];
+  dreamRuns: AdminDreamRun[];
 };
 
 type MetricTotals = Map<MemoryMetricName, { count: number; sum: number }>;
@@ -93,6 +108,8 @@ export async function getAdminMemoryAnalytics(): Promise<AdminMemoryAnalytics> {
     workspaces,
     rawHistoryRows,
     briefByWorkspace,
+    unreviewedCount,
+    dreamRunRows,
   ] = await Promise.all([
     prisma.memoryMetric.groupBy({
       by: ["metric"],
@@ -135,6 +152,29 @@ export async function getAdminMemoryAnalytics(): Promise<AdminMemoryAnalytics> {
       by: ["workspaceId"],
       where: { metric: "brief_built", day: { gte: since7d } },
       _sum: { count: true, sum: true },
+    }),
+    prisma.memoryEvent.count({
+      where: {
+        dreamedAt: null,
+        supersededByEventId: null,
+        archivedAt: null,
+      },
+    }),
+    prisma.memoryDreamRun.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      select: {
+        id: true,
+        reviewed: true,
+        merged: true,
+        superseded: true,
+        insights: true,
+        archived: true,
+        skipped: true,
+        durationMs: true,
+        createdAt: true,
+        workspace: { select: { name: true } },
+      },
     }),
   ]);
 
@@ -192,6 +232,34 @@ export async function getAdminMemoryAnalytics(): Promise<AdminMemoryAnalytics> {
       label: "Resolution asks → confirmed (7d)",
       value: `${asks} → ${confirmed}`,
       hint: "all resolutions are human-confirmed",
+    },
+  ];
+
+  const dreaming: AdminMemoryStat[] = [
+    {
+      label: "Dream runs (7d)",
+      value: count(totals, "dream_run").toLocaleString(),
+      hint: "scheduled memory maintenance cycles",
+    },
+    {
+      label: "Duplicates merged (7d)",
+      value: count(totals, "dream_merge").toLocaleString(),
+      hint: "hidden behind a canonical event",
+    },
+    {
+      label: "Insights surfaced (7d)",
+      value: count(totals, "dream_insight").toLocaleString(),
+      hint: "cross-event patterns",
+    },
+    {
+      label: "Events archived (7d)",
+      value: count(totals, "dream_archive").toLocaleString(),
+      hint: "stale resolved rows retired",
+    },
+    {
+      label: "Awaiting review",
+      value: unreviewedCount.toLocaleString(),
+      hint: "active events not yet seen by a dream",
     },
   ];
 
@@ -272,6 +340,10 @@ export async function getAdminMemoryAnalytics(): Promise<AdminMemoryAnalytics> {
         entry.resolutionsConfirmed += n;
         break;
       case "brief_built":
+      case "dream_run":
+      case "dream_merge":
+      case "dream_insight":
+      case "dream_archive":
         break;
     }
     byDay.set(day, entry);
@@ -331,8 +403,21 @@ export async function getAdminMemoryAnalytics(): Promise<AdminMemoryAnalytics> {
     generatedAt: new Date().toISOString(),
     capture,
     recall,
+    dreaming,
     tokens,
     days,
     workspaces: workspaceRows,
+    dreamRuns: dreamRunRows.map((run) => ({
+      id: run.id,
+      workspaceName: run.workspace.name,
+      reviewed: run.reviewed,
+      merged: run.merged,
+      superseded: run.superseded,
+      insights: run.insights,
+      archived: run.archived,
+      skipped: run.skipped,
+      durationMs: run.durationMs,
+      createdAt: run.createdAt.toISOString(),
+    })),
   };
 }

@@ -83,7 +83,13 @@ export async function createWorkspaceDiscussionTag(
   userId: string,
   rawName: string
 ): Promise<WorkspaceDiscussionTagRow> {
-  await requireMember(userId, workspaceId);
+  const membership = await requireMember(userId, workspaceId);
+  if (membership.role === "GUEST") {
+    throw new ServiceError(
+      "Guests have read-only access to this workspace.",
+      "FORBIDDEN"
+    );
+  }
   const name = validateDiscussionTagName(rawName);
   const slug = slugifyDiscussionTagName(name);
 

@@ -187,6 +187,30 @@ Antigravity) fall back to the MCP + rules-snippet contract until their
 adapters exist — see the adapter matrix in
 [memory-architecture.md](memory-architecture.md).
 
+## The dream cycle (scheduled memory maintenance)
+
+Live capture only ever sees one moment; the dream cycle
+([lib/memory/dream.ts](../lib/memory/dream.ts)) reviews a workspace's whole
+active store offline and tends it — the "who's tending the garden" piece:
+
+- **Merge** near-duplicates under one canonical event (duplicates linked via
+  `supersededByEventId`, never deleted).
+- **Supersede** contradicting DECISIONs (same question, different answer —
+  newest wins).
+- **Surface** INSIGHT events: cross-event patterns no single capture could
+  see (recurring blocker themes, silently converged-on choices, conflicting
+  open decisions). Shown in the brief ("Patterns & insights") and Memory tab.
+- **Archive** stale resolved events (`archivedAt`) out of listings, recall,
+  briefs, and judge context — never deleted.
+
+Every operation is validated in code: ids must come from the reviewed set,
+merges stay within one kind, open work can't be hidden or archived, archive
+requires RESOLVED + 30 days old. Runs via Vercel cron
+(`/api/cron/memory-dream`, daily; `DREAM_COOLDOWN_DAYS` currently 1 = every
+active workspace dreams daily — raise toward weekly as stores grow) or
+manually: `npm run dream:memory -- --workspace-name X [--force]`. Metrics
+land on `/admin/memory` ("Dreaming").
+
 ## Onboarding a project with history
 
 - `npm run backfill:memory [workspaceId]` — runs the capture classifier over
@@ -204,7 +228,9 @@ adapters exist — see the adapter matrix in
 |---|---|
 | `ANTHROPIC_API_KEY` | capture classifier (shared with the WhatsApp agent) |
 | `MEMORY_CAPTURE_MODEL` | classifier model, default `claude-haiku-4-5` |
-| `MEMORY_CAPTURE=0` | kill switch — disables capture entirely |
+| `MEMORY_CAPTURE=0` | kill switch — disables capture entirely (and dreaming) |
+| `MEMORY_DREAM_MODEL` | dream-cycle model, default `claude-sonnet-4-5` |
+| `CRON_SECRET` | protects `/api/cron/memory-dream` in production |
 | `OPENROUTER_API_KEY` / `OPENAI_API_KEY` | embeddings for semantic recall (keyword-only fallback without) |
 
 ## Testing

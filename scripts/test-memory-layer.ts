@@ -87,6 +87,7 @@ const sampleEvent: MemoryEventRow = {
   createdAt: new Date("2026-07-01T10:00:00Z"),
   resolvedAt: null,
   supersededByEventId: null,
+  dreamedAt: null,
   author: { id: "u1", username: "priya", email: null },
   task: { shortId: 12, title: "Login page redesign" },
 };

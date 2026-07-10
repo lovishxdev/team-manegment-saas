@@ -146,6 +146,7 @@ async function MemoryData({
     resolvedAt: e.resolvedAt ? e.resolvedAt.toISOString() : null,
     authorLabel: e.author ? displayUser(e.author) : null,
     task: e.task,
+    reviewed: e.dreamedAt !== null,
   });
 
   const open = openEvents.map(toView);

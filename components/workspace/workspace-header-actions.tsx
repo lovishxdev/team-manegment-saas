@@ -29,6 +29,8 @@ export function WorkspaceHeaderActions({
   members,
   workspaceId,
   canInvite,
+  inviteCapReason,
+  canInviteGuest,
   showFilter,
   onFilterClick,
   filterActive,
@@ -36,6 +38,8 @@ export function WorkspaceHeaderActions({
   members: MemberAvatar[];
   workspaceId: string;
   canInvite: boolean;
+  inviteCapReason?: string;
+  canInviteGuest?: boolean;
   showFilter?: boolean;
   onFilterClick?: () => void;
   filterActive?: boolean;
@@ -47,7 +51,14 @@ export function WorkspaceHeaderActions({
           <MemberAvatarStack members={members} />
         </div>
       )}
-      {canInvite && <InviteButton workspaceId={workspaceId} variant="pill" />}
+      {canInvite && (
+        <InviteButton
+          workspaceId={workspaceId}
+          variant="pill"
+          disabledReason={inviteCapReason}
+          canInviteGuest={canInviteGuest}
+        />
+      )}
       {showFilter && onFilterClick && (
         <button
           type="button"

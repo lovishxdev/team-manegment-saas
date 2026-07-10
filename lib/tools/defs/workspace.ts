@@ -4,7 +4,7 @@ import {
   findOrCreateWorkspaceByName,
   renameWorkspace,
 } from "@/lib/services/workspace";
-import { resolveUserWorkspaceContext } from "@/lib/services/project";
+import { assertCanWrite, resolveUserWorkspaceContext } from "@/lib/services/project";
 import {
   runCreateCategory,
   runLeaveWorkspace,
@@ -184,6 +184,7 @@ const createCategoryTool: ToolDef = {
   },
   run: async (input, ctx) => {
     const ws = requireWorkspace(ctx);
+    await assertCanWrite(ctx.userId, ws.workspaceId);
     const message = await runCreateCategory(ws, input, ctx.channel);
     if (ctx.wa) revalidateUserWorkspaces(ctx.userId, ws.workspaceId);
     return ok(message);

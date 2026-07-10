@@ -16,6 +16,7 @@ import {
 import { scoreTaskTitleQuery } from "@/lib/task-title-search";
 import { scheduleBackgroundTask } from "@/lib/background-task";
 import { bumpMemoryMetric } from "@/lib/memory/metrics";
+import { memoryRetentionCutoff } from "@/lib/billing/entitlements";
 
 export const MAX_MEMORY_SUMMARY = 500;
 export const MAX_MEMORY_REASONING = 2000;
@@ -39,6 +40,7 @@ const eventSelect = {
   createdAt: true,
   resolvedAt: true,
   supersededByEventId: true,
+  dreamedAt: true,
   author: { select: { id: true, username: true, email: true } },
   task: { select: { shortId: true, title: true } },
 } satisfies Prisma.MemoryEventSelect;
@@ -53,6 +55,8 @@ export type MemoryEventRow = {
   createdAt: Date;
   resolvedAt: Date | null;
   supersededByEventId: string | null;
+  /** Last dream pass that reviewed this event; null = not yet curated. */
+  dreamedAt: Date | null;
   author: { id: string; username: string; email: string | null } | null;
   task: { shortId: number; title: string } | null;
 };
@@ -170,7 +174,13 @@ export type CreateMemoryEventInput = {
 export async function createMemoryEvent(
   input: CreateMemoryEventInput
 ): Promise<MemoryEventRow> {
-  await requireMembership(input.userId, input.workspaceId);
+  const membership = await requireMembership(input.userId, input.workspaceId);
+  if (membership.role === "GUEST") {
+    throw new ServiceError(
+      "Guests have read-only access to this workspace.",
+      "FORBIDDEN"
+    );
+  }
 
   const summary = input.summary.trim();
   if (!summary) {
@@ -269,6 +279,13 @@ async function buildMemoryEventWhere(
   if (input.statusNot) where.status = { not: input.statusNot };
   if (input.tag) where.tags = { has: input.tag.trim().toLowerCase() };
   if (!input.includeSuperseded) where.supersededByEventId = null;
+  // Dream-archived events are retired from active memory (never deleted).
+  where.archivedAt = null;
+
+  // Tier retention: hide events older than the workspace's window (never deleted).
+  const cutoff = await memoryRetentionCutoff(input.workspaceId);
+  if (cutoff) where.createdAt = { gte: cutoff };
+
   return where;
 }
 
@@ -317,6 +334,7 @@ export async function getOpenBlockersForTask(
       status: "OPEN",
       kind: { in: ["BLOCKER", "DEPENDENCY"] },
       supersededByEventId: null,
+      archivedAt: null,
     },
     orderBy: { createdAt: "asc" },
     select: eventSelect,
@@ -343,7 +361,13 @@ export async function resolveMemoryEvent(input: {
   resolvedByUpdateId?: string;
   resolvedByPostMessageId?: string;
 }): Promise<MemoryEventRow> {
-  await requireMembership(input.userId, input.workspaceId);
+  const membership = await requireMembership(input.userId, input.workspaceId);
+  if (membership.role === "GUEST") {
+    throw new ServiceError(
+      "Guests have read-only access to this workspace.",
+      "FORBIDDEN"
+    );
+  }
 
   const existing = await prisma.memoryEvent.findFirst({
     where: { id: input.eventId, workspaceId: input.workspaceId },
@@ -431,6 +455,7 @@ export async function recallMemory(
   const where: Prisma.MemoryEventWhereInput = {
     workspaceId: input.workspaceId,
     supersededByEventId: null,
+    archivedAt: null,
   };
   if (input.taskShortId !== undefined) {
     where.taskId = await resolveTaskId(input.workspaceId, input.taskShortId);
@@ -438,6 +463,10 @@ export async function recallMemory(
   if (input.kind) where.kind = input.kind;
   if (input.status) where.status = input.status;
   if (input.tag) where.tags = { has: input.tag.trim().toLowerCase() };
+
+  // Tier retention: hide events older than the workspace's window (never deleted).
+  const cutoff = await memoryRetentionCutoff(input.workspaceId);
+  if (cutoff) where.createdAt = { gte: cutoff };
 
   const candidates = await prisma.memoryEvent.findMany({
     where,

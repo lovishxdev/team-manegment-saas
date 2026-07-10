@@ -9,20 +9,23 @@ import { Select } from "@/components/ui/select";
 import { Avatar, ui } from "@/components/ui/ui";
 import { displayUser } from "@/lib/username";
 
-type Role = "LEADER" | "SUB_LEADER" | "MEMBER";
+type Role = "LEADER" | "SUB_LEADER" | "MEMBER" | "GUEST";
 
+/** Roles selectable in the management dropdown (guests aren't promoted here). */
 const ROLES: Role[] = ["LEADER", "SUB_LEADER", "MEMBER"];
 
 const ROLE_LABELS: Record<Role, string> = {
   LEADER: "Leader",
   SUB_LEADER: "Sub leader",
   MEMBER: "Member",
+  GUEST: "Guest",
 };
 
 const ROLE_STYLES: Record<Role, string> = {
   LEADER: "bg-amber-50 text-amber-800",
   SUB_LEADER: "bg-sky-50 text-sky-700",
   MEMBER: "bg-paper-deep text-ink-soft",
+  GUEST: "bg-paper-deep text-ink-faint ring-1 ring-line",
 };
 
 const settingsRowCls =
@@ -99,7 +102,25 @@ export function MemberRow({
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          {canManage && !isSelf ? (
+          {member.role === "GUEST" ? (
+            <>
+              <span
+                className={`inline-flex min-h-[46px] items-center rounded-lg px-3 text-xs font-semibold uppercase tracking-wide ${ROLE_STYLES.GUEST}`}
+              >
+                Guest
+              </span>
+              {canManage && !isSelf ? (
+                <button
+                  type="button"
+                  onClick={remove}
+                  disabled={pending}
+                  className={`${ui.btnGhostDanger} ${actionBtnCls}`}
+                >
+                  Remove
+                </button>
+              ) : null}
+            </>
+          ) : canManage && !isSelf ? (
             <>
               <Select
                 size="md"

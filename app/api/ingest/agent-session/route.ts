@@ -12,6 +12,7 @@ import { memoryCaptureEnabled } from "@/lib/memory/capture";
 import { buildWorkspaceBrief } from "@/lib/memory/brief";
 import type { ClaimedSuggestion } from "@/lib/memory/suggest";
 import { bumpMemoryMetric } from "@/lib/memory/metrics";
+import { claimAgentSeat } from "@/lib/billing/entitlements";
 
 /**
  * Ambient ingest for coding-agent sessions. The agent's stop hook (Cursor /
@@ -139,6 +140,23 @@ export async function POST(req: Request) {
     return NextResponse.json(
       { error: "the workspace this connection was approved for no longer exists" },
       { status: 403 }
+    );
+  }
+
+  // Ambient agent seats are metered per engineer. Existing seats are
+  // grandfathered; a new engineer beyond the plan cap is blocked (no brief).
+  const seat = await claimAgentSeat(workspace.workspaceId, credential.userId);
+  if (!seat.ok) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          `This workspace's plan includes ${seat.limit} connected coding-agent ` +
+          `seat${seat.limit === 1 ? "" : "s"}. Upgrade to Team for unlimited seats.`,
+        brief: null,
+        ask: null,
+      },
+      { status: 402 }
     );
   }
 

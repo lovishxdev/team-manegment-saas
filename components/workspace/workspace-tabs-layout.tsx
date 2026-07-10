@@ -27,6 +27,7 @@ export function WorkspaceTabsLayout({
   breadcrumbName,
   title,
   headerActions,
+  trialBanner,
   children,
 }: {
   workspaceId: string;
@@ -36,6 +37,8 @@ export function WorkspaceTabsLayout({
   title: ReactNode;
   /** Invite / member actions streamed from the server layout. */
   headerActions: ReactNode;
+  /** Trial status banner streamed from the server layout (null when not on trial). */
+  trialBanner?: ReactNode;
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -45,6 +48,7 @@ export function WorkspaceTabsLayout({
 
   return (
     <main className={`${SHELL_CONTENT_MAX} min-w-0 overflow-x-hidden`}>
+      {trialBanner}
       <header className="mb-6">
         <nav aria-label="Breadcrumb" className={ui.breadcrumbNav}>
           <Link href="/dashboard" className={ui.breadcrumbLink}>

@@ -7,6 +7,7 @@ import {
   createWorkspaceWithInviteAction,
   type ActionState,
 } from "@/lib/actions/workspace";
+import { fetchWorkspacesLedStatusAction } from "@/lib/actions/billing";
 import { CopyField } from "@/components/ui/copy-field";
 import { ui } from "@/components/ui/ui";
 
@@ -26,8 +27,24 @@ export function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
   const [invitePending, startInviteTransition] = useTransition();
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
+  const [capReason, setCapReason] = useState<string | null>(null);
   const workspaceId = state.workspaceId;
   const created = Boolean(workspaceId);
+
+  useEffect(() => {
+    let active = true;
+    fetchWorkspacesLedStatusAction().then((result) => {
+      if (!active || !result.status || result.status.canCreate) return;
+      setCapReason(
+        result.status.limit === 1
+          ? "The Hobby plan includes 1 workspace. Upgrade to Team to create more."
+          : `Your plan allows up to ${result.status.limit} workspaces. Upgrade to create more.`
+      );
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!state.inviteId) return;
@@ -167,13 +184,19 @@ export function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
                 <input type="hidden" name="name" value={name} />
                 {nameField}
 
+                {capReason ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
+                    {capReason}
+                  </div>
+                ) : null}
+
                 {state.error ? (
                   <p className="text-sm text-red-600">{state.error}</p>
                 ) : null}
 
                 <button
                   type="submit"
-                  disabled={pending}
+                  disabled={pending || Boolean(capReason)}
                   aria-busy={pending}
                   className={`${ui.btnPrimary} w-full py-3 text-base`}
                 >

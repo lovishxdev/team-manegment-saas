@@ -27,7 +27,13 @@ import { clearNotedBlocker, noteBlocker } from "@/lib/whatsapp-cache";
  * context instead of full chat history.
  */
 
-const MEMORY_KINDS = ["DECISION", "BLOCKER", "DEPENDENCY", "MILESTONE"] as const;
+const MEMORY_KINDS = [
+  "DECISION",
+  "BLOCKER",
+  "DEPENDENCY",
+  "MILESTONE",
+  "INSIGHT",
+] as const;
 
 export function formatMemoryEvent(e: MemoryEventRow): string {
   const date = e.createdAt.toISOString().slice(0, 10);

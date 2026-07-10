@@ -16,6 +16,7 @@ const MAX_TASKS = 12;
 const MAX_DECISIONS = 8;
 const MAX_BLOCKERS = 10;
 const MAX_RECENT = 6;
+const MAX_INSIGHTS = 3;
 
 const STATUS_LABEL: Record<string, string> = {
   TODO: "todo",
@@ -36,7 +37,7 @@ export async function buildWorkspaceBrief(input: {
   workspaceName: string;
   userId: string;
 }): Promise<string> {
-  const [tasks, openEvents, decisions, recent] = await Promise.all([
+  const [tasks, openEvents, decisions, insights, recent] = await Promise.all([
     prisma.task.findMany({
       where: { workspaceId: input.workspaceId, status: { not: "DONE" } },
       orderBy: { updatedAt: "desc" },
@@ -60,11 +61,22 @@ export async function buildWorkspaceBrief(input: {
       kind: "DECISION",
       limit: MAX_DECISIONS,
     }),
+    // Dream-cycle patterns — cross-event observations no single session saw.
+    listMemoryEvents({
+      workspaceId: input.workspaceId,
+      userId: input.userId,
+      kind: "INSIGHT",
+      limit: MAX_INSIGHTS,
+    }),
     // What just happened, regardless of kind/status — resolved blockers and
     // fresh milestones included, so a returning agent sees movement at a
     // glance without querying anything.
     prisma.memoryEvent.findMany({
-      where: { workspaceId: input.workspaceId, supersededByEventId: null },
+      where: {
+        workspaceId: input.workspaceId,
+        supersededByEventId: null,
+        archivedAt: null,
+      },
       orderBy: { createdAt: "desc" },
       take: MAX_RECENT,
       select: {
@@ -96,6 +108,11 @@ export async function buildWorkspaceBrief(input: {
       ? decisions.map(formatEventLine).join("\n")
       : `(none recorded yet)`
   );
+
+  if (insights.length > 0) {
+    sections.push(``, `## Patterns & insights`);
+    sections.push(insights.map(formatEventLine).join("\n"));
+  }
 
   sections.push(``, `## Recent memory activity`);
   sections.push(

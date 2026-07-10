@@ -12,8 +12,18 @@ import {
 import { matchWorkspaceMember, normalizeMemberRef } from "@/lib/services/member-resolve";
 import { isUsernameTaken } from "@/lib/username-server";
 import { seedDefaultCategories } from "@/lib/services/categories";
+import {
+  assertCanAddMember,
+  assertCanCreateWorkspace,
+  ensureCanAddMember,
+  getWorkspacePlan,
+  workspaceFeature,
+} from "@/lib/billing/entitlements";
+import { scheduleOnboardingBrief } from "@/lib/memory/onboarding";
 
 export async function createWorkspace(userId: string, name: string) {
+  await assertCanCreateWorkspace(userId);
+
   const workspace = await prisma.workspace.create({
     data: {
       name: name.trim(),
@@ -28,6 +38,18 @@ export async function createWorkspace(userId: string, name: string) {
     data: { lastActiveWorkspaceId: workspace.id },
   });
   return workspace;
+}
+
+const DEFAULT_WORKSPACE_NAME = "workspace";
+
+/**
+ * Ensure a brand-new user has somewhere to work. Creates a workspace named
+ * "workspace" when they have zero memberships. Idempotent.
+ */
+export async function ensureDefaultWorkspace(userId: string) {
+  const count = await prisma.workspaceMembership.count({ where: { userId } });
+  if (count > 0) return null;
+  return createWorkspace(userId, DEFAULT_WORKSPACE_NAME);
 }
 
 /**
@@ -323,7 +345,7 @@ const INVITER_ROLES: Role[] = [Role.LEADER, Role.SUB_LEADER];
 export async function createInvite(
   workspaceId: string,
   userId: string,
-  options?: { maxUses?: number; expiresInHours?: number }
+  options?: { maxUses?: number; expiresInHours?: number; role?: Role }
 ) {
   const membership = await getActorMembership(userId, workspaceId);
   if (!membership || !INVITER_ROLES.includes(membership.role)) {
@@ -333,12 +355,27 @@ export async function createInvite(
     );
   }
 
+  const role = options?.role ?? Role.MEMBER;
+  if (role === Role.GUEST) {
+    // Guest (client) access is a Team+ feature.
+    if (!(await workspaceFeature(workspaceId, "guestAccess"))) {
+      throw new ServiceError(
+        "Guest access is available on the Team plan. Upgrade to invite clients.",
+        "UPGRADE_REQUIRED"
+      );
+    }
+  } else {
+    // Members count against the cap; guests are uncapped (block new growth).
+    await assertCanAddMember(workspaceId);
+  }
+
   const maxUses = options?.maxUses ?? 10;
   const expiresInHours = options?.expiresInHours ?? 72;
 
   return prisma.workspaceInvite.create({
     data: {
       workspaceId,
+      role,
       maxUses,
       expiresAt: new Date(Date.now() + expiresInHours * 60 * 60 * 1000),
     },
@@ -359,7 +396,7 @@ export async function getInvite(inviteId: string) {
 }
 
 export async function acceptInvite(inviteId: string, userId: string) {
-  return prisma.$transaction(async (tx) => {
+  const { workspace, joined, role } = await prisma.$transaction(async (tx) => {
     const invite = await tx.workspaceInvite.findUnique({
       where: { id: inviteId },
       include: { workspace: { select: { id: true, name: true } } },
@@ -377,10 +414,26 @@ export async function acceptInvite(inviteId: string, userId: string) {
     const existing = await tx.workspaceMembership.findUnique({
       where: { userId_workspaceId: { userId, workspaceId: invite.workspaceId } },
     });
-    if (existing) return invite.workspace; // already a member; don't burn a use
+    // already a member; don't burn a use
+    if (existing) return { workspace: invite.workspace, joined: false, role: existing.role };
+
+    const role = invite.role;
+
+    // Guests are read-only clients and don't count against the member cap.
+    // Members: authoritative cap gate at join time (prevents overshoot from
+    // multiple valid invites); existing members grandfathered above.
+    if (role !== Role.GUEST) {
+      const [tier, memberCount] = await Promise.all([
+        getWorkspacePlan(invite.workspaceId),
+        tx.workspaceMembership.count({
+          where: { workspaceId: invite.workspaceId, role: { not: Role.GUEST } },
+        }),
+      ]);
+      ensureCanAddMember(tier, memberCount);
+    }
 
     await tx.workspaceMembership.create({
-      data: { userId, workspaceId: invite.workspaceId, role: Role.MEMBER },
+      data: { userId, workspaceId: invite.workspaceId, role },
     });
     await tx.workspaceInvite.update({
       where: { id: inviteId },
@@ -391,8 +444,15 @@ export async function acceptInvite(inviteId: string, userId: string) {
       data: { lastActiveWorkspaceId: invite.workspaceId },
     });
 
-    return invite.workspace;
+    return { workspace: invite.workspace, joined: true, role };
   });
+
+  // Team-only: send new members (not guests) a project onboarding digest.
+  if (joined && role !== Role.GUEST) {
+    scheduleOnboardingBrief(workspace.id, userId);
+  }
+
+  return workspace;
 }
 
 async function requireLeader(workspaceId: string, userId: string) {
@@ -451,6 +511,7 @@ export async function updateMemberRole(
 }
 
 const ROLE_RANK: Record<Role, number> = {
+  [Role.GUEST]: -1,
   [Role.MEMBER]: 0,
   [Role.SUB_LEADER]: 1,
   [Role.LEADER]: 2,
@@ -741,6 +802,12 @@ export async function saveExcalidrawState(
   const membership = await getActorMembership(userId, workspaceId);
   if (!membership) {
     throw new ServiceError("You are not a member of this workspace", "FORBIDDEN");
+  }
+  if (membership.role === "GUEST") {
+    throw new ServiceError(
+      "Guests have read-only access to this workspace.",
+      "FORBIDDEN"
+    );
   }
   await prisma.workspace.update({
     where: { id: workspaceId },

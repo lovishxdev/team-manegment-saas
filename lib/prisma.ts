@@ -14,7 +14,7 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 /** Keep in sync with the latest migration that changes the generated client. */
-const PRISMA_CLIENT_BUILD = "20260709180000_post_message_agent_private";
+const PRISMA_CLIENT_BUILD = "20260710140000_guest_role";
 
 function createClient(): PrismaClient {
   const adapter = new PrismaPg({

@@ -5,6 +5,7 @@ import {
   resolvePostTagsForWorkspace,
 } from "@/lib/services/discussion-tags";
 import { getActorMembership, ServiceError } from "@/lib/services/project";
+import { assertCanCreateDiscussion } from "@/lib/billing/entitlements";
 import { resolveDiscussionMentionUserIds, mentionLabelsForUsers, bodyMentionsAgent } from "@/lib/mentions";
 import {
   postBodyPreview,
@@ -186,6 +187,18 @@ async function requireWorkspaceMember(userId: string, workspaceId: string) {
   const membership = await getActorMembership(userId, workspaceId);
   if (!membership) {
     throw new ServiceError("You are not a member of this workspace", "FORBIDDEN");
+  }
+  return membership;
+}
+
+/** Member who may write — blocks read-only guests. Use in discussion mutations. */
+async function requireWriteMember(userId: string, workspaceId: string) {
+  const membership = await requireWorkspaceMember(userId, workspaceId);
+  if (membership.role === "GUEST") {
+    throw new ServiceError(
+      "Guests have read-only access to this workspace.",
+      "FORBIDDEN"
+    );
   }
   return membership;
 }
@@ -531,7 +544,10 @@ export async function createPost(input: {
     throw new ServiceError("Message can't be empty", "INVALID_INPUT");
   }
 
-  await requireWorkspaceMember(input.userId, input.workspaceId);
+  await requireWriteMember(input.userId, input.workspaceId);
+
+  // Tier cap on open discussions (grandfather existing, block new).
+  await assertCanCreateDiscussion(input.workspaceId);
 
   let taskId = input.taskId ?? null;
   if (input.taskShortId !== undefined) {
@@ -595,7 +611,7 @@ export async function createPostReply(input: {
   parentMessageId: string;
   mentionRefs?: string[];
 }): Promise<PostMessageRow> {
-  await requireWorkspaceMember(input.userId, input.workspaceId);
+  await requireWriteMember(input.userId, input.workspaceId);
 
   const post = await prisma.post.findFirst({
     where: { id: input.postId, workspaceId: input.workspaceId },
@@ -628,7 +644,7 @@ export async function createAgentBranchReply(input: {
   parentMessageId: string;
   body: string;
 }): Promise<PostMessageRow> {
-  await requireWorkspaceMember(input.triggeredByUserId, input.workspaceId);
+  await requireWriteMember(input.triggeredByUserId, input.workspaceId);
 
   const body = input.body.trim();
   if (!body) {
@@ -702,7 +718,7 @@ export async function deletePostMessage(input: {
     throw new ServiceError("Message not found", "NOT_FOUND");
   }
 
-  await requireWorkspaceMember(input.userId, input.workspaceId);
+  await requireWriteMember(input.userId, input.workspaceId);
   if (message.authorId !== input.userId) {
     throw new ServiceError("You can only delete your own messages", "FORBIDDEN");
   }
@@ -727,7 +743,7 @@ export async function deletePost(input: {
   userId: string;
   postId: string;
 }): Promise<void> {
-  const membership = await requireWorkspaceMember(input.userId, input.workspaceId);
+  const membership = await requireWriteMember(input.userId, input.workspaceId);
 
   const post = await prisma.post.findFirst({
     where: { id: input.postId, workspaceId: input.workspaceId },
@@ -768,7 +784,7 @@ export async function setPostMessageSaved(input: {
     throw new ServiceError("Message not found", "NOT_FOUND");
   }
 
-  await requireWorkspaceMember(input.userId, input.workspaceId);
+  await requireWriteMember(input.userId, input.workspaceId);
 
   if (input.saved && (message.isAgentGenerated || message.isAgentPrivate)) {
     throw new ServiceError(
@@ -899,7 +915,7 @@ export async function setPostStatus(input: {
   postId: string;
   status: PostStatus;
 }): Promise<PostStatus> {
-  const membership = await requireWorkspaceMember(input.userId, input.workspaceId);
+  const membership = await requireWriteMember(input.userId, input.workspaceId);
 
   const post = await prisma.post.findFirst({
     where: { id: input.postId, workspaceId: input.workspaceId },
@@ -944,7 +960,7 @@ export async function setPostTaskLink(input: {
   taskId: string | null;
   taskShortId?: number;
 }): Promise<{ taskId: string | null; taskShortId: number | null; taskTitle: string | null }> {
-  const membership = await requireWorkspaceMember(input.userId, input.workspaceId);
+  const membership = await requireWriteMember(input.userId, input.workspaceId);
 
   const post = await prisma.post.findFirst({
     where: { id: input.postId, workspaceId: input.workspaceId },

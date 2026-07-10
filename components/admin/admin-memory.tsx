@@ -62,6 +62,7 @@ export function AdminMemory({ analytics }: { analytics: AdminMemoryAnalytics }) 
 
       <StatSection title="Capture funnel (7d)" stats={analytics.capture} />
       <StatSection title="Recall & resolution (7d)" stats={analytics.recall} />
+      <StatSection title="Dreaming (7d)" stats={analytics.dreaming} />
       <StatSection title="Token economy" stats={analytics.tokens} />
 
       <section className="dashboard-panel">
@@ -96,6 +97,60 @@ export function AdminMemory({ analytics }: { analytics: AdminMemoryAnalytics }) 
                     <td className={td}>{day.contextPulls}</td>
                     <td className={td}>{day.resolutionAsks}</td>
                     <td className={td}>{day.resolutionsConfirmed}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section className="dashboard-panel">
+        <h2 className={ui.sectionTitle}>Recent dream runs</h2>
+        {analytics.dreamRuns.length === 0 ? (
+          <p className={`mt-3 ${ui.mutedText}`}>
+            No dream runs yet — the nightly cron (or{" "}
+            <code className="rounded bg-paper-deep px-1 py-0.5 font-mono text-[11px]">
+              npm run dream:memory
+            </code>
+            ) will populate this.
+          </p>
+        ) : (
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[720px] border-collapse">
+              <thead>
+                <tr className="border-b border-line/70">
+                  <th className={th}>When</th>
+                  <th className={th}>Workspace</th>
+                  <th className={th}>Reviewed</th>
+                  <th className={th}>Merged</th>
+                  <th className={th}>Superseded</th>
+                  <th className={th}>Insights</th>
+                  <th className={th}>Archived</th>
+                  <th className={th}>Duration</th>
+                  <th className={th}>Note</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line/60">
+                {analytics.dreamRuns.map((run) => (
+                  <tr key={run.id}>
+                    <td className={`${td} whitespace-nowrap`}>
+                      {formatWhen(run.createdAt)}
+                    </td>
+                    <td className={`${td} max-w-[160px] truncate font-medium`}>
+                      {run.workspaceName}
+                    </td>
+                    <td className={td}>{run.reviewed}</td>
+                    <td className={td}>{run.merged}</td>
+                    <td className={td}>{run.superseded}</td>
+                    <td className={td}>{run.insights}</td>
+                    <td className={td}>{run.archived}</td>
+                    <td className={td}>
+                      {(run.durationMs / 1000).toFixed(1)}s
+                    </td>
+                    <td className={`${td} max-w-[220px] truncate text-ink-faint`}>
+                      {run.skipped ?? "—"}
+                    </td>
                   </tr>
                 ))}
               </tbody>

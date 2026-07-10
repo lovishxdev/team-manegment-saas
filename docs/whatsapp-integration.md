@@ -166,7 +166,7 @@ WhatsAppMessage               userId, role, content  // conversation memory
 ### Linked user — text (Haiku agentic loop)
 
 - Model: `claude-haiku-4-5`
-- Loads `getRecentConversation(userId)` — last **12 turns / 2 hours**
+- Loads `getRecentConversation(userId)` — last **12 turns / 12 hours**
 - Up to **16 tool rounds** (`MAX_TOOL_TURNS`)
 - Tools → `executeAction()` → same services as web/MCP
 - Summary built by `buildDeterministicSummary` (not model free text when tools ran)

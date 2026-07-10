@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 
-/** Same window as conversation history — stale cache must not hijack follow-ups. */
-export const WHATSAPP_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
+/** Task/update/blocker context window — workspace pin never expires. */
+export const WHATSAPP_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 
 const MAX_UPDATE_BODY = 400;
 const MAX_BLOCKER_SUMMARY = 200;
@@ -70,20 +70,22 @@ function rowToCache(row: {
   lastBlockerSummary: string | null;
   updatedAt: Date;
 }): WhatsAppUserCache | null {
-  if (!isFresh(row.updatedAt)) return null;
+  // Workspace pin never expires — only task/update/blocker context is TTL'd.
+  const fresh = isFresh(row.updatedAt);
+  if (!row.workspaceId && !fresh) return null;
 
   return {
     workspaceId: row.workspaceId,
     workspaceName: row.workspaceName,
     lastDiscussedTask:
-      row.lastTaskShortId != null
+      fresh && row.lastTaskShortId != null
         ? {
             shortId: row.lastTaskShortId,
             title: row.lastTaskTitle?.trim() || `task #${row.lastTaskShortId}`,
           }
         : null,
     lastCreatedTask:
-      row.lastCreatedTaskShortId != null
+      fresh && row.lastCreatedTaskShortId != null
         ? {
             shortId: row.lastCreatedTaskShortId,
             title:
@@ -92,6 +94,7 @@ function rowToCache(row: {
           }
         : null,
     lastUpdate:
+      fresh &&
       row.lastUpdateTaskShortId != null &&
       row.lastUpdateBody &&
       row.lastUpdateAt
@@ -105,7 +108,7 @@ function rowToCache(row: {
           }
         : null,
     lastBlocker:
-      row.lastBlockerEventId && row.lastBlockerSummary
+      fresh && row.lastBlockerEventId && row.lastBlockerSummary
         ? { eventId: row.lastBlockerEventId, summary: row.lastBlockerSummary }
         : null,
     updatedAt: row.updatedAt,

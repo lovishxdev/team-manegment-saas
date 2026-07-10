@@ -6,6 +6,7 @@ import {
   type MemoryEventRow,
 } from "@/lib/services/memory";
 import { notifyBlockerDetected } from "@/lib/whatsapp-notify";
+import { workspaceFeature } from "@/lib/billing/entitlements";
 import { suggestBlockerResolution } from "@/lib/memory/suggest";
 import { scheduleBackgroundTask } from "@/lib/background-task";
 import { postThreadTitle } from "@/lib/post-title";
@@ -165,6 +166,7 @@ const memoryEventSelect = {
   createdAt: true,
   resolvedAt: true,
   supersededByEventId: true,
+  dreamedAt: true,
   author: { select: { id: true, username: true, email: true } },
   task: { select: { shortId: true, title: true } },
 } as const;
@@ -180,6 +182,7 @@ async function loadExistingEventsForCapture(input: {
       where: {
         taskId: input.taskId,
         supersededByEventId: null,
+        archivedAt: null,
         OR: [
           { status: "OPEN" },
           { kind: "DECISION", createdAt: { gte: recentDecisionCutoff } },
@@ -196,6 +199,7 @@ async function loadExistingEventsForCapture(input: {
       workspaceId: input.workspaceId,
       taskId: null,
       supersededByEventId: null,
+      archivedAt: null,
       OR: [
         { status: "OPEN" },
         { kind: "DECISION", createdAt: { gte: recentDecisionCutoff } },
@@ -299,7 +303,9 @@ async function applyCaptureAnalysis(
     ctx.mode === "live" &&
     event.status === "OPEN" &&
     (kind === "BLOCKER" || kind === "DEPENDENCY") &&
-    ctx.task
+    ctx.task &&
+    // Automatic blocker routing to assignees is a paid (Team+) feature.
+    (await workspaceFeature(ctx.workspaceId, "blockerRouting"))
   ) {
     await notifyBlockerDetected({
       workspaceId: ctx.workspaceId,
@@ -634,6 +640,7 @@ export async function checkDecisionSupersession(eventId: string): Promise<void> 
       workspaceId: event.workspaceId,
       kind: "DECISION",
       supersededByEventId: null,
+      archivedAt: null,
       id: { not: event.id },
     },
     orderBy: { createdAt: "desc" },

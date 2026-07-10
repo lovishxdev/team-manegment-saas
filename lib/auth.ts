@@ -8,6 +8,7 @@ import {
   resolveNewUsername,
   syncUserProfile,
 } from "@/lib/username-server";
+import { ensureDefaultWorkspace } from "@/lib/services/workspace";
 
 type SessionClaims = {
   sub: string;
@@ -50,7 +51,13 @@ const getOrCreateUser = cache(async function getOrCreateUser(): Promise<User> {
   const existing = await prisma.user.findUnique({
     where: { id: sub },
   });
-  if (existing) return existing;
+  if (existing) {
+    // Users created by the Supabase trigger may not have a workspace yet.
+    if (!existing.lastActiveWorkspaceId) {
+      await ensureDefaultWorkspace(existing.id).catch(() => {});
+    }
+    return existing;
+  }
 
   const username = await resolveNewUsername({
     userId: sub,
@@ -58,13 +65,15 @@ const getOrCreateUser = cache(async function getOrCreateUser(): Promise<User> {
     metadata,
   });
 
-  return prisma.user.create({
+  const created = await prisma.user.create({
     data: {
       id: sub,
       email,
       username,
     },
   });
+  await ensureDefaultWorkspace(created.id).catch(() => {});
+  return created;
 });
 
 /**

@@ -14,6 +14,7 @@ const KIND_STYLES: Record<string, string> = {
   BLOCKER: "bg-rose-50 text-rose-700",
   DEPENDENCY: "bg-amber-50 text-amber-800",
   MILESTONE: "bg-emerald-50 text-emerald-700",
+  INSIGHT: "bg-violet-50 text-violet-700",
 };
 
 const KIND_LABELS: Record<string, string> = {
@@ -21,6 +22,7 @@ const KIND_LABELS: Record<string, string> = {
   BLOCKER: "Blocker",
   DEPENDENCY: "Dependency",
   MILESTONE: "Milestone",
+  INSIGHT: "Insight",
 };
 
 const chipCls =
@@ -85,6 +87,14 @@ export function MemoryEventCard({
             }`}
           >
             {isOpen ? "Open" : "Resolved"}
+          </span>
+        )}
+        {!event.reviewed && (
+          <span
+            className={`${chipCls} border border-dashed border-line bg-transparent text-ink-faint`}
+            title="Captured but not yet curated by the nightly memory review"
+          >
+            Unreviewed
           </span>
         )}
         <span className="ml-auto font-mono text-[11px] text-ink-faint">

@@ -35,6 +35,7 @@ export class ServiceError extends Error {
       | "AMBIGUOUS_WORKSPACE"
       | "UPLOAD_FAILED"
       | "INVALID_INPUT"
+      | "UPGRADE_REQUIRED"
   ) {
     super(message);
     this.name = "ServiceError";
@@ -62,6 +63,22 @@ async function assertMembership(userId: string, workspaceId: string) {
       "You are not a member of this workspace",
       "FORBIDDEN"
     );
+  }
+  return membership;
+}
+
+/** Read-only error for guests attempting any write. */
+export const GUEST_READONLY_MESSAGE =
+  "Guests have read-only access to this workspace.";
+
+/**
+ * Asserts the user is a member AND may write (not a GUEST). Returns membership.
+ * Use in every content mutation; reads keep using plain membership checks.
+ */
+export async function assertCanWrite(userId: string, workspaceId: string) {
+  const membership = await assertMembership(userId, workspaceId);
+  if (membership.role === "GUEST") {
+    throw new ServiceError(GUEST_READONLY_MESSAGE, "FORBIDDEN");
   }
   return membership;
 }
@@ -355,7 +372,7 @@ export async function createTask(input: CreateTaskInput) {
     tags,
     userId,
   } = input;
-  await assertMembership(userId, workspaceId);
+  await assertCanWrite(userId, workspaceId);
 
   const normalized = normalizeTaskTitleAndDescription(title, description);
   const resolvedCategoryId = await resolveTaskCategoryId(workspaceId, {
@@ -506,7 +523,7 @@ export async function resolveBatchAwareTaskShortId(
 
 export async function updateTask(input: UpdateTaskInput) {
   const { workspaceId, userId, taskId, shortId } = input;
-  await assertMembership(userId, workspaceId);
+  await assertCanWrite(userId, workspaceId);
 
   const existing = await findTaskInWorkspace(workspaceId, taskId, shortId);
   const existingAssignees = await prisma.taskAssignee.findMany({
@@ -609,7 +626,7 @@ export async function uploadAsset(input: UploadAssetInput) {
     taskId,
     taskShortId,
   } = input;
-  await assertMembership(uploadedById, workspaceId);
+  await assertCanWrite(uploadedById, workspaceId);
 
   let attachTaskId: string | null = null;
   if (taskId || taskShortId !== undefined) {
@@ -665,7 +682,7 @@ export interface DeleteTaskInput {
 
 export async function deleteTask(input: DeleteTaskInput) {
   const { workspaceId, userId, taskId, shortId } = input;
-  const membership = await assertMembership(userId, workspaceId);
+  const membership = await assertCanWrite(userId, workspaceId);
 
   const existing = await findTaskInWorkspace(workspaceId, taskId, shortId);
 
@@ -701,7 +718,7 @@ export async function deleteAsset(input: {
   userId: string;
 }) {
   const { workspaceId, assetId, userId } = input;
-  const membership = await assertMembership(userId, workspaceId);
+  const membership = await assertCanWrite(userId, workspaceId);
 
   const asset = await prisma.asset.findFirst({
     where: { id: assetId, workspaceId },
@@ -790,7 +807,7 @@ export async function updateAssetTags(input: {
   tags: string[];
 }) {
   const { workspaceId, assetId, userId, tags } = input;
-  await assertMembership(userId, workspaceId);
+  await assertCanWrite(userId, workspaceId);
 
   const asset = await prisma.asset.findFirst({
     where: { id: assetId, workspaceId },
@@ -815,6 +832,7 @@ export async function attachAssetToTask(input: {
   latest?: boolean;
 }) {
   const { workspaceId, userId, taskShortId, fileName, latest } = input;
+  await assertCanWrite(userId, workspaceId);
   const task = await findTaskInWorkspace(workspaceId, undefined, taskShortId);
   const asset = await resolveAssetForTagging({
     workspaceId,
@@ -884,6 +902,7 @@ export async function updateAssetTagsByRef(input: {
     fileName,
     latest,
   } = input;
+  await assertCanWrite(userId, workspaceId);
   const asset = await resolveAssetForTagging({
     workspaceId,
     userId,
@@ -1294,7 +1313,7 @@ export type BulkUpdateTasksInput = {
 
 /** Update many tasks matching shortId range, category, tag, etc. */
 export async function bulkUpdateTasks(input: BulkUpdateTasksInput) {
-  await assertMembership(input.userId, input.workspaceId);
+  await assertCanWrite(input.userId, input.workspaceId);
 
   const hasUpdate =
     input.status !== undefined ||

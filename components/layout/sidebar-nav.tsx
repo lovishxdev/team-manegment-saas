@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { GripVertical } from "lucide-react";
+import { GripVertical, LayoutGrid, Settings, CreditCard } from "lucide-react";
 import { useCreateWorkspaceModal } from "@/components/layout/create-workspace-modal-provider";
 import { OpenSettingsLink } from "@/components/settings/open-settings-link";
 import { isAccountSettingsPath } from "@/lib/account-settings";
@@ -18,25 +18,15 @@ type WorkspaceEntry = {
   openTasks: number;
 };
 
-function NavIcon({ name }: { name: "dashboard" | "settings" }) {
+function NavIcon({ name }: { name: "dashboard" | "settings" | "pricing" }) {
   const cls = "h-[17px] w-[17px] shrink-0";
   switch (name) {
     case "dashboard":
-      return (
-        <svg viewBox="0 0 18 18" fill="none" className={cls} stroke="currentColor" strokeWidth="1.4">
-          <rect x="2" y="2" width="5.5" height="5.5" rx="1.2" />
-          <rect x="10.5" y="2" width="5.5" height="5.5" rx="1.2" />
-          <rect x="2" y="10.5" width="5.5" height="5.5" rx="1.2" />
-          <rect x="10.5" y="10.5" width="5.5" height="5.5" rx="1.2" />
-        </svg>
-      );
+      return <LayoutGrid className={cls} strokeWidth={1.75} />;
     case "settings":
-      return (
-        <svg viewBox="0 0 18 18" fill="none" className={cls} stroke="currentColor" strokeWidth="1.4">
-          <circle cx="9" cy="9" r="2.25" />
-          <path d="M9 1.5v1.5M9 15v1.5M1.5 9H3M15 9h1.5M3.4 3.4l1.06 1.06M13.54 13.54l1.06 1.06M3.4 14.6l1.06-1.06M13.54 4.46l1.06-1.06" />
-        </svg>
-      );
+      return <Settings className={cls} strokeWidth={1.75} />;
+    case "pricing":
+      return <CreditCard className={cls} strokeWidth={1.75} />;
   }
 }
 
@@ -100,6 +90,14 @@ export function SidebarNav({ workspaces }: { workspaces: WorkspaceEntry[] }) {
           <NavIcon name="settings" />
           <span className="flex-1">Settings</span>
         </OpenSettingsLink>
+
+        <Link
+          href="/pricing"
+          className={`${ui.navItem} ${pathname === "/pricing" ? ui.navItemActive : ""}`}
+        >
+          <NavIcon name="pricing" />
+          <span className="flex-1">Pricing</span>
+        </Link>
       </div>
 
       <div className="mt-4 flex min-h-0 flex-1 flex-col">

@@ -185,7 +185,7 @@ export function matchWorkspaceByPickReply(
   return matchWorkspaceByName(workspaces, pickReply);
 }
 
-function matchWorkspaceByName(
+export function matchWorkspaceByName(
   workspaces: { id: string; name: string }[],
   needle: string
 ): { id: string; name: string } | null {
@@ -215,7 +215,48 @@ function matchWorkspaceByName(
 }
 
 /**
- * Activate a workspace from typed text — picker reply or "in Euclis" in a long message.
+ * Find a workspace the user named in free text ("add this to euclis tasks",
+ * "in Euclis", "for Landing Page Site"). Longer names win so "My Teams"
+ * beats "My Team". Returns null when zero or multiple distinct hits.
+ */
+export function findWorkspaceMentionedInMessage(
+  workspaces: { id: string; name: string }[],
+  text: string
+): { id: string; name: string } | null {
+  const lower = cleanPickToken(text).toLowerCase();
+  if (!lower) return null;
+
+  const sorted = [...workspaces].sort(
+    (a, b) => b.name.trim().length - a.name.trim().length
+  );
+
+  const hits: { id: string; name: string }[] = [];
+  for (const w of sorted) {
+    const name = w.name.trim().toLowerCase();
+    if (name.length < 2) continue;
+
+    // Treat the workspace name as a phrase bounded by non-alphanumeric chars
+    // so "euclis" matches inside "to euclis tasks" but not "euclisian".
+    const re = new RegExp(
+      `(^|[^\\p{L}\\p{N}])${escapeRegex(name)}(?=$|[^\\p{L}\\p{N}])`,
+      "iu"
+    );
+    if (!re.test(lower)) continue;
+
+    const coveredByLonger = hits.some((h) => {
+      const longer = h.name.trim().toLowerCase();
+      return longer.length > name.length && longer.includes(name);
+    });
+    if (!coveredByLonger) hits.push(w);
+  }
+
+  const unique = [...new Map(hits.map((h) => [h.id, h])).values()];
+  return unique.length === 1 ? unique[0] : null;
+}
+
+/**
+ * Activate a workspace named in the message — picker reply, or a workspace
+ * name spoken in plain language ("add this to euclis tasks").
  * Returns null when ambiguous or no match.
  */
 export async function tryActivateWorkspaceFromText(
@@ -223,24 +264,18 @@ export async function tryActivateWorkspaceFromText(
   text: string
 ): Promise<{ workspaceId: string; workspaceName: string } | null> {
   const memberships = await listWorkspacePickerOptions(userId);
-  if (memberships.length <= 1) return null;
+  if (memberships.length === 0) return null;
 
   const workspaces = memberships.map((m) => m.workspace);
+  if (memberships.length === 1) {
+    return activateWorkspace(userId, workspaces[0].id);
+  }
+
   const direct = matchWorkspaceByPickReply(workspaces, text);
   if (direct) return activateWorkspace(userId, direct.id);
 
-  const lower = text.toLowerCase();
-  const embedded = workspaces.filter((w) => {
-    const name = w.name.trim().toLowerCase();
-    if (name.length < 2) return false;
-    return (
-      new RegExp(`\\bin\\s+${escapeRegex(name)}\\b`, "i").test(lower) ||
-      new RegExp(`\\bfor\\s+${escapeRegex(name)}\\b`, "i").test(lower)
-    );
-  });
-  if (embedded.length === 1) {
-    return activateWorkspace(userId, embedded[0].id);
-  }
+  const mentioned = findWorkspaceMentionedInMessage(workspaces, text);
+  if (mentioned) return activateWorkspace(userId, mentioned.id);
 
   return null;
 }

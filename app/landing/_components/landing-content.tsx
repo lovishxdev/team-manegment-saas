@@ -64,6 +64,9 @@ export function LandingContent() {
             <Link href="#whatsapp" className="lp-nav-link">
               WhatsApp
             </Link>
+            <Link href="/pricing" className="lp-nav-link">
+              Pricing
+            </Link>
             <Link href="#faq" className="lp-nav-link hidden lg:inline-flex">
               FAQ
             </Link>
@@ -448,6 +451,9 @@ export function LandingContent() {
           <nav className="flex flex-wrap items-center gap-4 text-[13px] text-ink-soft">
             <Link href="#whatsapp" className="hover:text-ink">
               WhatsApp
+            </Link>
+            <Link href="/pricing" className="hover:text-ink">
+              Pricing
             </Link>
             <Link href="#faq" className="hover:text-ink">
               FAQ

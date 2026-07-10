@@ -9,6 +9,7 @@ import {
 import { memoryCaptureEnabled } from "@/lib/memory/capture";
 import { bumpMemoryMetric } from "@/lib/memory/metrics";
 import { notifyBlockerDetected } from "@/lib/whatsapp-notify";
+import { workspaceFeature } from "@/lib/billing/entitlements";
 import {
   claimResolutionSuggestion,
   type ClaimedSuggestion,
@@ -175,7 +176,7 @@ function summaryTokens(text: string): Set<string> {
   );
 }
 
-function isNearDuplicate(a: string, b: string): boolean {
+export function isNearDuplicate(a: string, b: string): boolean {
   const ta = summaryTokens(a);
   const tb = summaryTokens(b);
   if (ta.size === 0 || tb.size === 0) return false;
@@ -298,6 +299,7 @@ export async function captureFromAgentSession(input: {
       where: {
         workspaceId: input.workspaceId,
         supersededByEventId: null,
+        archivedAt: null,
         OR: [
           { status: "OPEN" },
           {
@@ -320,6 +322,7 @@ export async function captureFromAgentSession(input: {
         createdAt: true,
         resolvedAt: true,
         supersededByEventId: true,
+        dreamedAt: true,
         author: { select: { id: true, username: true, email: true } },
         task: { select: { shortId: true, title: true } },
       },
@@ -429,7 +432,9 @@ export async function captureFromAgentSession(input: {
       if (
         event.status === "OPEN" &&
         (kind === "BLOCKER" || kind === "DEPENDENCY") &&
-        taskShortId !== undefined
+        taskShortId !== undefined &&
+        // Automatic blocker routing to assignees is a paid (Team+) feature.
+        (await workspaceFeature(input.workspaceId, "blockerRouting"))
       ) {
         const task = await prisma.task.findFirst({
           where: { workspaceId: input.workspaceId, shortId: taskShortId },

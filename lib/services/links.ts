@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import {
+  assertCanWrite,
   getActorMembership,
   ServiceError,
   touchLastActiveWorkspace,
@@ -64,13 +65,7 @@ export async function createWorkspaceLink(input: {
   pinned?: boolean;
 }) {
   const { workspaceId, userId } = input;
-  const membership = await getActorMembership(userId, workspaceId);
-  if (!membership) {
-    throw new ServiceError(
-      "You are not a member of this workspace",
-      "FORBIDDEN"
-    );
-  }
+  await assertCanWrite(userId, workspaceId);
 
   const title = input.title.trim();
   if (!title) {
@@ -167,6 +162,13 @@ export async function toggleWorkspaceLinkPin(input: {
   if (!membership) {
     throw new ServiceError(
       "You are not a member of this workspace",
+      "FORBIDDEN"
+    );
+  }
+
+  if (membership.role === "GUEST") {
+    throw new ServiceError(
+      "Guests have read-only access to this workspace.",
       "FORBIDDEN"
     );
   }

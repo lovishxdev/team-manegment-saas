@@ -27,7 +27,15 @@ export type MemoryMetricName =
   /** get_project_context tool served (sum = response chars). */
   | "context_pull"
   /** Ambient brief built for hooks (sum = brief chars). */
-  | "brief_built";
+  | "brief_built"
+  /** Dream cycle ran (sum = events reviewed). */
+  | "dream_run"
+  /** Near-duplicate events merged into a canonical one by a dream. */
+  | "dream_merge"
+  /** Cross-event insights surfaced by a dream. */
+  | "dream_insight"
+  /** Stale resolved events retired from active memory by a dream. */
+  | "dream_archive";
 
 function utcDay(): Date {
   const now = new Date();

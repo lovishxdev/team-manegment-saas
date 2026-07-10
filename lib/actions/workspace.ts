@@ -288,11 +288,14 @@ export async function renameWorkspaceAction(
 }
 
 export async function createInviteAction(
-  workspaceId: string
+  workspaceId: string,
+  role?: "MEMBER" | "GUEST"
 ): Promise<ActionState & { inviteId?: string }> {
   const user = await requireUser();
   try {
-    const invite = await createInvite(workspaceId, user.id);
+    const invite = await createInvite(workspaceId, user.id, {
+      role: role === "GUEST" ? "GUEST" : "MEMBER",
+    });
     revalidatePath(`/w/${workspaceId}/settings`);
     return { inviteId: invite.id };
   } catch (err) {
@@ -629,6 +632,8 @@ export type MemoryEventView = {
   resolvedAt: string | null;
   authorLabel: string | null;
   task: { shortId: number; title: string } | null;
+  /** Curated by a dream pass yet? False = fresh capture, not reviewed. */
+  reviewed: boolean;
 };
 
 function toMemoryEventView(e: MemoryEventRow): MemoryEventView {
@@ -643,6 +648,7 @@ function toMemoryEventView(e: MemoryEventRow): MemoryEventView {
     resolvedAt: e.resolvedAt ? e.resolvedAt.toISOString() : null,
     authorLabel: e.author ? displayUser(e.author) : null,
     task: e.task,
+    reviewed: e.dreamedAt !== null,
   };
 }
 

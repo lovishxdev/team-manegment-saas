@@ -7,6 +7,7 @@ import {
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { GoogleAnalytics } from "@/components/analytics/google-analytics";
+import { PostHogProvider } from "@/components/analytics/posthog-provider";
 import { rootMetadata } from "@/lib/seo/metadata";
 import "./globals.css";
 
@@ -66,6 +67,7 @@ export default function RootLayout({
     >
       <body className="min-h-screen app-shell-bg">
         <GoogleAnalytics />
+        <PostHogProvider />
         <Analytics />
         <SpeedInsights />
         <div className="app-root relative z-[2] min-h-screen">{children}</div>

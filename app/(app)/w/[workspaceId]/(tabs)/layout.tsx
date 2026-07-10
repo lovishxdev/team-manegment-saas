@@ -3,6 +3,7 @@ import { WorkspaceTabsLayout } from "@/components/workspace/workspace-tabs-layou
 import { WorkspaceBreadcrumbName } from "@/components/workspace/workspace-breadcrumb-name";
 import { WorkspaceTitle } from "@/components/workspace/workspace-title";
 import { WorkspaceHeaderActionsLoader } from "@/components/workspace/workspace-header-actions-loader";
+import { WorkspaceTrialBanner } from "@/components/workspace/workspace-trial-banner";
 
 function TitleSkeleton() {
   return (
@@ -58,6 +59,11 @@ export default async function WorkspaceTabsRouteLayout({
   return (
     <WorkspaceTabsLayout
       workspaceId={workspaceId}
+      trialBanner={
+        <Suspense fallback={null}>
+          <WorkspaceTrialBanner workspaceId={workspaceId} />
+        </Suspense>
+      }
       breadcrumbName={
         <Suspense fallback={<BreadcrumbNameSkeleton />}>
           <WorkspaceBreadcrumbName workspaceId={workspaceId} />

@@ -11,6 +11,8 @@ enum Role {
   LEADER
   SUB_LEADER
   MEMBER
+  /// Read-only external collaborator (client). Team+ only; excluded from member cap.
+  GUEST
 }
 
 enum TaskStatus {
@@ -30,6 +32,8 @@ enum MemoryEventKind {
   BLOCKER
   DEPENDENCY
   MILESTONE
+  /// Cross-event pattern surfaced by the dream cycle (never by live capture).
+  INSIGHT
 }
 
 enum MemoryEventStatus {
@@ -47,6 +51,13 @@ enum PostKind {
 enum PostStatus {
   OPEN
   RESOLVED
+}
+
+/// Billing/entitlement tier for a workspace. Limits live in lib/billing/plans.ts.
+enum PlanTier {
+  HOBBY
+  TEAM
+  BUSINESS
 }
 
 /// Identity (passwords, OAuth) lives in Supabase Auth (auth.users).
@@ -101,6 +112,7 @@ model User {
   whatsappPendingActions WhatsAppPendingAction[]
   whatsappChatState WhatsAppChatState?
   botActions BotActionLog[]
+  agentSeats AgentSeat[]
 }
 
 model Workspace {
@@ -108,6 +120,15 @@ model Workspace {
   name            String
   excalidrawState Json     @default("{}")
   createdAt       DateTime @default(now())
+
+  /// Billing tier. Enforcement in lib/billing/entitlements.ts.
+  planTier      PlanTier  @default(HOBBY)
+  /// How planTier was set: "default" | "admin" | "trial" | "stripe".
+  planSource    String    @default("default")
+  /// Null = no expiry (free or active subscription).
+  planExpiresAt DateTime?
+  /// Set once when a self-serve trial starts — enforces one trial per workspace lifetime.
+  trialStartedAt DateTime?
 
   memberships     WorkspaceMembership[]
   tasks           Task[]
@@ -120,8 +141,26 @@ model Workspace {
   posts           Post[]
   discussionTags  WorkspaceDiscussionTag[]
   memoryEvents    MemoryEvent[]
+  memoryDreamRuns MemoryDreamRun[]
+  agentSeats      AgentSeat[]
   lastActiveUsers User[]                @relation("LastActiveWorkspace")
   mcpPinnedUsers  User[]                @relation("McpPinnedWorkspace")
+}
+
+/// Distinct engineers with a connected ambient coding-agent, per workspace.
+/// A "seat" = a user (headcount), enforced against PLAN_LIMITS.ambientAgentSeats
+/// (Hobby: 1, Team+: unlimited). Recorded on first agent-session ingest.
+model AgentSeat {
+  workspaceId String   @db.Uuid
+  userId      String   @db.Uuid
+  createdAt   DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([workspaceId, userId])
+  @@index([workspaceId])
 }
 
 /// Per-workspace task categories (defaults + custom labels).
@@ -303,6 +342,15 @@ model MemoryEvent {
   /// (never deleted) so recall can walk the "why it changed" chain.
   supersededByEventId String?  @db.Uuid
 
+  /// Set by the dream cycle when a stale resolved event is retired from
+  /// active memory (excluded from listings/recall/briefs, never deleted).
+  archivedAt DateTime?
+
+  /// Last dream pass that reviewed this event. Null = captured but not yet
+  /// curated ("unreviewed"). Events stay fully live either way — this is a
+  /// trust indicator, not a gate.
+  dreamedAt DateTime?
+
   /// Semantic index over summary+reasoning (same JSON-vector pattern as
   /// TaskEmbedding). Null until the fire-and-forget embed job runs.
   embedding   Json?
@@ -329,6 +377,28 @@ model MemoryEvent {
   @@index([workspaceId, status, kind])
   @@index([taskId, createdAt])
   @@index([workspaceId, createdAt])
+}
+
+/// One row per dream-cycle execution — the audit log behind the admin
+/// "Recent dream runs" table (cooldown checks read the latest row).
+model MemoryDreamRun {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  /// Events in the active store when the dream ran.
+  reviewed    Int      @default(0)
+  merged      Int      @default(0)
+  superseded  Int      @default(0)
+  insights    Int      @default(0)
+  archived    Int      @default(0)
+  /// Why nothing ran ("only 3 events (min 8)"), null for full runs.
+  skipped     String?
+  durationMs  Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@index([createdAt])
 }
 
 /// Day-bucketed counters for the memory pipeline (capture funnel, recall
@@ -705,6 +775,8 @@ model OAuthToken {
 model WorkspaceInvite {
   id          String   @id @default(uuid()) @db.Uuid
   workspaceId String   @db.Uuid
+  /// Role granted on accept. GUEST = read-only client (Team+ only).
+  role        Role     @default(MEMBER)
   maxUses     Int      @default(1)
   usesCount   Int      @default(0)
   expiresAt   DateTime

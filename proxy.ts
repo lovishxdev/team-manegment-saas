@@ -12,6 +12,7 @@ const PUBLIC_PATHS = [
   "/auth",
   "/invite",
   "/landing",
+  "/pricing",
   "/guides",
   "/compare",
   "/privacy",

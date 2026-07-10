@@ -226,7 +226,7 @@ const demoteMemberTool: ToolDef = {
           `@${displayUser(target.user)} is already ${formatMemberRole(newRole)}.`
         );
       }
-      const rank = { MEMBER: 0, SUB_LEADER: 1, LEADER: 2 };
+      const rank = { GUEST: -1, MEMBER: 0, SUB_LEADER: 1, LEADER: 2 };
       if (rank[newRole] >= rank[target.role]) {
         return soft("That is not a demotion — use promote_member instead.");
       }

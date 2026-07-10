@@ -3,8 +3,11 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { ServiceError } from "@/lib/services/project";
 import { getWorkspaceMembers, listInvites } from "@/lib/services/workspace";
+import { getWorkspaceMemoryAnalytics } from "@/lib/services/workspace-analytics";
+import { workspaceFeature } from "@/lib/billing/entitlements";
 import { prisma } from "@/lib/prisma";
 import { DangerZone } from "@/components/settings/danger-zone";
+import { WorkspaceMemoryInsights } from "@/components/workspace/workspace-memory-insights";
 import { InviteRow } from "@/components/members/invite-row";
 import { MemberRow } from "@/components/members/member-row";
 import { WorkspaceRenameForm } from "@/components/workspace/workspace-rename-form";
@@ -34,8 +37,25 @@ async function SettingsData({ workspaceId }: { workspaceId: string }) {
   const canInvite = isLeader || selfRole === "SUB_LEADER";
   const invites = canInvite ? await listInvites(workspaceId, user.id) : [];
 
+  // Leader analytics (Team+): workspace-scoped memory insights for leaders.
+  const analytics =
+    canInvite && (await workspaceFeature(workspaceId, "leaderAnalytics"))
+      ? await getWorkspaceMemoryAnalytics(workspaceId, user.id).catch(() => null)
+      : null;
+
   return (
     <>
+      {analytics ? (
+        <section className="mb-10">
+          <h2 className={ui.settingsSectionTitle}>Project insights</h2>
+          <p className={`${ui.fieldHint} mb-4`}>
+            A snapshot of your workspace&apos;s memory — decisions, blockers, and
+            curation health.
+          </p>
+          <WorkspaceMemoryInsights analytics={analytics} />
+        </section>
+      ) : null}
+
       <section className="mb-10 max-w-2xl">
         <h2 className={ui.settingsSectionTitle}>General</h2>
         <p className={`${ui.fieldHint} mb-4`}>

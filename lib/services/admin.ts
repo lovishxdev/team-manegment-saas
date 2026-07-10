@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import type { PlanTier } from "@/lib/generated/prisma/client";
 import { displayUser } from "@/lib/username";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -313,6 +314,39 @@ export async function getAdminUserAnalytics(): Promise<AdminUserAnalytics> {
     },
     users: usage,
   };
+}
+
+export type AdminWorkspacePlan = {
+  id: string;
+  name: string;
+  planTier: PlanTier;
+  planSource: string;
+  memberCount: number;
+  createdAt: string;
+};
+
+/** All workspaces with their billing tier — for the admin plans manager. */
+export async function getAdminWorkspacePlans(): Promise<AdminWorkspacePlan[]> {
+  const workspaces = await prisma.workspace.findMany({
+    orderBy: [{ createdAt: "asc" }],
+    select: {
+      id: true,
+      name: true,
+      planTier: true,
+      planSource: true,
+      createdAt: true,
+      _count: { select: { memberships: true } },
+    },
+  });
+
+  return workspaces.map((w) => ({
+    id: w.id,
+    name: w.name,
+    planTier: w.planTier,
+    planSource: w.planSource,
+    memberCount: w._count.memberships,
+    createdAt: w.createdAt.toISOString(),
+  }));
 }
 
 /** Read-only aggregates for the local admin dashboard. */

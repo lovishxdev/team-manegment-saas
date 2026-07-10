@@ -27,6 +27,7 @@ import {
   type SavedDiscussionMessageView,
 } from "@/lib/actions/discussion";
 import { fetchWorkspaceMemberLabelsAction } from "@/lib/actions/workspace";
+import { fetchWorkspaceLimitsAction } from "@/lib/actions/billing";
 import type { ChatMessageView } from "@/lib/chat-message";
 import type { ThreadMessageView } from "@/lib/post-thread";
 import { POST_KIND_HINTS, POST_KIND_LABELS, POST_KINDS } from "@/lib/post-kind";
@@ -460,6 +461,9 @@ export function DiscussionFeed({
   const [, startActionTransition] = useTransition();
   const [pinningId, setPinningId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [discussionCapReason, setDiscussionCapReason] = useState<string | null>(
+    null
+  );
   const [addingTag, startAddTag] = useTransition();
   const postsRequestRef = useRef(0);
   const hasPostsRef = useRef(false);
@@ -499,6 +503,17 @@ export function DiscussionFeed({
     setAllPosts(result.posts);
   }, [workspaceId]);
 
+  const refreshLimits = useCallback(async () => {
+    const result = await fetchWorkspaceLimitsAction(workspaceId);
+    if (result.status) {
+      setDiscussionCapReason(
+        result.status.atDiscussionCap
+          ? `${result.status.planName} plan allows ${result.status.limits.maxOpenDiscussions} open discussions. Close one or upgrade to start another.`
+          : null
+      );
+    }
+  }, [workspaceId]);
+
   const loadSaved = useCallback(async () => {
     const result = await fetchSavedDiscussionMessagesAction(workspaceId);
     if (result.error) {
@@ -518,6 +533,7 @@ export function DiscussionFeed({
     void refreshPosts();
     void loadSaved();
     void loadTags();
+    void refreshLimits();
     fetchWorkspaceMemberLabelsAction(workspaceId).then(setMembers);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reload feed when workspace changes
   }, [workspaceId]);
@@ -579,6 +595,7 @@ export function DiscussionFeed({
         return;
       }
       setShowCompose(false);
+      void refreshLimits();
       if (result.postId) {
         const branch = bodyMentionsAgent(input.body) ? "?branchAgent=1" : "";
         router.push(`/w/${workspaceId}/discussion/${result.postId}${branch}`);
@@ -671,6 +688,7 @@ export function DiscussionFeed({
         current.filter((item) => item.postId !== post.id)
       );
       setError(null);
+      void refreshLimits();
     });
   }
 
@@ -753,6 +771,8 @@ export function DiscussionFeed({
               <button
                 type="button"
                 onClick={() => setShowCompose(true)}
+                disabled={Boolean(discussionCapReason)}
+                title={discussionCapReason ?? undefined}
                 className={`${ui.btnPrimary} shrink-0 gap-1.5`}
               >
                 <Plus className="h-4 w-4" strokeWidth={2} />
@@ -760,6 +780,12 @@ export function DiscussionFeed({
               </button>
             ) : null}
           </div>
+
+          {discussionCapReason ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
+              {discussionCapReason}
+            </div>
+          ) : null}
 
           {showCompose ? (
             <div className="dashboard-panel">

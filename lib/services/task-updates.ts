@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { getActorMembership, ServiceError } from "@/lib/services/project";
+import { assertCanWrite, getActorMembership, ServiceError } from "@/lib/services/project";
 import { scheduleTaskUpdateEmbeddingIndex } from "@/lib/retrieval/update-index";
 import { scheduleMemoryCapture } from "@/lib/memory/capture";
 import { resolveAllMentionUserIds, mentionLabelsForUsers } from "@/lib/mentions";
@@ -127,6 +127,7 @@ export async function createTaskUpdate(input: {
   /** Member handles tagged by the agent from natural language (no @ in body). */
   mentionRefs?: string[];
 }): Promise<TaskUpdateRow & { taskShortId: number; taskTitle: string }> {
+  await assertCanWrite(input.userId, input.workspaceId);
   const body = input.body.trim();
   if (!body) {
     throw new ServiceError("Update message can't be empty", "INVALID_INPUT");
@@ -252,7 +253,7 @@ export async function deleteTaskUpdate(input: {
     throw new ServiceError("Update not found", "NOT_FOUND");
   }
 
-  await getActorMembership(input.userId, input.workspaceId);
+  await assertCanWrite(input.userId, input.workspaceId);
   if (update.authorId !== input.userId) {
     throw new ServiceError("You can only delete your own updates", "FORBIDDEN");
   }
@@ -274,7 +275,7 @@ export async function setTaskUpdateSaved(input: {
     throw new ServiceError("Update not found", "NOT_FOUND");
   }
 
-  await getActorMembership(input.userId, input.workspaceId);
+  await assertCanWrite(input.userId, input.workspaceId);
 
   if (input.saved) {
     await prisma.taskUpdateSave.upsert({

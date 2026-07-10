@@ -14,6 +14,7 @@ import {
   validateUsernameFormat,
 } from "@/lib/username";
 import { isUsernameTaken } from "@/lib/username-server";
+import { ensureDefaultWorkspace } from "@/lib/services/workspace";
 
 export type AuthFormState = { error?: string; message?: string };
 
@@ -87,6 +88,7 @@ export async function signUpAction(
       update: { username, email },
       create: { id: data.user.id, email, username },
     });
+    await ensureDefaultWorkspace(data.user.id).catch(() => {});
   }
 
   // If email confirmations are disabled, a session exists already.

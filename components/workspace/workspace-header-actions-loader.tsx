@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { ServiceError } from "@/lib/services/project";
 import { getWorkspaceMembers } from "@/lib/services/workspace";
 import { getWorkspaceChrome } from "@/lib/services/workspace-chrome";
+import { getWorkspaceEntitlements, memberCapReached } from "@/lib/billing/entitlements";
 import { displayUser } from "@/lib/username";
 import { WorkspaceHeaderActions } from "@/components/workspace/workspace-header-actions";
 
@@ -15,10 +16,17 @@ export async function WorkspaceHeaderActionsLoader({
   const user = await requireUser();
 
   try {
-    const [{ canInvite }, { members }] = await Promise.all([
+    const [{ canInvite }, { members }, { tier, limits }] = await Promise.all([
       getWorkspaceChrome(workspaceId, user.id),
       getWorkspaceMembers(workspaceId, user.id),
+      getWorkspaceEntitlements(workspaceId),
     ]);
+
+    const nonGuestCount = members.filter((m) => m.role !== "GUEST").length;
+    const inviteCapReason =
+      canInvite && memberCapReached(tier, nonGuestCount)
+        ? `Member limit reached (${limits.maxMembers}). Upgrade to invite more.`
+        : undefined;
 
     return (
       <WorkspaceHeaderActions
@@ -28,6 +36,8 @@ export async function WorkspaceHeaderActionsLoader({
         }))}
         workspaceId={workspaceId}
         canInvite={canInvite}
+        inviteCapReason={inviteCapReason}
+        canInviteGuest={canInvite && limits.guestAccess}
       />
     );
   } catch (err) {
