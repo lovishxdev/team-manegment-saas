@@ -15,7 +15,7 @@ export function buildPageMetadata({
   description = DEFAULT_DESCRIPTION,
   path = "/",
   index = true,
-  ogImageAlt = `${SITE_NAME} — team task board`,
+  ogImageAlt = `${SITE_NAME} — project memory for teams and agents`,
 }: PageMetadataInput): Metadata {
   const canonical = siteUrl(path);
 
@@ -56,7 +56,7 @@ export function buildPageMetadata({
 export const rootMetadata: Metadata = {
   metadataBase: new URL(siteUrl()),
   title: {
-    default: `${SITE_NAME} | Free team task board — web, WhatsApp & Claude`,
+    default: `${SITE_NAME} | Project memory for teams and AI agents`,
     template: `%s · ${SITE_NAME}`,
   },
   description: DEFAULT_DESCRIPTION,
@@ -74,20 +74,20 @@ export const rootMetadata: Metadata = {
     locale: "en_US",
     url: siteUrl(),
     siteName: SITE_NAME,
-    title: `${SITE_NAME} | Free team task board`,
+    title: `${SITE_NAME} | Project memory for teams and AI agents`,
     description: DEFAULT_DESCRIPTION,
     images: [
       {
         url: "/opengraph-image",
         width: 1200,
         height: 630,
-        alt: "Euclis — free team task board with web, WhatsApp, and Claude MCP",
+        alt: "Euclis — project memory for teams and AI agents",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: `${SITE_NAME} | Free team task board`,
+    title: `${SITE_NAME} | Project memory for teams and AI agents`,
     description: DEFAULT_DESCRIPTION,
     images: ["/opengraph-image"],
   },

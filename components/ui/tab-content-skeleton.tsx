@@ -58,7 +58,7 @@ export function DiscussionContentSkeleton() {
   return (
     <div className="mt-2 flex flex-col gap-6">
       <Pulse className="h-16 max-w-2xl" />
-      <div className="flex flex-col gap-3 rounded-xl border border-line bg-white p-4">
+      <div className="flex flex-col gap-3 rounded-xl border border-line bg-card p-4">
         <Pulse className="h-8 w-48" />
         <Pulse className="h-24" />
         <Pulse className="h-20" />

@@ -7,33 +7,33 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const lastModified = new Date();
 
   const comparePages = ["trello", "notion", "clickup", "spreadsheets", "taskrio"] as const;
+  const guidePages = [
+    "project-memory-dreaming",
+    "manage-tasks-from-whatsapp",
+    "hackathon-task-board",
+    "claude-mcp-task-board",
+  ] as const;
 
   const pages: MetadataRoute.Sitemap = [
     { url: base, lastModified, changeFrequency: "weekly", priority: 1 },
+    {
+      url: `${base}/pricing`,
+      lastModified,
+      changeFrequency: "weekly",
+      priority: 0.95,
+    },
     {
       url: `${base}/signup`,
       lastModified,
       changeFrequency: "monthly",
       priority: 0.9,
     },
-    {
-      url: `${base}/guides/manage-tasks-from-whatsapp`,
+    ...guidePages.map((slug) => ({
+      url: `${base}/guides/${slug}`,
       lastModified,
-      changeFrequency: "monthly",
+      changeFrequency: "monthly" as const,
       priority: 0.85,
-    },
-    {
-      url: `${base}/guides/hackathon-task-board`,
-      lastModified,
-      changeFrequency: "monthly",
-      priority: 0.85,
-    },
-    {
-      url: `${base}/guides/claude-mcp-task-board`,
-      lastModified,
-      changeFrequency: "monthly",
-      priority: 0.85,
-    },
+    })),
     ...comparePages.map((slug) => ({
       url: `${base}/compare/${slug}`,
       lastModified,

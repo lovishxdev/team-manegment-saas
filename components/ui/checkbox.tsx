@@ -34,7 +34,7 @@ export function Checkbox({
           aria-hidden
           className={`flex h-5 w-5 items-center justify-center rounded-[5px] border-2 transition-all duration-150 peer-focus-visible:ring-2 peer-focus-visible:ring-ink/20 peer-focus-visible:ring-offset-1 ${
             checked
-              ? "border-ink bg-ink text-white"
+              ? "border-ink bg-ink text-white dark:text-on-accent"
               : "border-line-strong bg-paper peer-hover:border-ink/35"
           }`}
         >

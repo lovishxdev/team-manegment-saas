@@ -20,7 +20,7 @@ export async function AppShellMobileUser() {
           type="submit"
           title="Sign out"
           aria-label="Sign out"
-          className="rounded-lg p-1.5 text-ink-faint transition hover:bg-white/60 hover:text-ink"
+          className="rounded-lg p-1.5 text-ink-faint transition hover:bg-white/60 hover:text-ink dark:hover:bg-white/10"
         >
           <svg
             viewBox="0 0 16 16"

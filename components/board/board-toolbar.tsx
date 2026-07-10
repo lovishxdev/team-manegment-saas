@@ -77,7 +77,7 @@ export function BoardToolbar({
       <button
         type="button"
         onClick={onAddTaskClick}
-        className="inline-flex h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-xl bg-ink px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-ink/90"
+        className="inline-flex h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-xl bg-ink px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-ink/90 dark:text-on-accent dark:hover:bg-accent-bright"
       >
         + Add Task
       </button>

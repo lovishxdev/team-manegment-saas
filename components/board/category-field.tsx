@@ -14,10 +14,10 @@ const rowControlH = "h-[46px]";
 const rowControlHLg = "h-[52px]";
 
 const rowIconBtn =
-  `inline-flex ${rowControlH} w-[46px] shrink-0 items-center justify-center rounded-lg border border-line-strong bg-paper text-base font-medium text-ink-soft transition-colors hover:border-ink/20 hover:bg-white hover:text-ink hover:shadow-sm`;
+  `inline-flex ${rowControlH} w-[46px] shrink-0 items-center justify-center rounded-lg border border-line-strong bg-paper text-base font-medium text-ink-soft transition-colors hover:border-ink/20 hover:bg-white dark:hover:bg-card-high hover:text-ink hover:shadow-sm`;
 
 export const categoryRowPrimaryBtn =
-  `inline-flex ${rowControlH} shrink-0 items-center justify-center rounded-lg bg-ink px-4 text-sm font-medium text-white transition-colors hover:bg-ink/90 disabled:cursor-not-allowed disabled:opacity-60 min-w-[4.25rem]`;
+  `inline-flex ${rowControlH} shrink-0 items-center justify-center rounded-lg bg-ink px-4 text-sm font-medium text-white transition-colors hover:bg-ink/90 disabled:cursor-not-allowed disabled:opacity-60 min-w-[4.25rem] dark:text-on-accent dark:hover:bg-accent-bright`;
 
 export function CategoryField({
   categories,
@@ -62,8 +62,8 @@ export function CategoryField({
   }));
 
   const controlH = size === "lg" ? rowControlHLg : rowControlH;
-  const iconBtn = `inline-flex ${controlH} ${size === "lg" ? "w-[52px]" : "w-[46px]"} shrink-0 items-center justify-center rounded-lg border border-line-strong bg-white text-base font-medium text-ink-soft transition-colors hover:border-ink/20 hover:bg-paper hover:text-ink hover:shadow-sm`;
-  const textBtn = `inline-flex ${controlH} shrink-0 items-center justify-center rounded-lg border border-line-strong bg-white px-3.5 text-sm font-medium text-ink-soft transition-colors hover:border-ink/20 hover:bg-paper hover:text-ink`;
+  const iconBtn = `inline-flex ${controlH} ${size === "lg" ? "w-[52px]" : "w-[46px]"} shrink-0 items-center justify-center rounded-lg border border-line-strong bg-card text-base font-medium text-ink-soft transition-colors hover:border-ink/20 hover:bg-paper hover:text-ink hover:shadow-sm`;
+  const textBtn = `inline-flex ${controlH} shrink-0 items-center justify-center rounded-lg border border-line-strong bg-card px-3.5 text-sm font-medium text-ink-soft transition-colors hover:border-ink/20 hover:bg-paper hover:text-ink`;
   const stackAddBtn =
     "inline-flex items-center gap-1 self-start text-sm text-ink-soft transition-colors hover:text-ink";
 

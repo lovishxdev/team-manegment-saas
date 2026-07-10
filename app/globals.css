@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* Class-based dark variant, scoped to app surfaces (.app-scope) only so the
+   marketing landing and other public pages never darken. */
+@custom-variant dark (&:where([data-theme="dark"] .app-scope, [data-theme="dark"] .app-scope *));
+
 /*
  * Euclis design tokens — light dashboard theme.
  * Soft gray shell, white panels, subtle borders, ink emphasis.
@@ -355,4 +359,151 @@ body::before {
     inset 0 1px 0 rgba(255, 255, 255, 0.5),
     0 4px 20px rgba(140, 160, 200, 0.07),
     0 16px 40px rgba(120, 140, 180, 0.06);
+}
+
+/* ============================================================
+   Dark mode — opt-in, scoped to app surfaces via .app-scope.
+   Landing and other public pages never carry .app-scope, so they
+   stay light regardless of the resolved theme. Palette seeded from
+   the landing "Dreaming" section (deep indigo-black, moonlit ink).
+   ============================================================ */
+[data-theme="dark"] .app-scope {
+  --color-paper: #16161f;
+  --color-paper-deep: #232333;
+  --color-shell: #0b0b14;
+  --color-card: #16161f;
+  --color-card-high: #1e1e29;
+
+  --color-ink: #f4f3fb;
+  --color-ink-soft: #a6a4bb;
+  --color-ink-faint: #6f6d84;
+
+  --color-line: rgba(255, 255, 255, 0.1);
+  --color-line-strong: rgba(255, 255, 255, 0.18);
+
+  --color-accent: #f4f3fb;
+  --color-accent-bright: #e6e5f2;
+  --color-accent-soft: rgba(255, 255, 255, 0.08);
+  --color-on-accent: #14141f;
+
+  color-scheme: dark;
+}
+
+/* App canvas fills the viewport and covers the light shell mesh (body::before/::after).
+   Only applied to full-page app wrappers, never modal overlays (their scrim stays intact). */
+[data-theme="dark"] .app-canvas {
+  background-color: var(--color-shell);
+}
+
+/* On dark app pages, paint the root + body dark so overscroll / rubber-band
+   bounce doesn't reveal the light shell, and drop the light mesh entirely.
+   Scoped with :has(.app-canvas) so the landing and public pages are untouched. */
+[data-theme="dark"]:has(.app-canvas),
+[data-theme="dark"]:has(.app-canvas) body {
+  background-color: #0b0b14;
+}
+[data-theme="dark"]:has(.app-canvas) body::before,
+[data-theme="dark"]:has(.app-canvas) body::after {
+  display: none;
+}
+
+[data-theme="dark"] .app-scope ::selection {
+  background: rgba(255, 255, 255, 0.16);
+  color: var(--color-ink);
+}
+[data-theme="dark"] .app-scope ::-moz-selection {
+  background: rgba(255, 255, 255, 0.16);
+  color: var(--color-ink);
+}
+
+/* Frosted surfaces → dark translucent glass. */
+[data-theme="dark"] .app-scope .shell-glass,
+[data-theme="dark"] .app-scope.shell-glass {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 4px 20px rgba(0, 0, 0, 0.35),
+    0 16px 40px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .app-scope .shell-sidebar,
+[data-theme="dark"] .app-scope.shell-sidebar {
+  background: rgba(20, 20, 30, 0.72);
+  border-right-color: rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 4px 24px rgba(0, 0, 0, 0.4);
+}
+
+@media (max-width: 767px) {
+  [data-theme="dark"] .app-scope .shell-sidebar,
+  [data-theme="dark"] .app-scope.shell-sidebar {
+    background: var(--color-paper);
+    border-right-color: var(--color-line);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);
+  }
+}
+
+[data-theme="dark"] .app-scope .dashboard-panel,
+[data-theme="dark"] .app-scope.dashboard-panel {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.07);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 4px 20px rgba(0, 0, 0, 0.35),
+    0 16px 40px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .app-scope .content-panel,
+[data-theme="dark"] .app-scope.content-panel {
+  background: var(--color-card);
+  border-color: var(--color-line);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] .app-scope .modal-accent-band,
+[data-theme="dark"] .app-scope.modal-accent-band {
+  background-image:
+    linear-gradient(to bottom, transparent 0%, rgba(11, 11, 20, 0.45) 100%),
+    radial-gradient(
+      ellipse 70% 120% at 88% 0%,
+      rgba(129, 140, 248, 0.22) 0%,
+      rgba(168, 85, 247, 0.14) 45%,
+      transparent 72%
+    ),
+    radial-gradient(
+      ellipse 50% 100% at 60% 0%,
+      rgba(56, 189, 248, 0.12) 0%,
+      transparent 70%
+    );
+  background-color: #14141f;
+}
+
+[data-theme="dark"] .app-scope .updates-scroll {
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+[data-theme="dark"] .app-scope .updates-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+}
+[data-theme="dark"] .app-scope .updates-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+/* Kanban columns → muted translucent status tints. */
+[data-theme="dark"] .app-scope .kanban-column,
+[data-theme="dark"] .app-scope .kanban-column-skeleton {
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 4px 20px rgba(0, 0, 0, 0.35);
+}
+[data-theme="dark"] .app-scope .kanban-column--todo {
+  background: rgba(244, 63, 94, 0.1);
+}
+[data-theme="dark"] .app-scope .kanban-column--progress {
+  background: rgba(245, 158, 11, 0.1);
+}
+[data-theme="dark"] .app-scope .kanban-column--done {
+  background: rgba(139, 92, 246, 0.12);
 }

@@ -11,6 +11,7 @@ import type {
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { createSupabaseBrowser } from "@/lib/supabase-browser";
 import { saveWhiteboardAction } from "@/lib/actions/workspace";
+import { useTheme } from "@/components/theme/theme-provider";
 import "@excalidraw/excalidraw/index.css";
 
 // Excalidraw touches window/document at module scope -- client-only import.
@@ -95,6 +96,7 @@ export function Whiteboard({
   /** Shown to other collaborators via presence (email or name). */
   userLabel: string;
 }) {
+  const { resolved: appTheme } = useTheme();
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
   const [status, setStatus] = useState<SaveStatus>("saved");
   const [peers, setPeers] = useState(0);
@@ -123,13 +125,14 @@ export function Whiteboard({
     Array.isArray(initialState.elements) && initialState.elements.length > 0;
 
   // Treat server-loaded state as already persisted so idle canvas stays "Saved".
+  // Theme is intentionally excluded — it's a per-viewer display concern driven
+  // by the app theme, not something we persist into the shared document.
   if (lastPersisted.current === null && hasContent) {
+    const { theme: _theme, ...persistedAppState } =
+      (initialState.appState as Record<string, unknown>) ?? {};
     lastPersisted.current = JSON.stringify({
       elements: initialState.elements,
-      appState: {
-        ...((initialState.appState as object) ?? {}),
-        theme: "light",
-      },
+      appState: persistedAppState,
       files: initialState.files ?? null,
     });
     lastElementsKey.current = JSON.stringify(initialState.elements);
@@ -143,11 +146,11 @@ export function Whiteboard({
           ...((initialState.appState as object) ?? {}),
           // Maps/live-session fields don't survive JSON; never restore them.
           collaborators: new Map(),
-          theme: "light" as const,
+          theme: appTheme,
         },
         files: (initialState.files as never) ?? undefined,
       }
-    : { appState: { theme: "light" as const } };
+    : { appState: { theme: appTheme } };
 
   // --- Durability: debounced save to the DB (local edits only) ------------
 
@@ -157,12 +160,16 @@ export function Whiteboard({
       appState: Record<string, unknown>,
       files: unknown
     ) => {
-      // Strip non-serializable / volatile fields before persisting.
-      const { collaborators: _collaborators, ...persistableAppState } =
-        appState;
+      // Strip non-serializable / volatile fields before persisting. Theme is a
+      // per-viewer display concern, so it is never written to the shared state.
+      const {
+        collaborators: _collaborators,
+        theme: _theme,
+        ...persistableAppState
+      } = appState;
       const snapshot = JSON.stringify({
         elements,
-        appState: { ...persistableAppState, theme: "light" },
+        appState: persistableAppState,
         files,
       });
 
@@ -375,7 +382,7 @@ export function Whiteboard({
       <Excalidraw
         excalidrawAPI={(value) => setApi(value)}
         initialData={initialData}
-        theme="light"
+        theme={appTheme}
         isCollaborating={peers > 1}
         onPointerUpdate={({ pointer, button }) => sendPointer(pointer, button)}
         onChange={(elements, appState, files) => {

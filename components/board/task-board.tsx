@@ -85,27 +85,30 @@ const COLUMNS: {
     label: "To-dos",
     columnClass: "kanban-column--todo",
     emptyZone:
-      "border-rose-300/55 bg-white/25 hover:border-rose-400/70 hover:bg-white/40",
+      "border-rose-300/55 bg-white/25 hover:border-rose-400/70 hover:bg-white/40 dark:border-rose-400/30 dark:bg-white/5 dark:hover:border-rose-400/50 dark:hover:bg-white/10",
     dropRing: "ring-rose-400/35",
-    dropHint: "border-rose-300/55 bg-white/30 text-rose-800/85",
+    dropHint:
+      "border-rose-300/55 bg-white/30 text-rose-800/85 dark:border-rose-400/30 dark:bg-white/10 dark:text-rose-200",
   },
   {
     status: "IN_PROGRESS",
     label: "In progress",
     columnClass: "kanban-column--progress",
     emptyZone:
-      "border-orange-300/55 bg-white/25 hover:border-orange-400/70 hover:bg-white/40",
+      "border-orange-300/55 bg-white/25 hover:border-orange-400/70 hover:bg-white/40 dark:border-orange-400/30 dark:bg-white/5 dark:hover:border-orange-400/50 dark:hover:bg-white/10",
     dropRing: "ring-orange-400/35",
-    dropHint: "border-orange-300/55 bg-white/30 text-orange-900/85",
+    dropHint:
+      "border-orange-300/55 bg-white/30 text-orange-900/85 dark:border-orange-400/30 dark:bg-white/10 dark:text-orange-200",
   },
   {
     status: "DONE",
     label: "Done",
     columnClass: "kanban-column--done",
     emptyZone:
-      "border-violet-300/55 bg-white/25 hover:border-violet-400/70 hover:bg-white/40",
+      "border-violet-300/55 bg-white/25 hover:border-violet-400/70 hover:bg-white/40 dark:border-violet-400/30 dark:bg-white/5 dark:hover:border-violet-400/50 dark:hover:bg-white/10",
     dropRing: "ring-violet-400/35",
-    dropHint: "border-violet-300/55 bg-white/30 text-violet-900/85",
+    dropHint:
+      "border-violet-300/55 bg-white/30 text-violet-900/85 dark:border-violet-400/30 dark:bg-white/10 dark:text-violet-200",
   },
 ];
 
@@ -148,9 +151,9 @@ function resolveDropColumn(
 }
 
 const PRIORITY_STYLES: Record<BoardTask["priority"], string> = {
-  HIGH: "bg-rose-50 text-rose-700",
-  MEDIUM: "bg-amber-50 text-amber-700",
-  LOW: "bg-emerald-50 text-emerald-700",
+  HIGH: "bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-200",
+  MEDIUM: "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-200",
+  LOW: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200",
 };
 
 /* Status chips: monospaced labels in low-opacity tints (Kinetic spec). */
@@ -424,7 +427,7 @@ function ColumnEmptyState({
       className={`group flex min-h-[7.5rem] w-full flex-col items-center justify-center gap-2 rounded-md border border-dashed px-3 py-7 text-center transition duration-150 ${emptyZone}`}
     >
       {!isDropTarget && (
-        <span className="flex h-8 w-8 items-center justify-center rounded-full border border-white/80 bg-white/70 text-ink-faint shadow-sm transition group-hover:text-ink">
+        <span className="flex h-8 w-8 items-center justify-center rounded-full border border-white/80 bg-white/70 text-ink-faint shadow-sm transition group-hover:text-ink dark:border-white/10 dark:bg-white/10">
           <Plus className="h-4 w-4" strokeWidth={2} aria-hidden />
         </span>
       )}
@@ -449,7 +452,7 @@ function ColumnAddTask({
     <button
       type="button"
       onClick={() => onCreate(status)}
-      className="flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-ink-faint transition hover:bg-white/45 hover:text-ink"
+      className="flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium text-ink-faint transition hover:bg-white/45 hover:text-ink dark:hover:bg-white/10"
     >
       <Plus className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
       Add task
@@ -515,7 +518,7 @@ function Column({
         <h3 className="text-[15px] font-medium leading-none tracking-tight text-ink">
           {label}
         </h3>
-        <span className="inline-flex min-w-[1.35rem] items-center justify-center rounded-md bg-black/[0.06] px-1.5 py-0.5 text-xs font-medium tabular-nums text-ink-soft">
+        <span className="inline-flex min-w-[1.35rem] items-center justify-center rounded-md bg-black/[0.06] px-1.5 py-0.5 text-xs font-medium tabular-nums text-ink-soft dark:bg-white/10">
           {tasks.length}
         </span>
       </header>

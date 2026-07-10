@@ -19,8 +19,8 @@ export async function WorkspaceTrialBanner({
 
   return (
     <div
-      className={`mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-white px-4 py-3 text-sm shadow-[0_1px_3px_rgba(26,26,26,0.04)] ${
-        emphasize ? "border-amber-300" : "border-line"
+      className={`mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-4 py-3 text-sm shadow-[0_1px_3px_rgba(26,26,26,0.04)] ${
+        emphasize ? "border-amber-300 dark:border-amber-400/40" : "border-line"
       }`}
     >
       <span className="flex items-center gap-2.5 text-ink-soft">

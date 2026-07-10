@@ -56,7 +56,7 @@ export function AppModal({
   if (!mounted) return null;
 
   return createPortal(
-    <>
+    <div className="app-scope contents">
       <div
         className="fixed inset-0 z-50 bg-black/35 backdrop-blur-[3px]"
         onClick={onClose}
@@ -109,7 +109,7 @@ export function AppModal({
           ) : null}
         </div>
       </div>
-    </>,
+    </div>,
     document.body
   );
 }

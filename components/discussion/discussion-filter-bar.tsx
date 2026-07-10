@@ -9,7 +9,7 @@ import { POST_KIND_LABELS, POST_KINDS } from "@/lib/post-kind";
 import { ui } from "@/components/ui/ui";
 
 const fieldPanelCls =
-  "overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_3px_rgba(26,26,26,0.04)]";
+  "overflow-hidden rounded-xl border border-line bg-card shadow-[0_1px_3px_rgba(26,26,26,0.04)]";
 
 /** Matches task board / form segmented controls — not the old rounded-full chips. */
 export function discussionFilterPillCls(selected: boolean) {
@@ -21,9 +21,9 @@ export function discussionFilterPillCls(selected: boolean) {
 }
 
 const addTagRowBtn =
-  "inline-flex h-[38px] shrink-0 items-center justify-center rounded-lg border border-line-strong bg-white px-3.5 text-sm font-medium text-ink-soft transition-colors hover:border-ink/20 hover:bg-paper hover:text-ink";
+  "inline-flex h-[38px] shrink-0 items-center justify-center rounded-lg border border-line-strong bg-card px-3.5 text-sm font-medium text-ink-soft transition-colors hover:border-ink/20 hover:bg-paper hover:text-ink";
 const addTagPrimaryBtn =
-  "inline-flex h-[38px] shrink-0 items-center justify-center rounded-lg bg-ink px-4 text-sm font-medium text-white transition-colors hover:bg-ink/90 disabled:cursor-not-allowed disabled:opacity-60 min-w-[4.25rem]";
+  "inline-flex h-[38px] shrink-0 items-center justify-center rounded-lg bg-ink px-4 text-sm font-medium text-white transition-colors hover:bg-ink/90 disabled:cursor-not-allowed disabled:opacity-60 min-w-[4.25rem] dark:text-on-accent dark:hover:bg-accent-bright";
 
 export type DiscussionFilter =
   | { type: "ALL" }

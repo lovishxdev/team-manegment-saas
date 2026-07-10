@@ -46,10 +46,10 @@ export function MarketingArticle({
 
         <aside className="mt-14 rounded-xl border border-line bg-paper-deep/50 p-6 text-center">
           <p className="font-serif text-[1.4rem] text-ink">
-            Try Euclis free — no credit card
+            Try Euclis free — Hobby forever
           </p>
           <p className="mt-2 text-sm text-ink-soft">
-            Web kanban, WhatsApp assistant, and Claude MCP on one board.
+            Project memory for teams and agents. No credit card.
           </p>
           <Link href="/signup" className={`mt-4 inline-flex ${ui.btnPrimary}`}>
             Create your workspace →
@@ -62,8 +62,17 @@ export function MarketingArticle({
           <Link href="/" className="hover:text-ink">
             Home
           </Link>
+          <Link href="/pricing" className="hover:text-ink">
+            Pricing
+          </Link>
+          <Link
+            href="/guides/project-memory-dreaming"
+            className="hover:text-ink"
+          >
+            Memory & Dreaming
+          </Link>
           <Link href="/guides/manage-tasks-from-whatsapp" className="hover:text-ink">
-            WhatsApp guide
+            WhatsApp
           </Link>
           <Link href="/guides/claude-mcp-task-board" className="hover:text-ink">
             Claude MCP
@@ -79,9 +88,6 @@ export function MarketingArticle({
           </Link>
           <Link href="/compare/spreadsheets" className="hover:text-ink">
             vs Spreadsheets
-          </Link>
-          <Link href="/compare/taskrio" className="hover:text-ink">
-            vs TaskRio
           </Link>
           <Link href="/privacy" className="hover:text-ink">
             Privacy

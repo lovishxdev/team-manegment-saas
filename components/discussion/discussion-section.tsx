@@ -42,7 +42,7 @@ function DayDivider({ label }: { label: string }) {
   return (
     <div className="relative py-3" role="separator">
       <div className="absolute inset-x-0 top-1/2 border-t border-line" />
-      <span className="relative mx-auto block w-fit bg-white px-3 text-[11px] font-medium uppercase tracking-wide text-ink-faint">
+      <span className="relative mx-auto block w-fit bg-card px-3 text-[11px] font-medium uppercase tracking-wide text-ink-faint">
         {label}
       </span>
     </div>
@@ -421,7 +421,7 @@ export function DiscussionSection({
         </div>
 
         {tab === "messages" ? (
-          <div className="shrink-0 border-t border-line bg-white py-3">
+          <div className="shrink-0 border-t border-line bg-card py-3">
             <UpdateCompose
               members={mentionOptions}
               value={draft}

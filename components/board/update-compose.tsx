@@ -109,7 +109,7 @@ export function UpdateCompose({
     <div className={`${className} rounded-xl border border-line bg-paper-deep/35 p-3`}>
       {mentionOpen ? (
         <div
-          className="absolute bottom-full left-0 right-0 z-20 mb-1.5 overflow-hidden rounded-lg border border-line bg-white shadow-[0_8px_24px_rgba(26,26,26,0.12)]"
+          className="absolute bottom-full left-0 right-0 z-20 mb-1.5 overflow-hidden rounded-lg border border-line bg-card shadow-[0_8px_24px_rgba(26,26,26,0.12)]"
           role="listbox"
           aria-label="Mention a teammate"
         >

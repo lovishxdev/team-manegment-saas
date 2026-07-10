@@ -547,7 +547,7 @@ export function DiscussionThread({
           ) : null}
         </div>
 
-        <footer className="shrink-0 border-t border-line bg-white px-4 py-3 sm:px-5">
+        <footer className="shrink-0 border-t border-line bg-card px-4 py-3 sm:px-5">
           {isClosed ? (
             <div className="flex items-center gap-2 rounded-lg border border-line bg-paper-deep/40 px-3 py-2.5 text-sm text-ink-soft">
               <Lock className="h-4 w-4 shrink-0 text-ink-faint" strokeWidth={2} />

@@ -2,9 +2,10 @@ import { OpenTaskLink } from "@/components/board/open-task-link";
 import type { DashboardTaskPeek } from "@/lib/services/workspace";
 
 const STATUS_STYLES: Record<DashboardTaskPeek["status"], string> = {
-  TODO: "bg-rose-50 text-rose-700",
-  IN_PROGRESS: "bg-orange-50 text-orange-700",
-  DONE: "bg-violet-50 text-violet-700",
+  TODO: "bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-200",
+  IN_PROGRESS:
+    "bg-orange-50 text-orange-700 dark:bg-orange-500/15 dark:text-orange-200",
+  DONE: "bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-200",
 };
 
 const STATUS_LABELS: Record<DashboardTaskPeek["status"], string> = {

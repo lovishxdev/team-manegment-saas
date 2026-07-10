@@ -175,7 +175,7 @@ export function TaskLinkPicker({
         <div
           id={`${inputId}-listbox`}
           role="listbox"
-          className="absolute left-0 right-0 top-[calc(100%+0.375rem)] z-30 overflow-hidden rounded-lg border border-line bg-white shadow-[0_8px_24px_rgba(26,26,26,0.12)]"
+          className="absolute left-0 right-0 top-[calc(100%+0.375rem)] z-30 overflow-hidden rounded-lg border border-line bg-card shadow-[0_8px_24px_rgba(26,26,26,0.12)]"
         >
           {loading ? (
             <p className="px-3 py-2.5 text-sm text-ink-faint">Searching…</p>

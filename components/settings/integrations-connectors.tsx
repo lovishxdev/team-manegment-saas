@@ -259,7 +259,7 @@ export function IntegrationsConnectors({ data }: { data: AccountSettingsData }) 
               onClick={() => setTab(value)}
               className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
                 tab === value
-                  ? "bg-ink text-white shadow-sm"
+                  ? "bg-ink text-white shadow-sm dark:text-on-accent"
                   : "text-ink-soft hover:text-ink"
               }`}
             >

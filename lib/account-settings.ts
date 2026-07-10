@@ -1,8 +1,9 @@
 import type { LucideIcon } from "lucide-react";
-import { MessageCircle, Plug, Shield, User } from "lucide-react";
+import { MessageCircle, Palette, Plug, Shield, User } from "lucide-react";
 
 export const ACCOUNT_SETTINGS_SECTIONS = [
   "profile",
+  "appearance",
   "whatsapp",
   "integrations",
   "account",
@@ -19,6 +20,10 @@ export const ACCOUNT_SETTINGS_SECTION_META: Record<
   profile: {
     title: "Profile",
     subtitle: "Username and how teammates see you on boards.",
+  },
+  appearance: {
+    title: "Appearance",
+    subtitle: "Choose how the Euclis app looks on this device.",
   },
   whatsapp: {
     title: "WhatsApp",
@@ -47,6 +52,13 @@ export const ACCOUNT_SETTINGS_NAV: {
     icon: User,
     group: "settings",
     keywords: ["username", "email", "general"],
+  },
+  {
+    id: "appearance",
+    label: "Appearance",
+    icon: Palette,
+    group: "settings",
+    keywords: ["theme", "dark", "light", "mode", "color"],
   },
   {
     id: "whatsapp",
@@ -85,6 +97,7 @@ export function parseAccountSettingsSection(
   const slug = segments?.[0];
   if (
     slug === "profile" ||
+    slug === "appearance" ||
     slug === "whatsapp" ||
     slug === "integrations" ||
     slug === "account"

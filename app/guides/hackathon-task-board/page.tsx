@@ -4,9 +4,9 @@ import { MarketingJsonLd } from "@/components/seo/marketing-json-ld";
 import { guideBreadcrumbs } from "@/lib/seo/json-ld";
 import { buildPageMetadata } from "@/lib/seo/metadata";
 
-const TITLE = "Free hackathon task board — kanban for small teams";
+const TITLE = "Hackathon project memory — board + context for 48-hour teams";
 const DESCRIPTION =
-  "Set up a free hackathon kanban board in minutes. Real-time sync across web, WhatsApp, and Claude. No credit card, built for 48-hour sprints.";
+  "Run a hackathon without losing decisions in the group chat. Free Euclis workspace: kanban, WhatsApp, and a brief your agents can pull via MCP.";
 const PATH = "/guides/hackathon-task-board";
 
 export const metadata = buildPageMetadata({
@@ -22,88 +22,73 @@ export default function HackathonTaskBoardGuide() {
         title={TITLE}
         description={DESCRIPTION}
         path={PATH}
-        breadcrumbs={guideBreadcrumbs("Hackathon task board", PATH)}
+        breadcrumbs={guideBreadcrumbs("Hackathon project memory", PATH)}
       />
       <MarketingArticle title={TITLE} description={DESCRIPTION}>
         <p>
-          Hackathons punish setup time. You need a{" "}
-          <strong>hackathon task board</strong> that works in the first hour —
-          not after a Jira tutorial. Euclis is a free kanban board built for
-          small teams who move fast and coordinate in WhatsApp, Claude, or the
-          browser.
+          Hackathons punish setup time and punish lost context. You need a board
+          in the first hour — and a place where &quot;we decided to cut the
+          auth rewrite&quot; does not die in WhatsApp at 2 AM. Euclis is free
+          Hobby for small teams: kanban, WhatsApp, and{" "}
+          <strong>project memory</strong> agents can read.
         </p>
 
-        <h2>What hackathon teams actually need</h2>
+        <h2>What a 48-hour team actually needs</h2>
         <ul>
           <li>
-            <strong>Instant setup</strong> — email signup, create workspace,
-            invite via link. Under 60 seconds.
+            <strong>Instant setup</strong> — email signup, invite link, under a
+            minute
           </li>
           <li>
-            <strong>Real-time visibility</strong> — everyone sees card moves
-            live, whether someone dragged on web or texted the bot.
+            <strong>A live board</strong> — who is on what, without a spreadsheet
           </li>
           <li>
-            <strong>Low friction on mobile</strong> — WhatsApp commands for
-            teammates who never open a laptop.
+            <strong>Mobile updates</strong> — WhatsApp commands when nobody has
+            a laptop open
           </li>
           <li>
-            <strong>Short task IDs</strong> — reference #7 in chat instead of
-            pasting Trello URLs.
+            <strong>Agent context</strong> — Claude Code / Cursor can call{" "}
+            <code className="font-mono text-[13px]">get_project_context</code>{" "}
+            instead of you pasting the brief again
           </li>
           <li>
-            <strong>Free</strong> — no credit card, no per-seat pricing during
-            a weekend build.
+            <strong>Free</strong> — no credit card for a weekend build
           </li>
         </ul>
 
-        <h2>Suggested kanban columns for a 48-hour sprint</h2>
-        <p>
-          Euclis ships with To Do, In Progress, and Done. For hackathons, map
-          your mental model:
-        </p>
-        <ul>
+        <h2>Suggested flow</h2>
+        <ol>
+          <li>Create a workspace named after the hackathon.</li>
+          <li>Dump MVP scope onto the kanban (To Do / In Progress / Done).</li>
+          <li>Link WhatsApp for the people who live on phones.</li>
           <li>
-            <strong>To Do:</strong> Ideas, MVP scope, stretch goals
+            Connect MCP so agents load decisions and blockers mid-build.
           </li>
-          <li>
-            <strong>In Progress:</strong> Active build, blocked items
-          </li>
-          <li>
-            <strong>Done:</strong> Shipped, demo-ready, cut from scope
-          </li>
-        </ul>
+        </ol>
 
-        <h2>Run the board from three places</h2>
+        <h2>Why not only Trello or a Google Sheet?</h2>
         <p>
-          <strong>Web:</strong> drag cards, use the multiplayer whiteboard for
-          architecture sketches, upload assets.
-        </p>
-        <p>
-          <strong>WhatsApp:</strong> &quot;add task: wire up auth API, assign
-          @dev, due tonight&quot; — synced to the board instantly.
-        </p>
-        <p>
-          <strong>Claude MCP:</strong> break down the PRD into tasks while you
-          pair-program — no context switching.
+          Boards go stale when the real conversation is in chat. Sheets scatter
+          ownership. Euclis keeps the board and the memory in one workspace —
+          see{" "}
+          <Link href="/compare/trello" className="font-medium text-ink underline">
+            vs Trello
+          </Link>{" "}
+          and{" "}
+          <Link
+            href="/compare/spreadsheets"
+            className="font-medium text-ink underline"
+          >
+            vs spreadsheets
+          </Link>
+          .
         </p>
 
-        <h2>Euclis vs other hackathon tools</h2>
-        <p>
-          Ephemeral boards (like Kanbin) are great for solo agents but lack team
-          workspaces. All-in-one hackathon platforms add chat and submissions
-          you may not need. Euclis focuses on one thing well: a{" "}
-          <strong>shared board that stays in sync</strong> wherever your team
-          talks.
-        </p>
-
-        <h2>Get started free</h2>
         <p>
           <Link href="/signup" className="font-medium text-ink underline">
             Create a workspace
-          </Link>
-          , invite your squad, link WhatsApp if you want mobile updates. Drop
-          the spreadsheet before ideation ends.
+          </Link>{" "}
+          before ideation ends.
         </p>
       </MarketingArticle>
     </>

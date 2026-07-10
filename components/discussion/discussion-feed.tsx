@@ -219,7 +219,7 @@ function PostFeedCard({
 
   return (
     <div
-      className={`relative rounded-xl border bg-paper/90 px-4 py-3 shadow-sm transition hover:border-ink/20 hover:bg-white ${
+      className={`relative rounded-xl border bg-paper/90 px-4 py-3 shadow-sm transition hover:border-ink/20 hover:bg-white dark:hover:bg-card-high ${
         post.pinned
           ? "border-amber-300/80 ring-1 ring-amber-200/60"
           : post.status === "RESOLVED"
@@ -367,7 +367,7 @@ function SavedMessageCard({
     <div className="rounded-xl border border-line/70 bg-paper/90 shadow-sm">
       <Link
         href={`/w/${workspaceId}/discussion/${message.postId}`}
-        className="block border-b border-line/60 px-4 py-2.5 text-sm font-medium text-ink-soft transition hover:bg-white hover:text-ink"
+        className="block border-b border-line/60 px-4 py-2.5 text-sm font-medium text-ink-soft transition hover:bg-white dark:hover:bg-white/5 hover:text-ink"
       >
         <span className="text-ink-faint">In </span>
         {message.postTitle}

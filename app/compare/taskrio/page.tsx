@@ -5,28 +5,54 @@ import { MarketingJsonLd } from "@/components/seo/marketing-json-ld";
 import { compareBreadcrumbs } from "@/lib/seo/json-ld";
 import { buildPageMetadata } from "@/lib/seo/metadata";
 
-const TITLE = "Euclis vs TaskRio — WhatsApp task management compared";
+const TITLE = "Euclis vs TaskRio — project memory vs WhatsApp group bot";
 const DESCRIPTION =
-  "Honest comparison: TaskRio's WhatsApp group bot vs Euclis's private assistant, web kanban, and Claude MCP. Free tier, setup, and best use cases.";
+  "TaskRio runs inside WhatsApp groups. Euclis uses a private 1:1 bot plus web memory, Dreaming, and MCP for agents — same workspace, different model.";
 const PATH = "/compare/taskrio";
-
-const ROWS = [
-  { feature: "WhatsApp model", euclis: "Private 1:1 bot per user", competitor: "Bot inside WhatsApp groups" },
-  { feature: "Group @mention required", euclis: "No — chat naturally in DM", competitor: "Yes, in groups for most commands" },
-  { feature: "Web kanban dashboard", euclis: "Full drag-and-drop board + whiteboard + assets", competitor: "Task-focused; less visual PM surface" },
-  { feature: "Claude MCP connector", euclis: "Yes — same board from Claude", competitor: "No" },
-  { feature: "Group admin approval", euclis: "Not required", competitor: "Required before group automation" },
-  { feature: "Pricing", euclis: "Free to start, email signup", competitor: "Free for small projects; paid tiers exist" },
-  { feature: "Task IDs in chat", euclis: "#42 short IDs per workspace", competitor: "T12 style IDs on task cards" },
-  { feature: "Standup summaries in group", euclis: "Ask bot in DM; board on web", competitor: "@TaskRio summarise in group thread" },
-  { feature: "Best for", euclis: "Teams wanting web + WhatsApp + Claude sync", competitor: "Teams who live entirely in one WhatsApp group" },
-];
 
 export const metadata = buildPageMetadata({
   title: TITLE,
   description: DESCRIPTION,
   path: PATH,
 });
+
+const ROWS = [
+  {
+    feature: "WhatsApp model",
+    euclis: "Private 1:1 bot per linked user",
+    competitor: "Bot inside WhatsApp groups (@mention)",
+  },
+  {
+    feature: "Group chat",
+    euclis: "Stays human — no bot cards in the thread",
+    competitor: "Task cards and summaries in the group",
+  },
+  {
+    feature: "Project memory",
+    euclis: "Decisions, blockers, Dreaming maintenance",
+    competitor: "Task-focused; not a memory product",
+  },
+  {
+    feature: "AI agents / MCP",
+    euclis: "Yes — get_project_context and board tools",
+    competitor: "No",
+  },
+  {
+    feature: "Web workspace",
+    euclis: "Kanban, discussions, whiteboard, assets",
+    competitor: "Lighter task surface",
+  },
+  {
+    feature: "Onboarding",
+    euclis: "Email signup; link phone when ready",
+    competitor: "Group invite + admin approval",
+  },
+  {
+    feature: "Best for",
+    euclis: "Teams that want web + agents + optional WhatsApp",
+    competitor: "Teams whose entire workflow is one WhatsApp group",
+  },
+];
 
 export default function EuclisVsTaskRioPage() {
   return (
@@ -39,73 +65,49 @@ export default function EuclisVsTaskRioPage() {
       />
       <MarketingArticle title={TITLE} description={DESCRIPTION}>
         <p>
-          Both Euclis and TaskRio help teams manage work through WhatsApp. They
-          solve the problem differently. This page explains TaskRio&apos;s
-          WhatsApp group model and where Euclis fits — especially if you want a{" "}
-          <strong>free team task board</strong> with a full web dashboard and
-          Claude integration.
+          Both products meet teams in WhatsApp. TaskRio is a{" "}
+          <strong>group bot</strong>. Euclis is a{" "}
+          <strong>private assistant</strong> plus a full workspace with project
+          memory for humans and coding agents.
         </p>
 
-        <h2>What TaskRio&apos;s WhatsApp group feature is</h2>
+        <h2>TaskRio&apos;s group model</h2>
         <p>
-          TaskRio is a <strong>WhatsApp group bot</strong>. You invite
-          @TaskRio into an existing team group. In groups, the bot stays quiet
-          until someone <strong>@mentions TaskRio</strong>. Then it can:
-        </p>
-        <ul>
-          <li>Create tasks from natural language (e.g. @TaskRio fix bug by Friday)</li>
-          <li>Post task cards in the group thread</li>
-          <li>List open/overdue work (@TaskRio list open sends a DM; show open posts in group)</li>
-          <li>Accept replies on task cards without @mention (e.g. &quot;done&quot;, &quot;tomorrow 5pm&quot;)</li>
-          <li>Summarise recent standup discussion when asked</li>
-          <li>Assign via @teammate mentions on task cards</li>
-        </ul>
-        <p>
-          TaskRio <strong>ignores normal group chat</strong> — messages like
-          &quot;@john can you help?&quot; do not trigger the bot. Before a group
-          is enabled, TaskRio&apos;s team <strong>manually approves</strong> the
-          group (send invite link via DM, wait for admin verification).
+          You invite @TaskRio into a WhatsApp group. The bot stays quiet until
+          @mentioned (or someone replies to its task cards). Groups often need
+          manual admin approval before automation works. Task cards and standup
+          summaries can appear in the thread.
         </p>
 
-        <h2>How Euclis handles WhatsApp</h2>
+        <h2>Euclis&apos;s model</h2>
         <p>
-          Euclis uses a <strong>private 1:1 chat</strong> with the Euclis bot
-          per linked user. You message naturally — no @mention syntax. Claude
-          Haiku parses intent and updates your team&apos;s shared workspace
-          board. Teammates see changes on the web kanban in real time.
-        </p>
-        <p>
-          Euclis does not post task cards into your WhatsApp group. That is
-          intentional: your group stays a human space; the board is the system of
-          record on web (and via Claude MCP).
+          Each teammate messages Euclis in a 1:1 chat. Updates hit the shared
+          board and feed workspace memory. Agents pull the same brief via MCP.
+          Your group chat is not a bot channel.
         </p>
 
-        <h2>Side-by-side comparison</h2>
+        <h2>Side-by-side</h2>
         <CompareTable competitorName="TaskRio" rows={ROWS} />
 
         <h2>When to choose TaskRio</h2>
         <ul>
-          <li>Your entire workflow already happens in one WhatsApp group</li>
-          <li>You want task cards visible in the group thread for everyone</li>
-          <li>You need in-group standup summaries and @mention-based assignment</li>
+          <li>The whole workflow is one WhatsApp group</li>
+          <li>You want task cards visible in the group thread</li>
         </ul>
 
         <h2>When to choose Euclis</h2>
         <ul>
-          <li>You want a proper kanban dashboard plus WhatsApp (not group-bot-only)</li>
-          <li>Developers use Claude and need MCP access to the same board</li>
-          <li>You prefer private bot chats so the group chat stays unstructured</li>
-          <li>You want free signup with no group approval wait</li>
-          <li>Hackathons, study groups, or side projects with mixed web/mobile users</li>
+          <li>You want web kanban + memory + MCP, not group-bot-only</li>
+          <li>You prefer private bot chats</li>
+          <li>Hackathons / side projects with mixed web and mobile users</li>
         </ul>
 
         <p>
-          Read more:{" "}
           <Link
             href="/guides/manage-tasks-from-whatsapp"
             className="font-medium text-ink underline"
           >
-            How to manage tasks from WhatsApp
+            WhatsApp setup guide
           </Link>
         </p>
       </MarketingArticle>

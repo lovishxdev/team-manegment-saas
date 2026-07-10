@@ -7,12 +7,13 @@ const fieldSurface =
   "rounded-lg border border-line bg-paper outline-none transition-[border-color,background-color,box-shadow,transform] duration-200 " +
   "hover:-translate-y-px hover:border-ink/30 hover:bg-white hover:shadow-[0_4px_14px_rgba(26,26,26,0.1),0_0_0_1px_rgba(26,26,26,0.05)] " +
   "focus:-translate-y-px focus:border-ink/40 focus:bg-white focus:shadow-[0_4px_16px_rgba(26,26,26,0.1),0_0_0_4px_rgba(26,26,26,0.12)] " +
+  "dark:hover:bg-card-high dark:focus:bg-card-high " +
   "disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:border-line disabled:hover:bg-paper disabled:hover:shadow-none";
 
 export const ui = {
   focusRing: `${fieldSurface} focus:ring-0`,
   focusWithin:
-    `${fieldSurface} focus-within:-translate-y-px focus-within:border-ink/40 focus-within:bg-white focus-within:shadow-[0_4px_16px_rgba(26,26,26,0.1),0_0_0_4px_rgba(26,26,26,0.12)] focus-within:ring-0`,
+    `${fieldSurface} focus-within:-translate-y-px focus-within:border-ink/40 focus-within:bg-white dark:focus-within:bg-card-high focus-within:shadow-[0_4px_16px_rgba(26,26,26,0.1),0_0_0_4px_rgba(26,26,26,0.12)] focus-within:ring-0`,
   input:
     `w-full px-3.5 py-3 text-[15px] leading-snug text-ink placeholder:text-ink-faint ${fieldSurface} focus:ring-0`,
   /** Prominent single-line fields (task title, workspace name). */
@@ -30,13 +31,13 @@ export const ui = {
   btnShrink:
     "inline-flex shrink-0 items-center justify-center whitespace-nowrap min-w-[5.5rem]",
   btnPrimary:
-    "inline-flex items-center justify-center rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-[background-color,box-shadow,transform] duration-150 hover:bg-ink/90 hover:shadow-md active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:shadow-sm disabled:active:scale-100",
+    "inline-flex items-center justify-center rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-[background-color,box-shadow,transform] duration-150 hover:bg-ink/90 hover:shadow-md active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:shadow-sm disabled:active:scale-100 dark:bg-accent dark:text-on-accent dark:hover:bg-accent-bright",
   btnSecondary:
-    "inline-flex items-center justify-center whitespace-nowrap rounded-lg border border-line-strong bg-paper px-3.5 py-2 text-sm text-ink-soft shadow-sm transition-[border-color,color,box-shadow,transform] duration-150 hover:border-ink/20 hover:bg-white hover:text-ink hover:shadow-md active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:shadow-sm disabled:active:scale-100",
+    "inline-flex items-center justify-center whitespace-nowrap rounded-lg border border-line-strong bg-paper px-3.5 py-2 text-sm text-ink-soft shadow-sm transition-[border-color,color,box-shadow,transform] duration-150 hover:border-ink/20 hover:bg-white hover:text-ink hover:shadow-md active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:shadow-sm disabled:active:scale-100 dark:hover:bg-card-high",
   btnDanger:
-    "inline-flex items-center justify-center whitespace-nowrap rounded-lg border border-red-200 bg-red-50 px-3.5 py-2 text-sm text-red-600 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60",
+    "inline-flex items-center justify-center whitespace-nowrap rounded-lg border border-red-200 bg-red-50 px-3.5 py-2 text-sm text-red-600 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300 dark:hover:bg-red-500/20",
   btnGhostDanger:
-    "inline-flex items-center justify-center whitespace-nowrap rounded-lg border border-line-strong px-3.5 py-2 text-sm text-ink-soft transition-colors hover:border-red-300 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-60",
+    "inline-flex items-center justify-center whitespace-nowrap rounded-lg border border-line-strong px-3.5 py-2 text-sm text-ink-soft transition-colors hover:border-red-300 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:border-red-500/40 dark:hover:text-red-300",
   card: "rounded-2xl bg-paper shadow-sm",
   /** Solid paper section on the shell canvas (settings, forms). */
   contentPanel: "content-panel",
@@ -51,14 +52,14 @@ export const ui = {
   shellGlass: "shell-glass",
   /** Sidebar nav row */
   navItem:
-    "flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-[14px] transition-[color,background-color,box-shadow] duration-150 text-ink-soft hover:bg-white/60 hover:text-ink",
+    "flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-[14px] transition-[color,background-color,box-shadow] duration-150 text-ink-soft hover:bg-white/60 hover:text-ink dark:hover:bg-white/5",
   navItemActive:
-    "bg-white font-medium text-ink shadow-[0_1px_3px_rgba(26,26,26,0.06),0_0_0_1px_rgba(26,26,26,0.04)]",
+    "bg-white font-medium text-ink shadow-[0_1px_3px_rgba(26,26,26,0.06),0_0_0_1px_rgba(26,26,26,0.04)] dark:bg-white/10 dark:shadow-none",
   /** Workspace sub-nav row (indented) */
   navSubItem:
-    "flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-[14px] transition-[color,background-color,box-shadow] duration-150 text-ink-soft hover:bg-white/60 hover:text-ink",
+    "flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-[14px] transition-[color,background-color,box-shadow] duration-150 text-ink-soft hover:bg-white/60 hover:text-ink dark:hover:bg-white/5",
   navSubItemActive:
-    "bg-white font-medium text-ink shadow-[0_1px_3px_rgba(26,26,26,0.06),0_0_0_1px_rgba(26,26,26,0.04)]",
+    "bg-white font-medium text-ink shadow-[0_1px_3px_rgba(26,26,26,0.06),0_0_0_1px_rgba(26,26,26,0.04)] dark:bg-white/10 dark:shadow-none",
   /** Underline workspace tabs */
   tabItem:
     "relative shrink-0 cursor-pointer px-3 py-2.5 text-sm font-medium text-ink-soft transition-colors hover:text-ink",
@@ -76,8 +77,8 @@ export const ui = {
   /** Workspace name in tab chrome and matching drill-in pages. */
   workspaceTitle:
     "text-[2rem] font-semibold leading-tight tracking-tight text-ink sm:text-[2.25rem]",
-  errorText: "text-sm text-red-600",
-  successText: "text-sm text-emerald-700",
+  errorText: "text-sm text-red-600 dark:text-red-300",
+  successText: "text-sm text-emerald-700 dark:text-emerald-300",
   linkText: "text-ink underline-offset-2 hover:underline",
   mutedText: "text-sm text-ink-soft",
   /** Page title aligned with sidebar brand row */
@@ -88,24 +89,24 @@ export const ui = {
 
 /** Deterministic avatar tints. */
 const AVATAR_COLORS = [
-  "bg-orange-100 text-orange-700",
-  "bg-amber-100 text-amber-700",
-  "bg-lime-100 text-lime-700",
-  "bg-teal-100 text-teal-700",
-  "bg-sky-100 text-sky-700",
-  "bg-violet-100 text-violet-700",
-  "bg-rose-100 text-rose-700",
+  "bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-200",
+  "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-200",
+  "bg-lime-100 text-lime-700 dark:bg-lime-500/20 dark:text-lime-200",
+  "bg-teal-100 text-teal-700 dark:bg-teal-500/20 dark:text-teal-200",
+  "bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-200",
+  "bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-200",
+  "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-200",
 ];
 
 const TAG_COLORS = [
-  "bg-blue-50 text-blue-700",
-  "bg-orange-50 text-orange-700",
-  "bg-emerald-50 text-emerald-700",
-  "bg-violet-50 text-violet-700",
-  "bg-pink-50 text-pink-700",
-  "bg-teal-50 text-teal-700",
-  "bg-amber-50 text-amber-700",
-  "bg-indigo-50 text-indigo-700",
+  "bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-200",
+  "bg-orange-50 text-orange-700 dark:bg-orange-500/15 dark:text-orange-200",
+  "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200",
+  "bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-200",
+  "bg-pink-50 text-pink-700 dark:bg-pink-500/15 dark:text-pink-200",
+  "bg-teal-50 text-teal-700 dark:bg-teal-500/15 dark:text-teal-200",
+  "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-200",
+  "bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-200",
 ];
 
 export function tagColor(tag: string): string {

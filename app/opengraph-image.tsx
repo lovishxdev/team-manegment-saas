@@ -1,6 +1,7 @@
 import { ImageResponse } from "next/og";
 
-export const alt = "Euclis — free team task board with web, WhatsApp, and Claude MCP";
+export const alt =
+  "Euclis — project memory for teams and AI agents";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -45,38 +46,36 @@ export default function OpenGraphImage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
           <div
             style={{
-              fontSize: 56,
+              fontSize: 52,
               fontWeight: 700,
               lineHeight: 1.1,
               color: "#1a1a1a",
-              maxWidth: 900,
+              maxWidth: 920,
             }}
           >
-            Free team task board
+            Project memory for teams and AI agents
           </div>
-          <div style={{ fontSize: 28, color: "#444", maxWidth: 800 }}>
-            Web · WhatsApp · Claude MCP — same board, real-time sync
+          <div style={{ fontSize: 26, color: "#444", maxWidth: 820 }}>
+            Capture from WhatsApp, Claude, Cursor & web — one brief everyone shares
           </div>
         </div>
 
         <div style={{ display: "flex", gap: 16 }}>
-          {["Kanban", "WhatsApp bot", "Claude MCP", "Free to start"].map(
-            (label) => (
-              <div
-                key={label}
-                style={{
-                  padding: "10px 20px",
-                  borderRadius: 999,
-                  background: "rgba(255,255,255,0.85)",
-                  border: "1px solid #ddd",
-                  fontSize: 20,
-                  color: "#333",
-                }}
-              >
-                {label}
-              </div>
-            )
-          )}
+          {["Memory", "Dreaming", "MCP", "Free Hobby"].map((label) => (
+            <div
+              key={label}
+              style={{
+                padding: "10px 20px",
+                borderRadius: 999,
+                background: "rgba(255,255,255,0.85)",
+                border: "1px solid #ddd",
+                fontSize: 20,
+                color: "#333",
+              }}
+            >
+              {label}
+            </div>
+          ))}
         </div>
       </div>
     ),

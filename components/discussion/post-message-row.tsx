@@ -36,7 +36,7 @@ function preprocessAgentBody(body: string): string {
 
 function AgentMessagePanel({ message }: { message: ThreadMessageView }) {
   return (
-    <div className="mt-2 rounded-xl border border-line/80 bg-white px-3.5 py-3 shadow-[0_1px_3px_rgba(26,26,26,0.04)]">
+    <div className="mt-2 rounded-xl border border-line/80 bg-card px-3.5 py-3 shadow-[0_1px_3px_rgba(26,26,26,0.04)]">
       <MarkdownContent
         source={preprocessAgentBody(message.body)}
         variant="chat-assistant"
@@ -175,7 +175,7 @@ function MessageMenu({
       </button>
 
       {menuOpen ? (
-        <div className="absolute right-0 z-10 mt-1 w-36 rounded-lg border border-line bg-white py-1 shadow-[0_8px_24px_rgba(26,26,26,0.12)]">
+        <div className="absolute right-0 z-10 mt-1 w-36 rounded-lg border border-line bg-card py-1 shadow-[0_8px_24px_rgba(26,26,26,0.12)]">
           <button
             type="button"
             onMouseDown={(event) => event.preventDefault()}

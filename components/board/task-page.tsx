@@ -56,7 +56,7 @@ const labelCls = ui.label;
 const inputCls = ui.input;
 const titleInputCls = ui.inputLg;
 const fieldPanelCls =
-  "overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_3px_rgba(26,26,26,0.04)]";
+  "overflow-hidden rounded-xl border border-line bg-card shadow-[0_1px_3px_rgba(26,26,26,0.04)]";
 
 function formatEnumLabel(value: string): string {
   return value
@@ -152,7 +152,7 @@ function MetadataRail({
 }) {
   return (
     <aside
-      className={`${ui.contentPanel} flex w-full shrink-0 flex-col gap-5 !bg-white lg:mt-7 lg:pt-0 lg:sticky lg:top-24 lg:self-start`}
+      className={`${ui.contentPanel} flex w-full shrink-0 flex-col gap-5 !bg-card lg:mt-7 lg:pt-0 lg:sticky lg:top-24 lg:self-start`}
     >
       <div>
         <label className={`${labelCls} lg:hidden`}>Status</label>

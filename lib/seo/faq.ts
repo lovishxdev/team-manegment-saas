@@ -6,43 +6,43 @@ export type FaqItem = {
 /** Homepage FAQ — used for on-page content and FAQPage JSON-LD. */
 export const HOME_FAQ: FaqItem[] = [
   {
+    question: "What is Euclis?",
+    answer:
+      "Euclis is shared project memory for your team and your AI agents. It captures decisions, blockers, and milestones from WhatsApp, Claude, Cursor, and the web — then keeps that context current so nobody starts from zero.",
+  },
+  {
+    question: "What is Dreaming?",
+    answer:
+      "Dreaming is how Euclis maintains memory while you're away. On a schedule it merges duplicates, reconciles decisions that contradict, surfaces patterns, and files away what's gone stale. Capture records moments; Dreaming tends the whole store. Nothing is deleted — older events can be hidden from recall by plan retention, but they stay.",
+  },
+  {
+    question: "How do AI agents use Euclis?",
+    answer:
+      "Connect Euclis via MCP (Claude Desktop, Claude Code, Cursor, and similar tools). Agents call get_project_context to load the same brief your teammates see — decisions, open blockers, and recent memory — instead of re-reading chat scrollback.",
+  },
+  {
     question: "Can I manage tasks from WhatsApp?",
     answer:
-      "Yes. Link your number in Euclis settings, then message the Euclis bot in a private WhatsApp chat. Use plain English — for example, “add task: fix login bug, high priority, due Friday.” Changes sync to the same kanban board on the web instantly.",
+      "Yes. Link your number in settings, then message the Euclis bot in a private 1:1 chat. Use plain English — for example, “add task: fix login bug, due Friday.” Changes sync to the shared workspace board. Euclis is not a WhatsApp group @mention bot.",
   },
   {
     question: "Is Euclis free?",
     answer:
-      "Yes. Euclis is free to start — email signup only, no credit card required. Create a workspace, invite your team, and use the web dashboard, WhatsApp bot, and Claude MCP connector on the free tier.",
+      "Yes. Hobby is free forever for small teams — email signup, no credit card. WhatsApp and baseline MCP context access are included. Team adds curated Dreaming memory, more seats, and collaboration features; you can try Team with a free trial from the pricing page.",
   },
   {
-    question: "Does Euclis work in WhatsApp groups?",
+    question: "How is Euclis different from Notion or Trello?",
     answer:
-      "Euclis works through a private 1:1 chat with the bot. Each teammate links their own number and updates the shared workspace board from their phone. Everyone sees the same kanban on the web — unlike group bots, your WhatsApp group chat stays human.",
-  },
-  {
-    question: "Can Claude manage my team's tasks?",
-    answer:
-      "Yes. Connect Euclis as an MCP connector in Claude Desktop or claude.ai. Claude can create, update, and review tasks on the same board your team uses on the web and WhatsApp — no tab switching.",
+      "Notion and Trello are places you go to write things down. Euclis captures context from where work already happens (chat, editors, agents) and keeps a living project brief. You still get a kanban board and discussions — but the core product is memory that humans and agents share.",
   },
   {
     question: "Do I need to install a new app?",
     answer:
-      "No new app is required for WhatsApp users — just message the bot. The web dashboard runs in any browser. Claude users connect via MCP. Email is enough to sign up; a phone number is optional until you want WhatsApp.",
-  },
-  {
-    question: "What are task short IDs like #42?",
-    answer:
-      "Each task in a workspace gets a short number (e.g. #42). Reference it in WhatsApp or Claude — “close 42” or “make #42 high priority” — and the bot knows exactly which card you mean.",
+      "No. The web app runs in the browser. WhatsApp is optional (message the bot after linking your number). Coding agents connect via MCP. Email is enough to sign up.",
   },
   {
     question: "Who is Euclis built for?",
     answer:
-      "Small teams: hackathons, side projects, study groups, hostel fests, weekend events, and any group that already coordinates in chat. It is intentionally lighter than Trello or Asana, with WhatsApp and Claude built in.",
-  },
-  {
-    question: "How is Euclis different from TaskRio?",
-    answer:
-      "TaskRio is a bot you add to WhatsApp groups and @mention. Euclis gives each person a private WhatsApp assistant plus a full web kanban (whiteboard, assets, live sync) and a Claude MCP connector — three doors to one board. Euclis is free to start with no group admin approval step.",
+      "Small teams that ship with AI in the loop — hackathons, side projects, indie startups, study groups — anyone tired of re-explaining context to new teammates or new agent sessions.",
   },
 ];

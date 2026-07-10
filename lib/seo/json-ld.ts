@@ -16,7 +16,7 @@ export function organizationJsonLd() {
     url: siteUrl(),
     logo: siteUrl("/euclis-logo.png"),
     description:
-      "Free team task board for small groups — web kanban, WhatsApp assistant, and Claude MCP connector in one workspace.",
+      "Shared project memory for teams and AI agents — capture from WhatsApp, Claude, Cursor, and the web; Dreaming keeps context current.",
     sameAs: [],
   };
 }
@@ -26,9 +26,10 @@ export function websiteJsonLd() {
     "@context": "https://schema.org",
     "@type": "WebSite",
     name: SITE_NAME,
+    alternateName: ["euclis.dev"],
     url: siteUrl(),
     description:
-      "Free team task board for small groups — web, WhatsApp, and Claude MCP.",
+      "Project memory for teams and AI agents. Capture decisions and blockers where work happens; share one brief via MCP.",
     publisher: {
       "@type": "Organization",
       name: SITE_NAME,
@@ -49,22 +50,22 @@ export function softwareApplicationJsonLd() {
     operatingSystem: "Web",
     url: siteUrl(),
     description:
-      "Free shared kanban task board reachable from a web dashboard, WhatsApp messages, or Claude MCP. Real-time sync for small teams.",
+      "Shared project memory for humans and coding agents. Captures decisions, blockers, and milestones from chat and editors; Dreaming maintains the store; MCP shares one brief.",
     offers: {
       "@type": "Offer",
       price: "0",
       priceCurrency: "USD",
-      description: "Free to start — email signup, no credit card required",
+      description: "Hobby free forever — email signup, no credit card required",
     },
     featureList: [
-      "Drag-and-drop kanban board",
-      "Real-time sync across web and WhatsApp",
-      "WhatsApp natural-language task commands",
-      "Claude MCP connector",
-      "Multiplayer whiteboard",
-      "Shared assets and file uploads",
-      "Per-workspace task short IDs",
-      "Free tier with email-only signup",
+      "Project memory (decisions, blockers, milestones)",
+      "Dreaming — scheduled memory maintenance",
+      "Capture from WhatsApp, Claude, Cursor, and web",
+      "MCP connector with get_project_context",
+      "Team discussions for humans and agents",
+      "Kanban board with short task IDs",
+      "WhatsApp 1:1 assistant",
+      "Free Hobby tier",
     ],
   };
 }

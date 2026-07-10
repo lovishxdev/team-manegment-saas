@@ -25,8 +25,8 @@ export function FaqSection({ items, id = "faq" }: FaqSectionProps) {
             Common questions
           </h2>
           <p className="mx-auto mt-4 max-w-lg text-[15px] text-ink-soft">
-            Straight answers for teams evaluating a free task board that works
-            in WhatsApp and Claude.
+            Straight answers about project memory, Dreaming, WhatsApp, and how
+            agents pull the same brief.
           </p>
         </Reveal>
 

@@ -4,9 +4,9 @@ import { MarketingJsonLd } from "@/components/seo/marketing-json-ld";
 import { guideBreadcrumbs, howToJsonLd } from "@/lib/seo/json-ld";
 import { buildPageMetadata } from "@/lib/seo/metadata";
 
-const TITLE = "How to manage team tasks from WhatsApp (free guide)";
+const TITLE = "Manage tasks from WhatsApp — and keep project memory in sync";
 const DESCRIPTION =
-  "Learn how to run a shared kanban board from WhatsApp with natural-language commands. Free setup with Euclis — no new app, no credit card.";
+  "Use Euclis's private WhatsApp assistant to update the shared board in plain English. Not a group bot — 1:1 chat that feeds the same workspace memory.";
 const PATH = "/guides/manage-tasks-from-whatsapp";
 
 export const metadata = buildPageMetadata({
@@ -17,13 +17,13 @@ export const metadata = buildPageMetadata({
 
 export default function ManageTasksFromWhatsAppGuide() {
   const howTo = howToJsonLd({
-    name: "Set up WhatsApp task management with Euclis",
+    name: "Set up WhatsApp with Euclis",
     description: DESCRIPTION,
     path: PATH,
     steps: [
       {
         name: "Create a free account",
-        text: "Sign up at euclis.dev with email only — no credit card or phone required.",
+        text: "Sign up at euclis.dev with email — no credit card required.",
       },
       {
         name: "Create a workspace",
@@ -34,12 +34,12 @@ export default function ManageTasksFromWhatsAppGuide() {
         text: "Under Settings → WhatsApp, link your phone number to the Euclis bot.",
       },
       {
-        name: "Send your first task",
+        name: "Send a command",
         text: 'Message the bot: "add task: fix landing page copy, due Friday".',
       },
       {
-        name: "Verify on the web board",
-        text: "Open the kanban dashboard — the card appears live-synced for the whole team.",
+        name: "Check the board and memory",
+        text: "Open the web workspace — the card is on the kanban, and context stays available to teammates and agents.",
       },
     ],
   });
@@ -55,89 +55,65 @@ export default function ManageTasksFromWhatsAppGuide() {
       />
       <MarketingArticle title={TITLE} description={DESCRIPTION}>
         <p>
-          Most small teams already coordinate in WhatsApp. The problem is not
-          chat — it is that tasks, deadlines, and files scatter across messages
-          nobody can search later. A{" "}
-          <strong>free WhatsApp task management</strong> setup gives you a real
-          board behind the chat, so &quot;done&quot; actually means done on the
-          kanban too.
+          Small teams already live in WhatsApp. The problem is not chat — it is
+          that decisions and tasks vanish into scrollback. Euclis gives you a{" "}
+          <strong>private 1:1 bot</strong> that updates the shared workspace
+          board (and feeds project memory) without turning your group chat into
+          a bot thread.
         </p>
 
-        <h2>Why WhatsApp-native task management works</h2>
+        <h2>Not a WhatsApp group bot</h2>
         <p>
-          Your team checks WhatsApp dozens of times a day. Asking everyone to
-          adopt another heavy PM tool means slow adoption and stale boards.
-          Tools that meet people in WhatsApp — while keeping a proper web
-          dashboard — solve the sync problem without a training day.
+          Tools like TaskRio add a bot <em>into</em> the group and require
+          @mentions. Euclis works differently: each person messages the bot in a
+          private chat. The group stays human. Everyone still sees the same
+          kanban and memory on the web.
         </p>
 
-        <h2>Euclis vs a WhatsApp group bot</h2>
-        <p>
-          Some tools (like TaskRio) add a bot <em>into</em> your WhatsApp group.
-          You @mention the bot, it posts task cards in the thread, and the group
-          admin must approve the integration.
-        </p>
-        <p>
-          Euclis works differently: each teammate messages the Euclis bot in a{" "}
-          <strong>private 1:1 chat</strong>. Plain English updates the shared
-          workspace board everyone sees on the web. Your group chat stays human —
-          no bot interrupting standup banter.
-        </p>
-
-        <h2>Step-by-step: free setup in under 2 minutes</h2>
+        <h2>Setup</h2>
         <ol>
           <li>
             <Link href="/signup" className="font-medium text-ink underline">
               Create a free Euclis account
             </Link>{" "}
-            with email only — no credit card, no phone required yet.
+            (email only).
           </li>
-          <li>Create a workspace and invite teammates from the dashboard.</li>
+          <li>Create a workspace and invite teammates.</li>
+          <li>Link your number under Settings → WhatsApp.</li>
           <li>
-            Under Settings → WhatsApp, link your phone number to the bot.
+            Text: <em>add task: fix login API, assign me, due tonight</em>
           </li>
-          <li>
-            Message the bot: <em>add task: fix landing page copy, due Friday</em>
-          </li>
-          <li>
-            Open the web kanban — the card is already there, live-synced.
-          </li>
+          <li>Open the board — the card is there, live.</li>
         </ol>
 
-        <h2>Example commands that work</h2>
+        <h2>Example commands</h2>
         <ul>
           <li>
-            <strong>Create:</strong> &quot;add task: book venue for hackathon,
-            high priority&quot;
+            <strong>Create:</strong> &quot;add task: book venue, high priority&quot;
           </li>
           <li>
-            <strong>Update:</strong> &quot;move #12 to done&quot; or &quot;make
-            #12 high priority&quot;
+            <strong>Update:</strong> &quot;move #12 to done&quot;
           </li>
           <li>
-            <strong>Check status:</strong> &quot;what&apos;s on the board?&quot;
+            <strong>Check:</strong> &quot;what&apos;s on the board?&quot;
           </li>
           <li>
             <strong>Files:</strong> send a photo with caption{" "}
-            <em>#42 booth mockup</em> — it attaches to task #42 and appears in
-            workspace assets.
+            <em>#42 booth mockup</em>
           </li>
         </ul>
 
-        <h2>Three doors, one board</h2>
+        <h2>How this fits the bigger product</h2>
         <p>
-          WhatsApp is one door. Teammates who prefer a laptop use the web
-          kanban (drag-and-drop, whiteboard, assets). Developers using Claude
-          connect via MCP and manage the same tasks mid-conversation. Every
-          change hits the same Postgres row —{" "}
-          <strong>same board, same truth</strong>.
-        </p>
-
-        <h2>Who this is for</h2>
-        <p>
-          Hackathon squads, study groups, side-project cofounders, hostel event
-          committees — any small team that lives in chat and wants a{" "}
-          <strong>free team task board</strong> without enterprise PM overhead.
+          WhatsApp is one capture surface. The same workspace holds discussions,
+          Dreaming memory, and MCP for agents. See{" "}
+          <Link
+            href="/guides/project-memory-dreaming"
+            className="font-medium text-ink underline"
+          >
+            project memory &amp; Dreaming
+          </Link>{" "}
+          for the full story.
         </p>
       </MarketingArticle>
     </>

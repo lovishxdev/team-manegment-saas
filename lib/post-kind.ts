@@ -26,19 +26,23 @@ export const POST_KIND_STYLES: Record<
   { badge: string; dot: string }
 > = {
   DISCUSSION: {
-    badge: "bg-slate-100 text-slate-700 ring-slate-200",
+    badge:
+      "bg-slate-100 text-slate-700 ring-slate-200 dark:bg-slate-500/15 dark:text-slate-200 dark:ring-slate-400/20",
     dot: "bg-slate-400",
   },
   QUESTION: {
-    badge: "bg-sky-50 text-sky-800 ring-sky-200",
+    badge:
+      "bg-sky-50 text-sky-800 ring-sky-200 dark:bg-sky-500/15 dark:text-sky-200 dark:ring-sky-400/20",
     dot: "bg-sky-500",
   },
   ANNOUNCEMENT: {
-    badge: "bg-amber-50 text-amber-900 ring-amber-200",
+    badge:
+      "bg-amber-50 text-amber-900 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-200 dark:ring-amber-400/20",
     dot: "bg-amber-500",
   },
   PROPOSAL: {
-    badge: "bg-violet-50 text-violet-800 ring-violet-200",
+    badge:
+      "bg-violet-50 text-violet-800 ring-violet-200 dark:bg-violet-500/15 dark:text-violet-200 dark:ring-violet-400/20",
     dot: "bg-violet-500",
   },
 };

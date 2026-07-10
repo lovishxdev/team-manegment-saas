@@ -5,7 +5,7 @@ import { revokeInviteAction } from "@/lib/actions/workspace";
 import { ui } from "@/components/ui/ui";
 
 const settingsRowCls =
-  "rounded-xl border border-line bg-white px-4 py-3.5 shadow-[0_1px_3px_rgba(26,26,26,0.04)]";
+  "rounded-xl border border-line bg-card px-4 py-3.5 shadow-[0_1px_3px_rgba(26,26,26,0.04)]";
 
 const actionBtnCls = "min-h-[46px] px-3.5";
 

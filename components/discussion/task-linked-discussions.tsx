@@ -108,8 +108,8 @@ export function TaskLinkedDiscussions({
                 onClick={() => setKind(option)}
                 className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
                   kind === option
-                    ? "bg-ink text-white"
-                    : "bg-white text-ink-soft ring-1 ring-line hover:text-ink"
+                    ? "bg-ink text-white dark:bg-accent dark:text-on-accent"
+                    : "bg-white text-ink-soft ring-1 ring-line hover:text-ink dark:bg-card"
                 }`}
               >
                 {POST_KIND_LABELS[option]}
@@ -157,7 +157,7 @@ export function TaskLinkedDiscussions({
             <li key={post.id}>
               <Link
                 href={`/w/${workspaceId}/discussion/${post.id}`}
-                className="block rounded-xl border border-line/70 bg-white px-4 py-3 shadow-sm transition hover:border-ink/20"
+                className="block rounded-xl border border-line/70 bg-card px-4 py-3 shadow-sm transition hover:border-ink/20"
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <PostKindBadge kind={post.kind} />

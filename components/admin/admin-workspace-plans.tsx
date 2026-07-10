@@ -9,8 +9,8 @@ const TIERS: PlanTier[] = ["HOBBY", "TEAM", "BUSINESS"];
 
 const tierBadge: Record<PlanTier, string> = {
   HOBBY: "bg-paper-deep text-ink-soft ring-1 ring-line",
-  TEAM: "bg-amber-50 text-amber-800 ring-1 ring-amber-200",
-  BUSINESS: "bg-ink text-white",
+  TEAM: "bg-amber-50 text-amber-800 ring-1 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-200 dark:ring-amber-400/20",
+  BUSINESS: "bg-ink text-white dark:text-on-accent",
 };
 
 function PlanRow({ workspace }: { workspace: AdminWorkspacePlan }) {

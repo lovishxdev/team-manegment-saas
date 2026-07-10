@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import {
   Caveat,
   Hanken_Grotesk,
@@ -8,7 +9,9 @@ import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { GoogleAnalytics } from "@/components/analytics/google-analytics";
 import { PostHogProvider } from "@/components/analytics/posthog-provider";
+import { ThemeProvider } from "@/components/theme/theme-provider";
 import { rootMetadata } from "@/lib/seo/metadata";
+import { parseThemeCookie, THEME_COOKIE, THEME_INIT_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
 const hanken = Hanken_Grotesk({
@@ -55,22 +58,33 @@ export const metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const cookieStore = await cookies();
+  const themePreference = parseThemeCookie(
+    cookieStore.get(THEME_COOKIE)?.value,
+  );
+
   return (
     <html
       lang="en"
       className={`${hanken.variable} ${jetbrains.variable} ${instrumentSerif.variable} ${caveat.variable}`}
+      suppressHydrationWarning
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       <body className="min-h-screen app-shell-bg">
         <GoogleAnalytics />
         <PostHogProvider />
         <Analytics />
         <SpeedInsights />
-        <div className="app-root relative z-[2] min-h-screen">{children}</div>
+        <ThemeProvider initialPreference={themePreference}>
+          <div className="app-root relative z-[2] min-h-screen">{children}</div>
+        </ThemeProvider>
       </body>
     </html>
   );

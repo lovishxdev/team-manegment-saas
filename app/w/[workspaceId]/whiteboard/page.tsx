@@ -28,7 +28,7 @@ export default async function WhiteboardPage({
       : {};
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="app-scope app-canvas flex h-screen flex-col">
       <header className="flex h-12 shrink-0 items-center gap-4 border-b border-line bg-paper px-4">
         <Link
           href={`/w/${workspaceId}`}

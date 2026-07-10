@@ -182,7 +182,7 @@ function AccountSettingsOverlay({
   if (!mounted) return null;
 
   return createPortal(
-    <>
+    <div className="app-scope contents">
       <div
         className="fixed inset-0 z-50 bg-black/35 backdrop-blur-[3px]"
         onClick={onClose}
@@ -227,7 +227,12 @@ function AccountSettingsOverlay({
 
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-5 py-5 sm:px-6 sm:py-6">
               <div className="min-h-0 flex-1">
-                {data ? (
+                {section === "appearance" ? (
+                  <AccountSettingsSectionBody
+                    section={section}
+                    data={data as AccountSettingsData}
+                  />
+                ) : data ? (
                   <AccountSettingsSectionBody section={section} data={data} />
                 ) : loading ? (
                   <SectionContentSkeleton section={section} />
@@ -250,7 +255,7 @@ function AccountSettingsOverlay({
           </div>
         </div>
       </div>
-    </>,
+    </div>,
     document.body
   );
 }

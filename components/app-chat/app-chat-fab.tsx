@@ -196,7 +196,7 @@ export function AppChatFab() {
                   <div
                     className={`max-w-[92%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
                       message.role === "user"
-                        ? "bg-ink text-white"
+                        ? "bg-ink text-white dark:bg-white/10"
                         : "border border-line/80 bg-paper text-ink"
                     }`}
                   >
@@ -252,7 +252,7 @@ export function AppChatFab() {
                 <button
                   type="submit"
                   disabled={!canSend}
-                  className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ink text-white shadow-[0_4px_16px_rgba(26,26,26,0.22)] transition hover:bg-ink/90 disabled:cursor-not-allowed disabled:opacity-45"
+                  className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ink text-white shadow-[0_4px_16px_rgba(26,26,26,0.22)] transition hover:bg-ink/90 disabled:cursor-not-allowed disabled:opacity-45 dark:text-on-accent"
                   aria-label="Send message"
                 >
                   <Send className="h-4 w-4" strokeWidth={1.75} />
@@ -264,7 +264,7 @@ export function AppChatFab() {
           <button
             type="button"
             onClick={() => setOpen(true)}
-            className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-ink text-white shadow-[0_8px_28px_rgba(26,26,26,0.28)] transition hover:bg-ink/90 hover:shadow-[0_12px_32px_rgba(26,26,26,0.32)]"
+            className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-ink text-white shadow-[0_8px_28px_rgba(26,26,26,0.28)] transition hover:bg-ink/90 hover:shadow-[0_12px_32px_rgba(26,26,26,0.32)] dark:text-on-accent"
             aria-label="Open assistant"
             aria-expanded={false}
           >

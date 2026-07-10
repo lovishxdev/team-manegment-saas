@@ -28,7 +28,7 @@ export function MemberAvatarStack({
       {shown.map((member, index) => (
         <span
           key={member.id}
-          className={`relative rounded-full ring-2 ${ringClass}`}
+          className={`relative rounded-full bg-paper ring-2 ${ringClass}`}
           style={{
             marginLeft: index === 0 ? 0 : -overlap,
             zIndex: shown.length - index,

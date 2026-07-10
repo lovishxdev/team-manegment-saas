@@ -19,7 +19,7 @@ export function AdminShell({
   const accessRestricted = isAdminAccessConfigured();
 
   return (
-    <div className="min-h-screen">
+    <div className="app-scope app-canvas min-h-screen">
       <header className="shell-glass sticky top-0 z-20 border-b border-line/80">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">

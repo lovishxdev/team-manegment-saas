@@ -39,7 +39,7 @@ export function WorkspaceCard({
     <li>
       <Link
         href={`/w/${id}`}
-        className="group flex items-center gap-3 rounded-lg border border-line/70 bg-paper px-3 py-3 transition hover:border-line-strong hover:bg-white hover:shadow-sm sm:px-4"
+        className="group flex items-center gap-3 rounded-lg border border-line/70 bg-paper px-3 py-3 transition hover:border-line-strong hover:bg-white dark:hover:bg-card-high hover:shadow-sm sm:px-4"
       >
         <GripVertical
           className="h-4 w-4 shrink-0 text-ink-faint/50"

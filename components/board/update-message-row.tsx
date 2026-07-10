@@ -32,7 +32,7 @@ function MentionTags({ labels, body }: { labels: string[]; body: string }) {
       {extra.map((label) => (
         <span
           key={label}
-          className="rounded bg-white/80 px-1.5 py-0.5 text-xs font-semibold text-ink"
+          className="rounded bg-white/80 px-1.5 py-0.5 text-xs font-semibold text-ink dark:bg-white/10"
         >
           @{label}
         </span>
@@ -82,7 +82,7 @@ export function UpdateMessageRow({
   }, [menuOpen]);
 
   return (
-    <article className="group rounded-xl border border-line bg-white px-3.5 py-2.5 shadow-[0_1px_3px_rgba(26,26,26,0.04)] transition-[border-color,box-shadow] hover:border-line-strong sm:px-4 sm:py-3">
+    <article className="group rounded-xl border border-line bg-card px-3.5 py-2.5 shadow-[0_1px_3px_rgba(26,26,26,0.04)] transition-[border-color,box-shadow] hover:border-line-strong sm:px-4 sm:py-3">
       <div className="flex gap-2.5 sm:gap-3">
         <Avatar
           seed={message.authorId}
@@ -107,9 +107,9 @@ export function UpdateMessageRow({
                 <button
                   type="button"
                   onClick={() => setMenuOpen((open) => !open)}
-                  className={`inline-flex h-7 w-7 items-center justify-center rounded-md text-ink-faint transition hover:bg-white/70 hover:text-ink ${
+                  className={`inline-flex h-7 w-7 items-center justify-center rounded-md text-ink-faint transition hover:bg-white/70 hover:text-ink dark:hover:bg-white/10 ${
                     menuOpen
-                      ? "bg-white/70 text-ink opacity-100"
+                      ? "bg-white/70 text-ink opacity-100 dark:bg-white/10"
                       : "opacity-0 group-hover:opacity-100"
                   }`}
                   aria-label="Message options"
@@ -119,7 +119,7 @@ export function UpdateMessageRow({
                 </button>
 
                 {menuOpen ? (
-                  <div className="absolute right-0 top-full z-30 mt-1 min-w-[9.5rem] overflow-hidden rounded-lg border border-line bg-white py-1 shadow-[0_8px_24px_rgba(26,26,26,0.12)]">
+                  <div className="absolute right-0 top-full z-30 mt-1 min-w-[9.5rem] overflow-hidden rounded-lg border border-line bg-card py-1 shadow-[0_8px_24px_rgba(26,26,26,0.12)]">
                     <button
                       type="button"
                       onMouseDown={(event) => event.preventDefault()}

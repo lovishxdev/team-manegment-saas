@@ -36,7 +36,7 @@ function Badge({ count }: { count: number }) {
 
   return (
     <span
-      className={`inline-flex h-[18px] shrink-0 items-center justify-center rounded-full bg-ink/90 font-mono text-[10px] font-medium tabular-nums leading-none text-white ${
+      className={`inline-flex h-[18px] shrink-0 items-center justify-center rounded-full bg-ink/90 font-mono text-[10px] font-medium tabular-nums leading-none text-white dark:text-on-accent ${
         wide ? "min-w-[18px] px-1.5" : "w-[18px]"
       }`}
     >
@@ -108,7 +108,7 @@ export function SidebarNav({ workspaces }: { workspaces: WorkspaceEntry[] }) {
           <button
             type="button"
             onClick={openCreateWorkspace}
-            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-ink-faint transition hover:bg-white/70 hover:text-ink"
+            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-ink-faint transition hover:bg-white/70 hover:text-ink dark:hover:bg-white/10"
             title="New workspace"
             aria-label="New workspace"
           >

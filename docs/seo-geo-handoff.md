@@ -6,30 +6,33 @@ Use this document as the starting context for a chat dedicated to search engine 
 
 ## Product summary (for positioning & copy)
 
-**Euclis** is a lightweight team task-management SaaS for small teams (hackathons, side projects, study groups, hostel groups, weekend events, coffee-shop sprints).
+**Euclis** is the **project brain for your team — and your AI agents**: shared project memory captured from WhatsApp, Claude, Cursor, and the web, maintained by Dreaming, shared via MCP (`get_project_context`).
 
-**Core value prop:** One shared kanban board, reachable from three “doors” without drifting out of sync:
+**Core value prop:** Context shouldn't live in scrollback. Capture → structure → Dreaming keeps it current → humans and agents pull the same brief.
 
-| Channel | What it is |
+| Surface | What it is |
 |---------|------------|
-| **Web dashboard** | Drag-and-drop kanban, live updates, shared assets, multiplayer whiteboard |
-| **WhatsApp bot** | Natural-language task commands via Meta Cloud API + Claude Haiku (no new app to install) |
-| **Claude MCP connector** | Manage the same board from Claude Desktop / claude.ai mid-conversation |
+| **Project memory** | Decisions, blockers, dependencies, milestones |
+| **Dreaming** | Scheduled maintenance (consolidate, reconcile, surface, prune) — nothing deleted |
+| **Discussions** | Threads for humans and agents |
+| **Web dashboard** | Kanban, whiteboard, assets, short IDs |
+| **WhatsApp bot** | Private 1:1 NL commands (not a group @mention bot) |
+| **MCP** | Claude / Cursor agents load the same brief |
 
-**Tagline variants in codebase:**
-- Root layout default: *“Where your team's work flows together”*
-- Homepage / landing: *“Run your team from anywhere, even WhatsApp”*
-- Hero: *“Your team's plan stays in sync even when you're in a [Hackathon / WhatsApp thread / …]”*
-- Sub-hero: *“Same board. Same truth.”*
+**Landing hero:** *The project brain for your team — and your AI agents.*
 
-**Target users:** Small teams who already coordinate in WhatsApp or Claude and don’t want another heavy PM tool.
+**Target users:** Small teams that ship with AI in the loop (hackathons, side projects, indie startups, study groups).
 
 **Differentiators for SEO/GEO:**
-- WhatsApp-native task management (unusual vs Trello/Asana/Notion)
-- No phone required at signup; WhatsApp is optional
-- Free to start; email-only signup
-- Real-time sync across web + WhatsApp + MCP
-- Per-workspace task short IDs (`#42`) referenced in chat
+- Project memory + Dreaming (not just another kanban)
+- One brief for humans and coding agents (MCP)
+- WhatsApp 1:1 capture
+- Hobby free forever; Team curated memory
+- No phone required at signup; WhatsApp optional
+
+**Legacy note:** Older copy framed Euclis as a WhatsApp task board. That remains a valid surface/guide topic; homepage/FAQ/comparisons should lead with memory + agents.
+
+See also `docs/seo-content-strategy.md` and `docs/billing-tiers.md`.
 
 ---
 
@@ -61,10 +64,13 @@ Use this document as the starting context for a chat dedicated to search engine 
 
 | URL | Title / purpose |
 |-----|-----------------|
-| `/` | Marketing homepage (`LandingContent`) — **overrides** root layout title when signed out |
-| `/landing` | Same content as `/` (alias) |
-| `/signup` | Account creation |
-| `/login` | Sign in |
+| `/` | Marketing homepage — project memory / Dreaming / discussions |
+| `/pricing` | Hobby / Team / Business |
+| `/guides/*` | Memory, WhatsApp, hackathon, Claude MCP |
+| `/compare/*` | Trello, Notion, ClickUp, spreadsheets, TaskRio |
+| `/signup`, `/login` | Auth |
+| `/privacy`, `/terms` | Trust |
+| `/landing` | Alias of `/` (canonical `/`, noindex) |
 
 ### Blocked in `robots.txt` (do not index)
 
@@ -151,26 +157,20 @@ Single long-scroll page at `/` and `/landing`:
 
 ---
 
-## Keyword themes (from existing copy)
+## Keyword themes
 
-See **`docs/seo-content-strategy.md`** for the full target query shortlist, TaskRio differentiation, and agent prompt templates.
+See **`docs/seo-content-strategy.md`** for the full shortlist.
 
 Primary:
-- team task board / kanban
-- WhatsApp task management / WhatsApp bot for teams
-- manage tasks from WhatsApp
-- Claude MCP project management
-- small team project management
+- project memory for AI agents / teams
+- get_project_context MCP
+- Dreaming project memory
+- shared context for coding agents
 
-Secondary / long-tail:
-- hackathon task board
-- study group task organizer
-- no-install team tool
-- shared board realtime sync
-- natural language task creation
-
-Competitor adjacency (for comparison content, not in site yet):
-- Trello, Asana, Notion, Linear — but lighter + WhatsApp-native
+Secondary:
+- manage tasks from WhatsApp (1:1 bot)
+- hackathon project memory
+- Trello / Notion alternative for AI teams
 
 ---
 
@@ -254,16 +254,15 @@ components/analytics/google-analytics.tsx
 
 ## One-paragraph elevator pitch (copy-paste for meta/LLM context)
 
-> Euclis is a free team task board built for small groups who coordinate in WhatsApp, Claude, or the browser. Create a workspace, invite your team, and manage kanban tasks from a web dashboard, by messaging a WhatsApp bot in plain English, or through Claude’s MCP connector — all synced to the same board in real time. No credit card, no phone required at signup. Ideal for hackathons, study groups, side projects, and any team that lives in group chat.
+> Euclis is shared project memory for teams and AI agents. It captures decisions, blockers, and milestones from WhatsApp, Claude, Cursor, and the web; Dreaming keeps that store current; humans and coding agents pull the same brief via MCP (`get_project_context`). You also get kanban, discussions, and a private WhatsApp assistant. Hobby is free forever — email signup, no credit card.
 
 ---
 
 ## Prompt starter for new chat
 
 ```
-I'm working on SEO and GEO for Euclis (https://euclis.dev) — a small-team task board 
-reachable via web, WhatsApp, and Claude MCP. Read the handoff doc at 
-docs/seo-geo-handoff.md in the repo. Help me [specific task: e.g. add Open Graph, 
-llms.txt, JSON-LD, fix canonicals, content strategy, etc.]. Stack is Next.js 16 App 
-Router on Vercel. Public pages: /, /landing, /signup, /login. App routes are auth-gated.
+I'm working on SEO and GEO for Euclis (https://euclis.dev) — project memory for teams
+and AI agents (Dreaming, MCP get_project_context, WhatsApp 1:1, kanban). Read
+docs/seo-geo-handoff.md and docs/seo-content-strategy.md. Help me [task].
+Stack: Next.js App Router on Vercel. Public: /, /pricing, /guides/*, /compare/*.
 ```

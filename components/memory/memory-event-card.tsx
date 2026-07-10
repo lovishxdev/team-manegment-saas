@@ -10,11 +10,13 @@ import {
 import { ui } from "@/components/ui/ui";
 
 const KIND_STYLES: Record<string, string> = {
-  DECISION: "bg-sky-50 text-sky-700",
-  BLOCKER: "bg-rose-50 text-rose-700",
-  DEPENDENCY: "bg-amber-50 text-amber-800",
-  MILESTONE: "bg-emerald-50 text-emerald-700",
-  INSIGHT: "bg-violet-50 text-violet-700",
+  DECISION: "bg-sky-50 text-sky-700 dark:bg-sky-500/15 dark:text-sky-200",
+  BLOCKER: "bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-200",
+  DEPENDENCY:
+    "bg-amber-50 text-amber-800 dark:bg-amber-500/15 dark:text-amber-200",
+  MILESTONE:
+    "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200",
+  INSIGHT: "bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-200",
 };
 
 const KIND_LABELS: Record<string, string> = {
@@ -29,7 +31,7 @@ const chipCls =
   "inline-flex h-[22px] items-center rounded px-2 font-mono text-[10px] font-medium leading-none tracking-wide";
 
 const cardCls =
-  "rounded-xl border border-line bg-white px-4 py-4 shadow-[0_1px_3px_rgba(26,26,26,0.04)] transition-[border-color,box-shadow] duration-150 hover:border-line-strong hover:shadow-[0_4px_12px_rgba(26,26,26,0.06)]";
+  "rounded-xl border border-line bg-card px-4 py-4 shadow-[0_1px_3px_rgba(26,26,26,0.04)] transition-[border-color,box-shadow] duration-150 hover:border-line-strong hover:shadow-[0_4px_12px_rgba(26,26,26,0.06)]";
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", {
@@ -82,8 +84,8 @@ export function MemoryEventCard({
           <span
             className={`${chipCls} ${
               isOpen
-                ? "bg-rose-50 text-rose-700"
-                : "bg-emerald-50 text-emerald-700"
+                ? "bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-200"
+                : "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200"
             }`}
           >
             {isOpen ? "Open" : "Resolved"}

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import { buildPageMetadata } from "@/lib/seo/metadata";
 import Image from "next/image";
 import Link from "next/link";
 import { Check } from "lucide-react";
@@ -7,11 +7,12 @@ import { planLimits, planLabel } from "@/lib/billing/plans";
 import { createSupabaseServer } from "@/lib/supabase-server";
 import { TeamTrialCta } from "@/components/pricing/team-trial-cta";
 
-export const metadata: Metadata = {
-  title: "Pricing | Euclis",
+export const metadata = buildPageMetadata({
+  title: "Pricing",
   description:
-    "Free forever for small teams. Start a free 14-day Team trial — no credit card required.",
-};
+    "Hobby free forever for small teams. Team adds curated Dreaming memory and collaboration features — start a free trial, no credit card.",
+  path: "/pricing",
+});
 
 const BUSINESS_CONTACT_EMAIL = "euclis.support@gmail.com";
 

@@ -9,7 +9,7 @@ export function AgentAvatar({
   const logo = size === "sm" ? 20 : 24;
   return (
     <div
-      className={`flex ${shell} shrink-0 items-center justify-center overflow-hidden rounded-full border border-line bg-white shadow-sm`}
+      className={`flex ${shell} shrink-0 items-center justify-center overflow-hidden rounded-full border border-line bg-card shadow-sm`}
       aria-hidden
     >
       <Image

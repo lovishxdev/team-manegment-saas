@@ -22,7 +22,7 @@ export const metadata = buildPageMetadata({
   title: HOME_TITLE,
   description: HOME_DESCRIPTION,
   path: "/",
-  ogImageAlt: "Euclis — free team task board with WhatsApp and Claude MCP",
+  ogImageAlt: "Euclis — project memory for teams and AI agents",
 });
 
 export default async function Home() {

@@ -172,33 +172,32 @@ export function LandingContent() {
                   The dashboard
                 </p>
                 <h2 className="mt-3 font-serif text-[2rem] leading-[1.06] tracking-tight text-ink sm:text-[2.8rem]">
-                  The board that{" "}
-                  <span className="italic font-medium text-ink">doesn&apos;t get out of date</span>
+                  Tasks and memory,{" "}
+                  <span className="italic font-medium text-ink">same workspace</span>
                   .
                 </h2>
                 <p className="mt-5 text-[15px] leading-relaxed text-ink-soft">
-                  Because every update, whether someone dragged a card on the
-                  web, fired a message on WhatsApp, or had Claude rebuild the
-                  backlog, lands in the same Postgres row. Everyone sees the
-                  change as it happens.
+                  The kanban is still here — drag cards, share assets, sketch on
+                  the whiteboard. Updates from WhatsApp or an agent land on the
+                  same board your team already uses.
                 </p>
                 <ul className="mt-6 space-y-2.5 text-[14px] text-ink">
                   <Bullet>
                     <strong className="font-medium">Drag-and-drop kanban</strong>
-                    : three columns, real cards, real keyboard shortcuts.
+                    : three columns, real cards, keyboard shortcuts.
                   </Bullet>
                   <Bullet>
-                    <strong className="font-medium">Live cursor sync</strong> on
-                    a multiplayer whiteboard for thinking out loud.
+                    <strong className="font-medium">Whiteboard</strong> for
+                    thinking out loud with live cursors.
                   </Bullet>
                   <Bullet>
-                    <strong className="font-medium">Shared assets</strong>: any
-                    file dropped on WhatsApp lands here, tagged.
+                    <strong className="font-medium">Shared assets</strong>: files
+                    from WhatsApp land here, tagged.
                   </Bullet>
                   <Bullet>
-                    <strong className="font-medium">Per-workspace short IDs</strong>{" "}
-                    (<code className="font-mono text-[12px] text-ink-soft">#42</code>)
-                    so &quot;close 42&quot; in chat just works.
+                    <strong className="font-medium">Short IDs</strong>{" "}
+                    (<code className="font-mono text-[12px] text-ink-soft">#42</code>
+                    {" "}so &quot;close 42&quot; in chat just works.
                   </Bullet>
                 </ul>
                 <Link
@@ -238,15 +237,14 @@ export function LandingContent() {
         <div className="mx-auto max-w-5xl px-5 py-24 text-center sm:px-8 sm:py-32">
           <Reveal>
             <h2 className="font-serif text-[2.4rem] leading-[1.04] tracking-tight text-ink sm:text-[3.6rem]">
-              Start free. Be in sync by{" "}
-              <span className="italic font-medium text-ink">the next coffee.</span>
+              Stop re-explaining the project{" "}
+              <span className="italic font-medium text-ink">every Monday.</span>
             </h2>
           </Reveal>
           <Reveal delay={80}>
             <p className="mx-auto mt-5 max-w-xl text-[16px] text-ink-soft">
-              Email is enough. No card. No phone number required. Works with
-              WhatsApp, Claude, and the web. None of them are required to
-              get started.
+              Email is enough. No card. Phone optional. Capture from the tools
+              you already use — or start on the web alone.
             </p>
           </Reveal>
           <Reveal delay={140}>
@@ -267,8 +265,7 @@ export function LandingContent() {
           </Reveal>
           <Reveal delay={200}>
             <p className="mx-auto mt-7 max-w-md font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-soft">
-              60-second setup · invite your team by WhatsApp · drop the
-              spreadsheet today
+              Hobby free forever · Team trial on pricing · no credit card
             </p>
           </Reveal>
         </div>
@@ -293,7 +290,7 @@ export function LandingContent() {
                 Euclis
               </p>
               <p className="font-mono text-[10.5px] text-ink-faint">
-                Order from chaos, since {new Date().getFullYear()}.
+                One brief for humans and agents.
               </p>
             </div>
           </div>
@@ -308,13 +305,10 @@ export function LandingContent() {
               FAQ
             </Link>
             <Link
-              href="/guides/manage-tasks-from-whatsapp"
+              href="/guides/project-memory-dreaming"
               className="hover:text-ink"
             >
               Guides
-            </Link>
-            <Link href="/compare/taskrio" className="hover:text-ink">
-              vs TaskRio
             </Link>
             <Link href="/compare/trello" className="hover:text-ink">
               Compare

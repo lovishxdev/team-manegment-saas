@@ -106,7 +106,7 @@ export function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-md"
+      className="app-scope fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-md"
       onClick={onClose}
     >
       <div
