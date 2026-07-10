@@ -23,6 +23,8 @@ export function LandingStyles() {
         -webkit-backface-visibility: hidden;
         backface-visibility: hidden;
         transform: translateZ(0);
+        transition: background 0.45s ease, border-color 0.45s ease,
+          box-shadow 0.45s ease;
       }
       .lp-nav-link {
         display: inline-flex;
@@ -38,6 +40,39 @@ export function LandingStyles() {
       .lp-nav-link:hover {
         color: var(--color-ink);
         background: rgba(255, 255, 255, 0.55);
+      }
+      .lp-nav-brand,
+      .lp-nav-cta {
+        transition: color 0.35s ease, background-color 0.35s ease;
+      }
+
+      /* Night mode — the nav follows the dark Dreaming section behind it. */
+      .lp-nav-pill.is-night {
+        background: rgba(16, 16, 26, 0.72);
+        border-color: rgba(255, 255, 255, 0.12);
+        box-shadow: 0 12px 36px -12px rgba(0, 0, 0, 0.6);
+        -webkit-backdrop-filter: blur(12px);
+        backdrop-filter: blur(12px);
+      }
+      .lp-nav-pill.is-night .lp-nav-brand {
+        color: #f4f3fb;
+      }
+      .lp-nav-pill.is-night .lp-nav-link {
+        color: rgba(226, 226, 242, 0.72);
+      }
+      .lp-nav-pill.is-night .lp-nav-link:hover {
+        color: #ffffff;
+        background: rgba(255, 255, 255, 0.08);
+      }
+      .lp-nav-pill.is-night .lp-nav-cta {
+        background: #ffffff;
+        color: #0b0b14;
+      }
+      .lp-nav-pill.is-night .lp-nav-cta:hover {
+        background: rgba(255, 255, 255, 0.9);
+      }
+      .lp-nav-pill.is-night .lp-nav-cta span {
+        color: rgba(11, 11, 20, 0.65);
       }
 
       /* ---------- Hero / full-bleed photo ---------- */
@@ -378,6 +413,214 @@ export function LandingStyles() {
         .lp-wb-cursor-d { animation: none; }
       }
 
+      /* ---------- Discussions (humans + agent collaboration) ---------- */
+      /* Reserve the taller (answer) height so the reading→answer swap never
+         shifts the thread below it. */
+      .lp-disc-agent {
+        position: relative;
+        min-height: 172px;
+      }
+      .lp-disc-reading {
+        transition: opacity 0.45s ease, transform 0.45s ease;
+      }
+      .lp-disc-reading.is-done {
+        opacity: 0;
+        transform: translateY(-4px);
+        pointer-events: none;
+      }
+      .lp-disc-answer {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        transform: translateY(8px);
+        pointer-events: none;
+        transition: opacity 0.55s ease, transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      .lp-disc-answer.is-on {
+        opacity: 1;
+        transform: none;
+        pointer-events: auto;
+      }
+      .lp-disc-spin {
+        display: inline-block;
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+        border: 1.5px solid var(--color-ink-faint);
+        border-top-color: transparent;
+        animation: lp-disc-spin 0.8s linear infinite;
+      }
+      @keyframes lp-disc-spin {
+        to { transform: rotate(360deg); }
+      }
+      .lp-disc-dots {
+        display: inline-flex;
+        gap: 2px;
+      }
+      .lp-disc-dots i {
+        width: 3px;
+        height: 3px;
+        border-radius: 50%;
+        background: var(--color-ink-faint);
+        animation: lp-disc-dot 1.2s ease-in-out infinite;
+      }
+      .lp-disc-dots i:nth-child(2) { animation-delay: 0.2s; }
+      .lp-disc-dots i:nth-child(3) { animation-delay: 0.4s; }
+      @keyframes lp-disc-dot {
+        0%, 100% { opacity: 0.3; }
+        50%      { opacity: 1; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .lp-disc-spin,
+        .lp-disc-dots i { animation: none; }
+        .lp-disc-reading,
+        .lp-disc-answer { transition: none; }
+      }
+
+      /* ---------- Dream cycle (memory maintenance showcase) ---------- */
+      /* Night section: deep, moonlit backdrop that breaks the light theme. */
+      .lp-dream-night {
+        background-color: #0b0b14;
+        color: #e8e7f2;
+      }
+      .lp-dream-sky {
+        background:
+          radial-gradient(62% 46% at 50% -4%, rgba(129, 140, 248, 0.26), transparent 70%),
+          radial-gradient(42% 40% at 84% 16%, rgba(56, 189, 248, 0.12), transparent 72%),
+          radial-gradient(48% 44% at 12% 86%, rgba(168, 85, 247, 0.12), transparent 72%),
+          linear-gradient(180deg, #0b0b14 0%, #090910 52%, #0b0b14 100%);
+      }
+      /* faint scattered stars, gently twinkling */
+      .lp-dream-stars {
+        background-image:
+          radial-gradient(1.4px 1.4px at 12% 22%, rgba(255, 255, 255, 0.7), transparent),
+          radial-gradient(1.2px 1.2px at 28% 62%, rgba(255, 255, 255, 0.5), transparent),
+          radial-gradient(1px 1px at 42% 18%, rgba(255, 255, 255, 0.6), transparent),
+          radial-gradient(1.3px 1.3px at 58% 78%, rgba(255, 255, 255, 0.45), transparent),
+          radial-gradient(1px 1px at 71% 34%, rgba(255, 255, 255, 0.6), transparent),
+          radial-gradient(1.4px 1.4px at 83% 66%, rgba(255, 255, 255, 0.5), transparent),
+          radial-gradient(1px 1px at 91% 12%, rgba(255, 255, 255, 0.55), transparent),
+          radial-gradient(1.1px 1.1px at 20% 88%, rgba(255, 255, 255, 0.4), transparent);
+        opacity: 0.55;
+        animation: lp-dream-twinkle 7s ease-in-out infinite;
+      }
+      @keyframes lp-dream-twinkle {
+        0%, 100% { opacity: 0.38; }
+        50%      { opacity: 0.62; }
+      }
+      /* soft fades so the night eases in/out of the light sections */
+      .lp-dream-fade-top,
+      .lp-dream-fade-bottom {
+        position: absolute;
+        left: 0;
+        right: 0;
+        height: 140px;
+        z-index: -10;
+        pointer-events: none;
+      }
+      /* Fade to white with zero alpha (the transparent keyword is transparent
+         black, which produces a muddy grey line mid-gradient). */
+      .lp-dream-fade-top {
+        top: 0;
+        background: linear-gradient(
+          180deg,
+          #ffffff 0%,
+          rgba(255, 255, 255, 0) 100%
+        );
+      }
+      .lp-dream-fade-bottom {
+        bottom: 0;
+        background: linear-gradient(
+          0deg,
+          #ffffff 0%,
+          rgba(255, 255, 255, 0) 100%
+        );
+      }
+
+      .lp-dream-panel {
+        position: relative;
+        overflow: hidden;
+        border-radius: 1rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.03);
+        backdrop-filter: blur(8px);
+        box-shadow: 0 40px 120px -40px rgba(0, 0, 0, 0.65);
+        transition: background 0.9s ease, box-shadow 0.9s ease, border-color 0.9s ease;
+      }
+      .lp-dream-panel.is-dreaming {
+        background:
+          radial-gradient(ellipse 120% 60% at 50% -10%, rgba(129, 140, 248, 0.18), transparent 70%),
+          rgba(255, 255, 255, 0.04);
+        border-color: rgba(129, 140, 248, 0.28);
+        box-shadow: 0 46px 130px -40px rgba(79, 70, 229, 0.55);
+      }
+      /* a soft moonlight sweeping down the store while it dreams */
+      .lp-dream-panel.is-dreaming::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: -40%;
+        height: 40%;
+        pointer-events: none;
+        background: linear-gradient(180deg, transparent, rgba(129, 140, 248, 0.14), transparent);
+        animation: lp-dream-sweep 2.6s ease-in-out infinite;
+      }
+      @keyframes lp-dream-sweep {
+        0%   { top: -40%; }
+        100% { top: 100%; }
+      }
+      .lp-dream-moon {
+        animation: lp-dream-moon 2.4s ease-in-out infinite;
+      }
+      @keyframes lp-dream-moon {
+        0%, 100% { transform: rotate(0deg); opacity: 0.7; }
+        50%      { transform: rotate(-12deg); opacity: 1; }
+      }
+      /* Reserve space for the fullest state so the panel never resizes —
+         cards add/remove/merge downward from a fixed top, no content jump. */
+      .lp-dream-cards {
+        min-height: 316px;
+      }
+      /* collapse/expand wrapper for merging, surfacing, archiving */
+      .lp-dream-cards .lp-dc-collapse {
+        overflow: hidden;
+        max-height: 120px;
+        opacity: 1;
+        transition:
+          max-height 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+          opacity 0.45s ease,
+          transform 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+          margin 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      .lp-dream-cards .lp-dc-collapse.is-gone {
+        max-height: 0;
+        margin-top: 0 !important;
+        opacity: 0;
+        transform: translateY(-8px) scale(0.97);
+      }
+      .lp-dc-in {
+        animation: lp-dc-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+      }
+      @keyframes lp-dc-in {
+        from { opacity: 0; transform: translateY(4px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+      .lp-dc-insight {
+        animation: lp-dc-glow 2.4s ease-in-out infinite;
+      }
+      @keyframes lp-dc-glow {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
+        50%      { box-shadow: 0 0 18px 1px rgba(56, 189, 248, 0.28); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .lp-dream-panel.is-dreaming::after,
+        .lp-dream-moon,
+        .lp-dream-stars,
+        .lp-dc-insight { animation: none; }
+        .lp-dream-cards .lp-dc-collapse { transition: none; }
+      }
+
       /* ---------- Scroll story (pinned anchor + swapping copy) ---------- */
       .lp-story {
         position: relative;
@@ -639,6 +882,17 @@ export function LandingStyles() {
       .lp-src-cloud.is-on .pos-2 { transition-delay: 0.13s; }
       .lp-src-cloud.is-on .pos-3 { transition-delay: 0.22s; }
       .lp-src-cloud.is-on .pos-4 { transition-delay: 0.31s; }
+
+      /* Scrolled away from the very top (hero untilting): kill the peek-a-boo
+         instantly. Base pills are opacity:1 (they normally hide by sitting
+         behind the frame), but during the untilt the tilted, shrunk frame no
+         longer occludes them — so force opacity:0 with no transition, giving a
+         clean cut rather than a flash or slide across the moving frame. */
+      .lp-src-cloud.is-hidden .lp-src-pill {
+        opacity: 0;
+        transition: none;
+        animation: none;
+      }
 
       /* Hero peek-a-boo: boxes poke out from behind the frame then duck back,
          each on a staggered delay so it feels like playful mischief. */

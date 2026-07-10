@@ -87,6 +87,10 @@ export function ScrollStory() {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const [enhanced, setEnhanced] = useState(false);
   const [chapter, setChapter] = useState(0);
+  // True only while the hero sits at the very top (before any untilt begins).
+  // The peek-a-boo plays only here; once scrolling starts the frame untilts
+  // and the squares must vanish so they never float over the moving frame.
+  const [atTop, setAtTop] = useState(true);
   // Which logo shows in each square during the hero peek-a-boo.
   const [heroIcons, setHeroIcons] = useState<SrcKey[]>(SRC_KEYS);
 
@@ -138,6 +142,9 @@ export function ScrollStory() {
       stage.style.setProperty("--pin", pin.toFixed(4));
       const ch = Math.min(CHAPTERS.length - 1, Math.floor(p * CHAPTERS.length));
       setChapter((prev) => (prev === ch ? prev : ch));
+      // "At top" = essentially unscrolled, before the untilt is perceptible.
+      const top = p < 0.05;
+      setAtTop((prev) => (prev === top ? prev : top));
     };
 
     const onScroll = () => {
@@ -269,12 +276,19 @@ export function ScrollStory() {
                 In the hero (chapter 0) they play peek-a-boo behind the frame. */}
             <div
               className={`lp-src-cloud ${
-                chapter >= 2 ? "is-on" : chapter === 0 ? "is-hero" : ""
+                chapter >= 2
+                  ? "is-on"
+                  : chapter === 0
+                    ? atTop
+                      ? "is-hero"
+                      : "is-hidden"
+                    : ""
               }`}
               aria-hidden
             >
               {SRC_POSITIONS.map((p, i) => {
-                const key = chapter === 0 ? heroIcons[i] : p.canonical;
+                const heroMode = chapter === 0 && atTop;
+                const key = heroMode ? heroIcons[i] : p.canonical;
                 const meta = SRC_META[key];
                 return (
                   <span
@@ -282,7 +296,7 @@ export function ScrollStory() {
                     className={`lp-src-pill ${p.cls}`}
                     title={meta.label}
                     onAnimationIteration={
-                      chapter === 0 ? () => swapHeroIcon(i) : undefined
+                      heroMode ? () => swapHeroIcon(i) : undefined
                     }
                   >
                     {meta.icon("h-7 w-7")}

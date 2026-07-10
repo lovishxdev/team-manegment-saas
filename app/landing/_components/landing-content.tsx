@@ -1,12 +1,14 @@
 import Image from "next/image";
 import Link from "next/link";
+import { Moon } from "lucide-react";
 import { ui } from "@/components/ui/ui";
 import { DashboardPreview } from "./dashboard-preview";
+import { DiscussionShowcase } from "./discussion-showcase";
+import { DreamCycle } from "./dream-cycle";
 import { LandingStyles } from "./landing-styles";
+import { NavThemeSync } from "./nav-theme-sync";
 import { Reveal } from "./scroll-reveal";
 import { ScrollStory } from "./scroll-story";
-import { UseCaseMarquee } from "./use-case-marquee";
-import { WhatsAppDemo } from "./whatsapp-demo";
 import { FaqSection } from "@/components/seo/faq-section";
 import { HOME_FAQ } from "@/lib/seo/faq";
 
@@ -18,6 +20,7 @@ export function LandingContent() {
   return (
     <div className="relative">
       <LandingStyles />
+      <NavThemeSync />
 
       {/* ============================================================
           NAV — floating pill, glassy (Zite-style)
@@ -36,7 +39,7 @@ export function LandingContent() {
               priority
               className="shrink-0 rounded-md ring-1 ring-line/80 shadow-sm sm:h-8 sm:w-8"
             />
-            <span className="truncate text-[15px] font-semibold tracking-tight text-ink sm:text-base">
+            <span className="lp-nav-brand truncate text-[15px] font-semibold tracking-tight text-ink sm:text-base">
               Euclis
             </span>
           </Link>
@@ -45,8 +48,8 @@ export function LandingContent() {
             <Link href="#how-it-works" className="lp-nav-link">
               Product
             </Link>
-            <Link href="#whatsapp" className="lp-nav-link">
-              WhatsApp
+            <Link href="#dreaming" className="lp-nav-link">
+              Dreaming
             </Link>
             <Link href="/pricing" className="lp-nav-link">
               Pricing
@@ -62,7 +65,7 @@ export function LandingContent() {
             </Link>
             <Link
               href="/signup"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-3.5 py-2 text-sm font-medium text-white transition hover:bg-ink/90 sm:px-4 sm:py-2.5"
+              className="lp-nav-cta inline-flex items-center gap-1.5 rounded-lg bg-ink px-3.5 py-2 text-sm font-medium text-white transition hover:bg-ink/90 sm:px-4 sm:py-2.5"
             >
               Start free
               <span aria-hidden className="text-white/80">
@@ -79,149 +82,79 @@ export function LandingContent() {
       <ScrollStory />
 
       {/* ============================================================
-          USE-CASE MARQUEE — bridges hero into the rest of the page
+          DREAMING — memory that maintains itself
           ============================================================ */}
-      <section className="relative border-y border-line bg-paper/65 py-6 backdrop-blur-sm">
-        <UseCaseMarquee />
-      </section>
+      <section id="dreaming" className="lp-dream-night relative overflow-hidden">
+        {/* Night backdrop — moonlit glow + faint drifting stars. */}
+        <div aria-hidden className="lp-dream-sky absolute inset-0 -z-20" />
+        <div aria-hidden className="lp-dream-stars absolute inset-0 -z-20" />
+        {/* Soft gradient fades so it eases in/out of the light sections. */}
+        <div aria-hidden className="lp-dream-fade-top" />
+        <div aria-hidden className="lp-dream-fade-bottom" />
 
-      {/* ============================================================
-          WHATSAPP — native gateway, no new app
-          ============================================================ */}
-      <section
-        id="whatsapp"
-        className="relative overflow-hidden border-b border-line"
-      >
-        {/* Phone background photo — covers entire section, subtle wash on top */}
-        <div aria-hidden className="absolute inset-0 -z-20">
-          <Image
-            src="/landing-phone.webp"
-            alt=""
-            fill
-            sizes="100vw"
-            quality={75}
-            loading="lazy"
-            className="object-cover object-center opacity-[0.32]"
-          />
-        </div>
-        <div
-          aria-hidden
-          className="absolute inset-0 -z-10"
-          style={{
-            background:
-              "linear-gradient(180deg, rgba(239,239,239,0.96) 0%, rgba(255,255,255,0.86) 18%, rgba(255,255,255,0.78) 60%, rgba(239,239,239,0.96) 100%)",
-          }}
-        />
-
-        <div className="mx-auto max-w-7xl px-5 py-24 sm:px-8 sm:py-32">
+        <div className="mx-auto max-w-7xl px-5 py-28 sm:px-8 sm:py-36">
           <Reveal>
             <div className="flex items-center gap-3">
-              <span className="lp-wa-gradient grid h-7 w-7 place-items-center rounded-md text-white shadow-sm">
-                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
-                  <path d="M12 2C6.5 2 2 6.5 2 12c0 1.8.5 3.5 1.3 5L2 22l5.1-1.3c1.5.8 3.1 1.3 4.9 1.3 5.5 0 10-4.5 10-10S17.5 2 12 2zm5.2 14.1c-.2.6-1.3 1.2-1.8 1.3-.4.1-1 .1-1.7-.1-.4-.1-.9-.3-1.5-.5-2.7-1.2-4.4-3.8-4.6-4-.1-.2-1-1.3-1-2.5s.6-1.8.9-2.1c.2-.2.5-.3.7-.3h.5c.2 0 .4 0 .6.4.2.5.7 1.8.8 1.9.1.1.1.3 0 .5l-.3.4-.4.5c-.1.1-.3.3-.1.6.1.3.6 1 1.3 1.6.9.8 1.6 1 1.9 1.2.3.1.5.1.7-.1l.8-1c.2-.3.4-.2.7-.1.3.1 1.8.9 2.1 1l.5.2c.1.2.1.7-.1 1.3z" />
-                </svg>
+              <span className="grid h-7 w-7 place-items-center rounded-md bg-white/10 text-indigo-100 ring-1 ring-white/15 backdrop-blur">
+                <Moon className="h-3.5 w-3.5" />
               </span>
-              <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-soft">
-                whatsapp first · zero install
+              <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-indigo-200/70">
+                dreaming · while you&apos;re away
               </span>
             </div>
           </Reveal>
 
           <Reveal delay={80}>
-            <h2 className="mt-4 max-w-3xl font-serif text-[2.2rem] leading-[1.06] tracking-tight text-ink sm:text-[3rem] lg:text-[3.6rem]">
-              Run your team from{" "}
-              <span className="font-medium text-ink">the app you already live in.</span>
+            <h2 className="mt-4 max-w-3xl font-serif text-[2.2rem] leading-[1.06] tracking-tight text-[#f5f4fb] sm:text-[3rem] lg:text-[3.6rem]">
+              Your memory isn&apos;t just stored.{" "}
+              <span className="font-medium italic text-white">It thinks.</span>
             </h2>
           </Reveal>
 
           <Reveal delay={140}>
-            <p className="mt-5 max-w-2xl text-[16px] leading-relaxed text-ink-soft sm:text-[17px]">
-              No new app. No new login. Just text the Euclis bot like you&apos;d
-              text a teammate. It parses the intent with{" "}
-              <span className="font-medium text-ink">Claude Haiku</span>,
-              updates the board, and replies with what it did. Send a photo and
-              it lands in your assets, attached to the right task.
+            <p className="mt-5 max-w-2xl text-[16px] leading-relaxed text-indigo-100/60 sm:text-[17px]">
+              Capture only ever sees one moment. So on a schedule, Euclis takes a
+              step back and tends the whole store — the way you&apos;d wish
+              someone would. It merges duplicates, reconciles decisions that
+              contradict, surfaces patterns no single note could see, and files
+              away what&apos;s gone stale. Retrieval reads; dreaming maintains.
             </p>
           </Reveal>
 
-          {/* Feature pills */}
-          <Reveal delay={200}>
-            <ul className="mt-7 flex flex-wrap gap-2">
-              {[
-                "natural-language tasks",
-                "photos auto-attach",
-                "follow-up references (\"make that one high priority\")",
-                "no app to install",
-              ].map((p) => (
-                <li
-                  key={p}
-                  className="rounded-full border border-line bg-paper/80 px-3 py-1.5 text-[12.5px] text-ink shadow-sm backdrop-blur-sm"
-                >
-                  {p}
-                </li>
-              ))}
-            </ul>
-          </Reveal>
-
-          <Reveal delay={260}>
+          <Reveal delay={220}>
             <div className="mt-14">
-              <WhatsAppDemo />
+              <DreamCycle />
             </div>
           </Reveal>
         </div>
       </section>
 
       {/* ============================================================
-          THE TRIAD — three doors, one source of truth
+          DISCUSSIONS — where teams and their agents collaborate
           ============================================================ */}
       <section
-        className="relative overflow-hidden border-b border-line"
+        className="relative overflow-hidden border-b border-line bg-paper"
         id="how-it-works"
       >
-        <div
-          aria-hidden
-          className="lp-mesh absolute inset-0 -z-10 opacity-50"
-        />
         <div className="mx-auto max-w-7xl px-5 py-24 sm:px-8 sm:py-32">
           <Reveal className="text-center">
             <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-soft">
-              The triad
+              Discussions
             </p>
             <h2 className="mx-auto mt-3 max-w-3xl font-serif text-[2rem] leading-[1.08] tracking-tight text-ink sm:text-[2.8rem]">
-              Three doors. One room.{" "}
-              <span className="italic font-medium text-ink">No more "where is it?"</span>
+              Nobody starts from zero{" "}
+              <span className="italic font-medium text-ink">— human or agent.</span>
             </h2>
             <p className="mx-auto mt-4 max-w-xl text-[15px] text-ink-soft">
-              Everyone on your team uses the door that fits them. The board
-              behind those doors is always the same one.
+              Discussions branch into focused threads. Ask an agent to summarize
+              one and it answers from the whole history plus project memory — so a
+              new teammate, or a fresh AI session, is caught up in a minute.
             </p>
           </Reveal>
 
-          <div className="mt-14 grid grid-cols-1 gap-5 md:grid-cols-3">
-            <Reveal delay={0}>
-              <DoorCard
-                badge="WEB"
-                title="The dashboard"
-                desc="Fast kanban with drag-and-drop, live updates, shared assets, and a multiplayer whiteboard. Built for the laptop crowd."
-                visual={<MiniWeb />}
-              />
-            </Reveal>
+          <div className="mt-14">
             <Reveal delay={120}>
-              <DoorCard
-                badge="WHATSAPP"
-                title="The assistant"
-                desc='"Add a task to fix the login bug, high priority, due Friday." Done. Send a photo and it lands in your assets, attached to the right task.'
-                visual={<MiniWhatsApp />}
-                accent
-              />
-            </Reveal>
-            <Reveal delay={240}>
-              <DoorCard
-                badge="CLAUDE"
-                title="The connector"
-                desc="Plug Euclis into Claude as an MCP connector and manage your board mid-conversation: create, update, and review tasks without switching tabs."
-                visual={<MiniClaude />}
-              />
+              <DiscussionShowcase />
             </Reveal>
           </div>
         </div>
@@ -365,8 +298,8 @@ export function LandingContent() {
             </div>
           </div>
           <nav className="flex flex-wrap items-center gap-4 text-[13px] text-ink-soft">
-            <Link href="#whatsapp" className="hover:text-ink">
-              WhatsApp
+            <Link href="#dreaming" className="hover:text-ink">
+              Dreaming
             </Link>
             <Link href="/pricing" className="hover:text-ink">
               Pricing
@@ -408,111 +341,6 @@ export function LandingContent() {
 /* ================================================================
    Small server-side helpers below
    ================================================================ */
-
-function DoorCard({
-  badge,
-  title,
-  desc,
-  visual,
-  accent = false,
-}: {
-  badge: string;
-  title: string;
-  desc: string;
-  visual: React.ReactNode;
-  accent?: boolean;
-}) {
-  return (
-    <article
-      className={`lp-tile flex h-full flex-col rounded-2xl border border-line bg-paper p-6 shadow-sm ${
-        accent ? "ring-1 ring-[#25D366]/25" : ""
-      }`}
-    >
-      <div className="flex items-center justify-between">
-        <span
-          className={`rounded-md px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide ${
-            accent
-              ? "bg-[#DCF8C6]/90 text-[#128C7E]"
-              : "bg-paper-deep text-ink-soft"
-          }`}
-        >
-          {badge}
-        </span>
-      </div>
-      <h3 className="mt-4 text-[20px] font-semibold tracking-tight text-ink">
-        {title}
-      </h3>
-      <p className="mt-2 text-[14px] leading-relaxed text-ink-soft">{desc}</p>
-      <div className="mt-6 flex-1">{visual}</div>
-    </article>
-  );
-}
-
-function MiniWeb() {
-  return (
-    <div className="overflow-hidden rounded-lg border border-line bg-shell">
-      <div className="flex items-center gap-1 border-b border-line px-2 py-1.5">
-        <span className="h-1.5 w-1.5 rounded-full bg-rose-300" />
-        <span className="h-1.5 w-1.5 rounded-full bg-amber-300" />
-        <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
-      </div>
-      <div className="grid grid-cols-3 gap-1.5 p-2">
-        <div className="rounded bg-rose-100/70 p-1.5">
-          <div className="h-1.5 w-6 rounded bg-rose-300/70" />
-          <div className="mt-1.5 h-2.5 rounded bg-white" />
-          <div className="mt-1 h-2.5 rounded bg-white/85" />
-        </div>
-        <div className="rounded bg-orange-100/70 p-1.5">
-          <div className="h-1.5 w-6 rounded bg-orange-300/70" />
-          <div className="mt-1.5 h-2.5 rounded bg-white" />
-        </div>
-        <div className="rounded bg-violet-100/70 p-1.5">
-          <div className="h-1.5 w-6 rounded bg-violet-300/70" />
-          <div className="mt-1.5 h-2.5 rounded bg-white" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MiniWhatsApp() {
-  return (
-    <div className="overflow-hidden rounded-lg bg-[#ECE5DD] p-2">
-      <div className="lp-wa-gradient rounded-t-md px-2 py-1.5 text-[9.5px] font-semibold text-white">
-        Euclis · online
-      </div>
-      <div className="mt-1.5 space-y-1.5 px-1 pb-1">
-        <div className="ml-auto max-w-[78%] rounded-md rounded-tr-sm bg-[#DCF8C6] px-2 py-1 text-[10px] leading-snug text-ink shadow-sm">
-          add task: fix login bug, high, due fri
-        </div>
-        <div className="mr-auto max-w-[82%] rounded-md rounded-tl-sm bg-white px-2 py-1 text-[10px] leading-snug text-ink shadow-sm">
-          Done. Added to To Do · assigned you · due Fri.
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MiniClaude() {
-  return (
-    <div className="overflow-hidden rounded-lg border border-line bg-paper">
-      <div className="flex items-center gap-1.5 border-b border-line bg-card-high px-2 py-1.5 text-[9.5px] font-medium text-ink">
-        <span className="grid h-3.5 w-3.5 place-items-center rounded bg-[#cc9c6a] text-[7px] font-bold text-white">
-          C
-        </span>
-        Claude · MCP connector
-      </div>
-      <div className="space-y-1.5 px-2 py-2">
-        <div className="rounded-md bg-paper-deep px-2 py-1.5 font-mono text-[9.5px] text-ink-soft">
-          → tools/list <span className="text-ink-soft">✓ 3 tools</span>
-        </div>
-        <div className="rounded-md border border-line bg-card px-2 py-1.5 text-[10px] text-ink">
-          create_task · update_task · get_board_state
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function Bullet({ children }: { children: React.ReactNode }) {
   return (
