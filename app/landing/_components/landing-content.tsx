@@ -4,27 +4,11 @@ import { ui } from "@/components/ui/ui";
 import { DashboardPreview } from "./dashboard-preview";
 import { LandingStyles } from "./landing-styles";
 import { Reveal } from "./scroll-reveal";
-import { RotatingWords } from "./rotating-words";
+import { ScrollStory } from "./scroll-story";
 import { UseCaseMarquee } from "./use-case-marquee";
 import { WhatsAppDemo } from "./whatsapp-demo";
 import { FaqSection } from "@/components/seo/faq-section";
 import { HOME_FAQ } from "@/lib/seo/faq";
-import { HERO_BLUR_DATA_URL } from "./hero-blur";
-
-const KANBAN = {
-  todo: "#f43f5e", // rose-500
-  doing: "#f97316", // orange-500
-  done: "#8b5cf6", // violet-500
-} as const;
-
-const ROTATING = [
-  { text: "Hackathon", tint: KANBAN.todo },
-  { text: "Hostel group chat", tint: KANBAN.doing },
-  { text: "Coffee-shop sprint", tint: KANBAN.done },
-  { text: "Weekend event", tint: KANBAN.todo },
-  { text: "3 AM grind", tint: KANBAN.doing },
-  { text: "WhatsApp thread", tint: KANBAN.done },
-];
 
 /**
  * The marketing landing page body, rendered both at `/` (for signed-out
@@ -90,77 +74,9 @@ export function LandingContent() {
       </header>
 
       {/* ============================================================
-          HERO — Netflix-style full-bleed photo (light, warm aesthetic)
+          HERO — pinned scroll-story (anchor + swapping copy)
           ============================================================ */}
-      <section className="lp-hero lp-grain">
-        <div className="lp-hero-photo">
-          <Image
-            src="/landingimg1.webp"
-            alt=""
-            fill
-            priority
-            sizes="100vw"
-            quality={80}
-            placeholder="blur"
-            blurDataURL={HERO_BLUR_DATA_URL}
-            className="object-cover object-center"
-          />
-        </div>
-        <div className="lp-hero-wash" />
-
-        <div className="relative z-[1] mx-auto flex min-h-[100svh] max-w-6xl flex-col justify-between px-5 pb-12 pt-32 sm:px-8 sm:pb-16 sm:pt-36">
-          <div className="mx-auto mt-10 max-w-5xl text-center sm:mt-14">
-            <h1 className="font-serif text-[2.6rem] leading-[1.02] tracking-tight text-ink sm:text-[3.6rem] md:text-[4.4rem] lg:text-[5.2rem]">
-              Your team&apos;s plan stays in sync
-              <br />
-              <span className="inline-flex flex-wrap items-baseline justify-center gap-x-[0.28em]">
-                even when you&apos;re in a
-                <RotatingWords words={ROTATING} />
-              </span>
-            </h1>
-
-            <p className="mx-auto mt-7 max-w-2xl text-base leading-relaxed text-ink sm:mt-9 sm:text-[17px]">
-              Euclis is a shared task board your team can reach from anywhere
-              the conversation already happens. Drag-and-drop on the web,{" "}
-              <span className="rounded bg-[#DCF8C6] px-1.5 py-0.5 font-medium text-ink">
-                fire off a WhatsApp message
-              </span>
-              , or hand the wheel to Claude.{" "}
-              <span className="font-medium">Same board. Same truth.</span>
-            </p>
-
-            <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
-              <Link
-                href="/signup"
-                className={`lp-shimmer px-6 py-3.5 text-[15px] ${ui.btnPrimary}`}
-              >
-                Start free →
-              </Link>
-              <Link
-                href="#whatsapp"
-                className="inline-flex items-center gap-2 rounded-lg border border-line-strong bg-paper/85 px-6 py-3.5 text-[15px] font-medium text-ink shadow-sm backdrop-blur-md transition hover:bg-paper"
-              >
-                WhatsApp demo →
-              </Link>
-            </div>
-
-            {/* Trust line */}
-            <p className="mt-7 text-center font-mono text-[11px] uppercase tracking-[0.16em] text-ink-soft">
-              works with whatsapp · claude · web · realtime sync · zero install
-            </p>
-          </div>
-
-          {/* Scroll cue */}
-          <div className="mt-10 flex justify-center">
-            <div className="lp-scroll-cue flex flex-col items-center gap-1 font-mono text-[10px] uppercase tracking-[0.18em] text-ink-soft">
-              <span>scroll</span>
-              <svg viewBox="0 0 12 16" fill="none" className="h-4 w-3" stroke="currentColor" strokeWidth="1.4">
-                <path d="M6 1v12M2 9l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
-          </div>
-        </div>
-      </section>
+      <ScrollStory />
 
       {/* ============================================================
           USE-CASE MARQUEE — bridges hero into the rest of the page

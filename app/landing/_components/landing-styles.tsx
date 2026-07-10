@@ -7,6 +7,11 @@
 export function LandingStyles() {
   return (
     <style>{`
+      /* Reserve the scrollbar gutter so the fixed nav (full viewport) and the
+         in-flow story section center within the same width — otherwise the hero
+         copy sits ~half a scrollbar-width left of the nav logo. */
+      html { scrollbar-gutter: stable; }
+
       /* ---------- Floating pill nav ---------- */
       .lp-nav-pill {
         position: relative;
@@ -371,6 +376,353 @@ export function LandingStyles() {
         .lp-wb-cursor-b,
         .lp-wb-cursor-c,
         .lp-wb-cursor-d { animation: none; }
+      }
+
+      /* ---------- Scroll story (pinned anchor + swapping copy) ---------- */
+      .lp-story {
+        position: relative;
+      }
+      .lp-story-sticky {
+        position: sticky;
+        top: 0;
+        height: 100svh;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding-inline: 24px;
+        --pin: 0;
+        --p: 0;
+      }
+      /* Match the nav pill's container (header px-6 + max-w-6xl + pill px-5)
+         so the hero copy's left edge aligns with the nav logo. */
+      .lp-story-wrap {
+        position: relative;
+        z-index: 2;
+        display: flex;
+        align-items: center;
+        gap: 3%;
+        width: 100%;
+        max-width: 1152px;
+        margin-inline: auto;
+        padding-inline: 20px;
+        height: 100%;
+      }
+      .lp-story-bg {
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        pointer-events: none;
+        background:
+          radial-gradient(ellipse 45% 55% at 8% 6%, rgba(255, 220, 150, 0.18) 0%, transparent 55%),
+          radial-gradient(ellipse 45% 55% at 94% 10%, rgba(255, 200, 214, 0.14) 0%, transparent 55%),
+          #fbfaf9;
+      }
+
+      .lp-story-anchor {
+        position: relative;
+        z-index: 1;
+        width: 62%;
+        transform-style: preserve-3d;
+        transform-origin: right center;
+        transform:
+          perspective(1800px)
+          translateX(calc((1 - var(--pin)) * 5%))
+          scale(calc(0.94 + 0.06 * var(--pin)))
+          rotateY(calc((1 - var(--pin)) * -12deg))
+          rotateZ(calc((1 - var(--pin)) * -1.2deg));
+        will-change: transform;
+      }
+
+      .lp-story-copy {
+        position: relative;
+        z-index: 2;
+        width: 35%;
+        height: 66svh;
+        pointer-events: none;
+      }
+      .lp-story-panel {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        opacity: 0;
+        transform: translate3d(0, 16px, 0);
+        transition:
+          opacity 0.5s cubic-bezier(0.22, 1, 0.36, 1),
+          transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      .lp-story-panel.is-active {
+        opacity: 1;
+        transform: translate3d(0, 0, 0);
+        pointer-events: auto;
+      }
+
+      .lp-story-dots {
+        position: absolute;
+        left: 50%;
+        bottom: 26px;
+        z-index: 3;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 7px;
+      }
+      .lp-story-dots span {
+        width: 6px;
+        height: 6px;
+        border-radius: 9999px;
+        background: rgba(26, 26, 26, 0.18);
+        transition: background 0.3s ease, width 0.3s ease;
+      }
+      .lp-story-dots span.is-active {
+        width: 20px;
+        background: rgba(26, 26, 26, 0.7);
+      }
+
+      /* Idle "breathing" float — only in the hero so reading chapters stay calm */
+      .lp-wms[data-chapter="0"] {
+        animation: lp-wms-breathe 9s ease-in-out infinite;
+      }
+      @keyframes lp-wms-breathe {
+        0%, 100% { transform: translate3d(0, 0, 0); }
+        50%      { transform: translate3d(0, -6px, 0); }
+      }
+
+      /* Typing indicator — the discussion feels live and ongoing */
+      .lp-typing {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 9px 12px;
+        border-radius: 12px;
+        border-top-left-radius: 4px;
+        background: var(--color-paper-deep, rgba(0, 0, 0, 0.05));
+      }
+      .lp-typing i {
+        width: 6px;
+        height: 6px;
+        border-radius: 9999px;
+        background: var(--color-ink-soft, #6b6b6b);
+        opacity: 0.4;
+        animation: lp-typing 1.3s ease-in-out infinite;
+      }
+      .lp-typing i:nth-child(2) { animation-delay: 0.18s; }
+      .lp-typing i:nth-child(3) { animation-delay: 0.36s; }
+      @keyframes lp-typing {
+        0%, 60%, 100% { transform: translateY(0); opacity: 0.35; }
+        30%           { transform: translateY(-4px); opacity: 0.9; }
+      }
+
+      /* Empty memory panel — a soft scan beam + pulsing radar so it feels like
+         it's actively listening for something to capture. */
+      .lp-mem-empty {
+        position: relative;
+        overflow: hidden;
+      }
+      .lp-mem-empty::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        height: 45%;
+        top: -45%;
+        background: linear-gradient(180deg, transparent, rgba(120, 120, 150, 0.07), transparent);
+        animation: lp-mem-scan 3.4s ease-in-out infinite;
+      }
+      @keyframes lp-mem-scan {
+        0%   { top: -45%; }
+        100% { top: 100%; }
+      }
+      .lp-mem-radar {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 10px;
+        height: 10px;
+        margin: -5px 0 0 -5px;
+        border-radius: 9999px;
+        background: rgba(120, 120, 150, 0.35);
+        transform: translateY(-46px);
+      }
+      .lp-mem-radar::before,
+      .lp-mem-radar::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: 9999px;
+        border: 1px solid rgba(120, 120, 150, 0.35);
+        animation: lp-mem-ping 2.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+      }
+      .lp-mem-radar::after { animation-delay: 1.3s; }
+      @keyframes lp-mem-ping {
+        0%   { transform: scale(1);   opacity: 0.6; }
+        80%, 100% { transform: scale(3.4); opacity: 0; }
+      }
+
+      /* Anchor content transitions (feed + memory fill in) */
+      .lp-wms-in {
+        animation: lp-wms-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+      }
+      @keyframes lp-wms-in {
+        from { opacity: 0; transform: translate3d(0, 8px, 0); }
+        to   { opacity: 1; transform: translate3d(0, 0, 0); }
+      }
+      .lp-wms-live {
+        position: relative;
+      }
+      .lp-wms-live::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: 9999px;
+        background: #10b981;
+        animation: lp-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+        opacity: 0.5;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .lp-story-anchor { transform: none; }
+        .lp-story-panel { transition: none; }
+        .lp-wms-in { animation: none; }
+        .lp-wms[data-chapter="0"] { animation: none; }
+        .lp-typing i { animation: none; }
+        .lp-mem-empty::after,
+        .lp-mem-radar::before,
+        .lp-mem-radar::after { animation: none; }
+      }
+
+      /* ---------- Capture beat: sources peek out from behind the frame ---------- */
+      /* The frame sits above the cloud, so boxes tucked toward center are hidden
+         behind it, then slide outward to peek at the edges when active. */
+      .lp-story-anchor > .lp-wms {
+        position: relative;
+        z-index: 2;
+      }
+      .lp-src-cloud {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        pointer-events: none;
+      }
+      .lp-src-pill {
+        position: absolute;
+        display: grid;
+        place-items: center;
+        width: 58px;
+        height: 58px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.97);
+        border: 1px solid rgba(0, 0, 0, 0.07);
+        box-shadow: 0 16px 40px -16px rgba(20, 20, 30, 0.34);
+        color: var(--color-ink);
+        /* Pure slide, no fade — boxes hide behind the frame's opaque background.
+           Symmetric ease-in-out so entry and exit read as the same motion
+           reversed (slow near the edge where they're actually visible). */
+        transition: transform 0.6s cubic-bezier(0.6, 0, 0.4, 1);
+      }
+      /* Resting (behind the frame): tucked toward center, hidden.
+         Positions are intentionally staggered (not symmetric) for a natural,
+         scattered feel — fixed values, not randomized per load. */
+      /* Resting (hidden): tucked just behind the frame edge — short travel so
+         most of the slide is visible in the gap, and exit is staggered to
+         mirror the entry. */
+      .pos-1 { top: 7%;  left: -40px; transform: translate3d(96px, 0, 0) scale(0.72); transition-delay: 0.27s; }
+      .pos-2 { top: 19%; right: -32px; transform: translate3d(-96px, 0, 0) scale(0.72); transition-delay: 0.18s; }
+      .pos-3 { bottom: 2%; right: -44px; transform: translate3d(-96px, 0, 0) scale(0.72); transition-delay: 0.09s; }
+      .pos-4 { bottom: 25%; left: -34px; transform: translate3d(96px, 0, 0) scale(0.72); transition-delay: 0s; }
+      /* Peeked out (active): slide to edge positions, each with a slight tilt. */
+      .lp-src-cloud.is-on .pos-1 { transform: translate3d(0, 0, 0) rotate(-5deg); }
+      .lp-src-cloud.is-on .pos-2 { transform: translate3d(0, 0, 0) rotate(4deg); }
+      .lp-src-cloud.is-on .pos-3 { transform: translate3d(0, 0, 0) rotate(-3deg); }
+      .lp-src-cloud.is-on .pos-4 { transform: translate3d(0, 0, 0) rotate(6deg); }
+      .lp-src-cloud.is-on .pos-1 { transition-delay: 0.04s; }
+      .lp-src-cloud.is-on .pos-2 { transition-delay: 0.13s; }
+      .lp-src-cloud.is-on .pos-3 { transition-delay: 0.22s; }
+      .lp-src-cloud.is-on .pos-4 { transition-delay: 0.31s; }
+
+      /* Hero peek-a-boo: boxes poke out from behind the frame then duck back,
+         each on a staggered delay so it feels like playful mischief. */
+      .lp-src-cloud.is-hero .pos-1 { animation: lp-mischief-l 6.5s ease-in-out infinite; animation-delay: 0.2s; }
+      .lp-src-cloud.is-hero .pos-2 { animation: lp-mischief-r 6.5s ease-in-out infinite; animation-delay: 1.7s; }
+      .lp-src-cloud.is-hero .pos-3 { animation: lp-mischief-r 6.5s ease-in-out infinite; animation-delay: 3.6s; }
+      .lp-src-cloud.is-hero .pos-4 { animation: lp-mischief-l 6.5s ease-in-out infinite; animation-delay: 4.9s; }
+      @keyframes lp-mischief-l {
+        0%, 14%   { transform: translate3d(96px, 0, 0) scale(0.7); opacity: 0; }
+        24%       { transform: translate3d(-4px, -2px, 0) rotate(-7deg) scale(1); opacity: 1; }
+        31%       { transform: translate3d(6px, 1px, 0) rotate(-3deg) scale(1); opacity: 1; }
+        42%, 100% { transform: translate3d(96px, 0, 0) scale(0.7); opacity: 0; }
+      }
+      @keyframes lp-mischief-r {
+        0%, 14%   { transform: translate3d(-96px, 0, 0) scale(0.7); opacity: 0; }
+        24%       { transform: translate3d(4px, -2px, 0) rotate(7deg) scale(1); opacity: 1; }
+        31%       { transform: translate3d(-6px, 1px, 0) rotate(3deg) scale(1); opacity: 1; }
+        42%, 100% { transform: translate3d(-96px, 0, 0) scale(0.7); opacity: 0; }
+      }
+
+      /* ---------- Shared beat: agent cameo reading memory ---------- */
+      .lp-agent-cameo {
+        position: absolute;
+        right: -18px;
+        bottom: 24%;
+        z-index: 7;
+        width: 208px;
+        padding: 11px 13px;
+        border-radius: 13px;
+        background: rgba(255, 255, 255, 0.98);
+        border: 1px solid rgba(0, 0, 0, 0.07);
+        box-shadow: 0 28px 64px -26px rgba(20, 20, 30, 0.4);
+        pointer-events: none;
+        opacity: 0;
+        transform: translate3d(26px, 0, 0);
+        transition:
+          opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+          transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      .lp-agent-cameo.is-on {
+        opacity: 1;
+        transform: translate3d(0, 0, 0);
+      }
+      .lp-agent-cameo-head {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11.5px;
+        font-weight: 600;
+        color: var(--color-ink);
+      }
+      .lp-agent-call {
+        display: block;
+        margin-top: 9px;
+        padding: 6px 8px;
+        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.04);
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 10.5px;
+        color: var(--color-ink-soft);
+      }
+      .lp-agent-res {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 7px;
+        font-size: 10px;
+        font-weight: 600;
+        color: #0f7a63;
+      }
+      .lp-agent-check {
+        display: inline-grid;
+        place-items: center;
+        width: 13px;
+        height: 13px;
+        border-radius: 9999px;
+        background: #10b981;
+        color: #fff;
+        font-size: 8px;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .lp-src-pill,
+        .lp-agent-cameo { transition: none; }
+        .lp-src-cloud.is-hero .lp-src-pill { animation: none; }
       }
     `}</style>
   );
