@@ -172,6 +172,7 @@ export function AdminMemory({ analytics }: { analytics: AdminMemoryAnalytics }) 
                   <th className={th}>Events</th>
                   <th className={th}>Open</th>
                   <th className={th}>Decisions</th>
+                  <th className={th}>Documents</th>
                   <th className={th}>Superseded</th>
                   <th className={th}>New (7d)</th>
                   <th className={th}>Brief tokens</th>
@@ -187,6 +188,7 @@ export function AdminMemory({ analytics }: { analytics: AdminMemoryAnalytics }) 
                     <td className={td}>{ws.totalEvents}</td>
                     <td className={td}>{ws.openBlockers}</td>
                     <td className={td}>{ws.decisions}</td>
+                    <td className={td}>{ws.documents}</td>
                     <td className={td}>{ws.superseded}</td>
                     <td className={td}>{ws.events7d}</td>
                     <td className={td}>

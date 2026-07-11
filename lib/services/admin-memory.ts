@@ -34,6 +34,7 @@ export type AdminMemoryWorkspace = {
   totalEvents: number;
   openBlockers: number;
   decisions: number;
+  documents: number;
   superseded: number;
   events7d: number;
   briefTokens: number | null;
@@ -105,6 +106,7 @@ export async function getAdminMemoryAnalytics(): Promise<AdminMemoryAnalytics> {
     openByWorkspace,
     supersededByWorkspace,
     events7dByWorkspace,
+    documentsByWorkspace,
     workspaces,
     rawHistoryRows,
     briefByWorkspace,
@@ -138,6 +140,10 @@ export async function getAdminMemoryAnalytics(): Promise<AdminMemoryAnalytics> {
     prisma.memoryEvent.groupBy({
       by: ["workspaceId"],
       where: { createdAt: { gte: since7d } },
+      _count: { _all: true },
+    }),
+    prisma.memoryDocument.groupBy({
+      by: ["workspaceId"],
       _count: { _all: true },
     }),
     prisma.workspace.findMany({ select: { id: true, name: true } }),
@@ -182,10 +188,13 @@ export async function getAdminMemoryAnalytics(): Promise<AdminMemoryAnalytics> {
 
   const judgeRuns = count(totals, "judge_run");
   const agentEvents = count(totals, "event_created_agent");
+  const documentEvents = count(totals, "event_created_document");
   const threadEvents = count(totals, "event_created_thread");
+  const postEvents = count(totals, "event_created_post");
   const explicitEvents = count(totals, "event_created_explicit");
   const dupes = count(totals, "event_skipped_duplicate");
-  const allCreated = agentEvents + threadEvents + explicitEvents;
+  const allCreated =
+    agentEvents + documentEvents + threadEvents + postEvents + explicitEvents;
 
   const capture: AdminMemoryStat[] = [
     {
@@ -196,11 +205,14 @@ export async function getAdminMemoryAnalytics(): Promise<AdminMemoryAnalytics> {
     {
       label: "Events captured (7d)",
       value: allCreated.toLocaleString(),
-      hint: `${agentEvents} agent · ${threadEvents} thread · ${explicitEvents} explicit`,
+      hint: `${agentEvents} agent · ${documentEvents} document · ${threadEvents} task · ${postEvents} discussion · ${explicitEvents} explicit`,
     },
     {
       label: "Events per judge run",
-      value: judgeRuns > 0 ? (agentEvents / judgeRuns).toFixed(2) : "—",
+      value:
+        judgeRuns > 0
+          ? ((agentEvents + documentEvents) / judgeRuns).toFixed(2)
+          : "—",
       hint: "healthy is well below 1 — most sessions record nothing",
     },
     {
@@ -320,7 +332,9 @@ export async function getAdminMemoryAnalytics(): Promise<AdminMemoryAnalytics> {
         entry.judgeRuns += n;
         break;
       case "event_created_agent":
+      case "event_created_document":
       case "event_created_thread":
+      case "event_created_post":
       case "event_created_explicit":
         entry.eventsCreated += n;
         break;
@@ -365,6 +379,9 @@ export async function getAdminMemoryAnalytics(): Promise<AdminMemoryAnalytics> {
   const events7dCounts = new Map(
     events7dByWorkspace.map((r) => [r.workspaceId, r._count._all])
   );
+  const documentCounts = new Map(
+    documentsByWorkspace.map((r) => [r.workspaceId, r._count._all])
+  );
   const briefStats = new Map(
     briefByWorkspace.map((r) => [
       r.workspaceId,
@@ -385,6 +402,7 @@ export async function getAdminMemoryAnalytics(): Promise<AdminMemoryAnalytics> {
         totalEvents,
         openBlockers: openCounts.get(ws.id) ?? 0,
         decisions: kinds?.get("DECISION") ?? 0,
+        documents: documentCounts.get(ws.id) ?? 0,
         superseded: supersededCounts.get(ws.id) ?? 0,
         events7d: events7dCounts.get(ws.id) ?? 0,
         briefTokens:

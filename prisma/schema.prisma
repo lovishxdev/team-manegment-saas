@@ -108,6 +108,7 @@ model User {
   oauthCodes     OAuthCode[]
   oauthTokens    OAuthToken[]
   memoryEvents   MemoryEvent[]         @relation("AuthoredMemoryEvents")
+  memoryDocuments MemoryDocument[]     @relation("AuthoredMemoryDocuments")
   whatsappMessages WhatsAppMessage[]
   whatsappPendingActions WhatsAppPendingAction[]
   whatsappChatState WhatsAppChatState?
@@ -141,6 +142,7 @@ model Workspace {
   posts           Post[]
   discussionTags  WorkspaceDiscussionTag[]
   memoryEvents    MemoryEvent[]
+  memoryDocuments MemoryDocument[]
   memoryDreamRuns MemoryDreamRun[]
   agentSeats      AgentSeat[]
   lastActiveUsers User[]                @relation("LastActiveWorkspace")
@@ -319,6 +321,11 @@ model MemoryEvent {
   sourceUpdateId String?        @db.Uuid
   /// PostMessage this event was extracted from (discussion provenance).
   sourcePostMessageId String?   @db.Uuid
+  /// Agent-authored Markdown file that supplied evidence for this event.
+  /// Path is repository-relative; hash identifies the exact reviewed content.
+  sourceDocumentPath String?
+  sourceDocumentHash String?
+  sourceDocumentId   String?           @db.Uuid
   kind        MemoryEventKind
   /// OPEN is only meaningful for BLOCKER/DEPENDENCY; decisions and
   /// milestones are created RESOLVED (they're facts, not open work).
@@ -369,6 +376,7 @@ model MemoryEvent {
   task         Task?       @relation(fields: [taskId], references: [id], onDelete: SetNull)
   sourceUpdate TaskUpdate? @relation("MemoryEventSource", fields: [sourceUpdateId], references: [id], onDelete: SetNull)
   sourcePostMessage PostMessage? @relation("MemoryEventPostSource", fields: [sourcePostMessageId], references: [id], onDelete: SetNull)
+  sourceDocument MemoryDocument? @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
   resolvedByPostMessage PostMessage? @relation("MemoryEventPostResolution", fields: [resolvedByPostMessageId], references: [id], onDelete: SetNull)
   author       User?       @relation("AuthoredMemoryEvents", fields: [authorId], references: [id], onDelete: SetNull)
   supersededBy MemoryEvent?  @relation("MemoryEventSupersession", fields: [supersededByEventId], references: [id], onDelete: SetNull)
@@ -377,6 +385,32 @@ model MemoryEvent {
   @@index([workspaceId, status, kind])
   @@index([taskId, createdAt])
   @@index([workspaceId, createdAt])
+  @@index([workspaceId, sourceDocumentHash])
+  @@index([sourceDocumentId])
+}
+
+/// Repository Markdown explicitly opted into Euclis memory. The database
+/// stores a bounded snapshot for web/agent preview; the repo file remains the
+/// authoring source. Events hold structured facts extracted from this source.
+model MemoryDocument {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  path        String
+  title       String
+  content     String
+  contentHash String
+  tags        String[] @default([])
+  authorId    String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  author    User?     @relation("AuthoredMemoryDocuments", fields: [authorId], references: [id], onDelete: SetNull)
+  events    MemoryEvent[]
+
+  @@unique([workspaceId, path])
+  @@index([workspaceId, updatedAt])
+  @@index([workspaceId, contentHash])
 }
 
 /// One row per dream-cycle execution — the audit log behind the admin

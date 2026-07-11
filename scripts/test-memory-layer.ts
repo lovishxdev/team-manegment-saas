@@ -19,7 +19,13 @@ import {
   formatMemoryEvents,
 } from "../lib/tools/defs/memory";
 import { formatOpenBlockerNudge } from "../lib/memory/suggest";
-import { memoryEventDocument, type MemoryEventRow } from "../lib/services/memory";
+import {
+  memoryEventDocument,
+  normalizeMemoryTags,
+  queryMemoryTagScore,
+  type MemoryEventRow,
+} from "../lib/services/memory";
+import { parseMemoryDocument } from "../lib/memory/documents";
 import { BUTTON, parseButtonId } from "../lib/whatsapp-interactive";
 
 let passed = 0;
@@ -88,6 +94,9 @@ const sampleEvent: MemoryEventRow = {
   resolvedAt: null,
   supersededByEventId: null,
   dreamedAt: null,
+  sourceDocumentPath: null,
+  sourceDocumentHash: null,
+  sourceDocument: null,
   author: { id: "u1", username: "priya", email: null },
   task: { shortId: 12, title: "Login page redesign" },
 };
@@ -147,6 +156,37 @@ check(
   "memoryEventDocument combines summary + reasoning",
   memoryEventDocument({ summary: "A", reasoning: "B" }) === "A\nB" &&
     memoryEventDocument({ summary: "A", reasoning: null }) === "A"
+);
+
+check(
+  "memory tags canonicalize common aliases",
+  JSON.stringify(
+    normalizeMemoryTags(["Authentication", "authorization", "PostgreSQL"])
+  ) === JSON.stringify(["auth", "postgres"])
+);
+check(
+  "context tag scoring recognizes canonical aliases",
+  queryMemoryTagScore("Fix authentication and session handling", ["auth"]) ===
+    1
+);
+
+const parsedMemoryDoc = parseMemoryDocument(`---
+euclis-memory: true
+title: Auth boundary
+tags: [authentication, rbac]
+---
+# Auth boundary
+
+Use server-side claims for authorization.`);
+check(
+  "opt-in memory document parses title, canonical tags, and body",
+  parsedMemoryDoc?.title === "Auth boundary" &&
+    parsedMemoryDoc.tags.join(",") === "auth,rbac" &&
+    parsedMemoryDoc.body.includes("server-side claims")
+);
+check(
+  "ordinary Markdown is rejected as memory evidence",
+  parseMemoryDocument("# README\n\nNot opted in.") === null
 );
 
 // ── record_decision fallback (WhatsApp models may send empty args) ──────

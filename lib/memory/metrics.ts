@@ -13,6 +13,7 @@ export type MemoryMetricName =
   | "judge_run"
   /** Event committed, by capture source. */
   | "event_created_agent"
+  | "event_created_document"
   | "event_created_thread"
   | "event_created_post"
   | "event_created_explicit"

@@ -98,6 +98,7 @@ alter table public."WorkspaceInvite"     enable row level security;
 alter table public."TaskUpdate"          enable row level security;
 alter table public."WorkspaceMessage"    enable row level security;
 alter table public."MemoryEvent"         enable row level security;
+alter table public."MemoryDocument"      enable row level security;
 
 drop policy if exists "members_read_tasks" on public."Task";
 create policy "members_read_tasks" on public."Task"
@@ -129,6 +130,10 @@ create policy "members_read_workspace_messages" on public."WorkspaceMessage"
 
 drop policy if exists "members_read_memory_events" on public."MemoryEvent";
 create policy "members_read_memory_events" on public."MemoryEvent"
+  for select using (public.is_workspace_member("workspaceId"));
+
+drop policy if exists "members_read_memory_documents" on public."MemoryDocument";
+create policy "members_read_memory_documents" on public."MemoryDocument"
   for select using (public.is_workspace_member("workspaceId"));
 
 drop policy if exists "users_read_self" on public."User";

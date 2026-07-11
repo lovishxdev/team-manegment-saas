@@ -167,6 +167,8 @@ const memoryEventSelect = {
   resolvedAt: true,
   supersededByEventId: true,
   dreamedAt: true,
+  sourceDocumentPath: true,
+  sourceDocumentHash: true,
   author: { select: { id: true, username: true, email: true } },
   task: { select: { shortId: true, title: true } },
 } as const;

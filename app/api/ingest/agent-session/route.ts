@@ -6,6 +6,7 @@ import { resolveUserWorkspaceContext, ServiceError } from "@/lib/services/projec
 import {
   captureFromAgentSession,
   MAX_AGENT_TRANSCRIPT_CHARS,
+  type AgentSessionDocument,
   type SessionCaptureResult,
 } from "@/lib/memory/agent-capture";
 import { memoryCaptureEnabled } from "@/lib/memory/capture";
@@ -13,6 +14,12 @@ import { buildWorkspaceBrief } from "@/lib/memory/brief";
 import type { ClaimedSuggestion } from "@/lib/memory/suggest";
 import { bumpMemoryMetric } from "@/lib/memory/metrics";
 import { claimAgentSeat } from "@/lib/billing/entitlements";
+import {
+  MAX_MEMORY_DOCUMENTS,
+  MAX_MEMORY_DOCUMENT_CHARS,
+  MAX_MEMORY_DOCUMENT_TOTAL_CHARS,
+  upsertMemoryDocuments,
+} from "@/lib/memory/documents";
 
 /**
  * Ambient ingest for coding-agent sessions. The agent's stop hook (Cursor /
@@ -56,6 +63,44 @@ type Credential = {
   userId: string;
   workspaceId: string | null;
 };
+
+function parseDocuments(value: unknown): AgentSessionDocument[] {
+  if (!Array.isArray(value)) return [];
+  const documents: AgentSessionDocument[] = [];
+  let totalChars = 0;
+
+  for (const raw of value.slice(0, MAX_MEMORY_DOCUMENTS)) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const item = raw as Record<string, unknown>;
+    const path = typeof item.path === "string" ? item.path.trim() : "";
+    const hash = typeof item.hash === "string" ? item.hash.trim() : "";
+    const content =
+      typeof item.content === "string"
+        ? item.content.trim().slice(0, MAX_MEMORY_DOCUMENT_CHARS)
+        : "";
+
+    // Hooks send repository-relative Markdown only. Reject traversal and
+    // generated Euclis context files even if a custom client submits them.
+    if (
+      !path ||
+      path.startsWith("/") ||
+      path.split(/[\\/]/).includes("..") ||
+      !/^\.euclis\/memory\/[a-z0-9_./-]+\.md$/i.test(path) ||
+      !/^[a-f0-9]{64}$/i.test(hash) ||
+      !content ||
+      !/^---\n[\s\S]*?^euclis-memory:\s*true\s*$[\s\S]*?^---/im.test(
+        content
+      )
+    ) {
+      continue;
+    }
+    if (totalChars + content.length > MAX_MEMORY_DOCUMENT_TOTAL_CHARS) break;
+    totalChars += content.length;
+    documents.push({ path, hash, content });
+  }
+
+  return documents;
+}
 
 async function authenticate(req: Request): Promise<Credential | null> {
   const header = req.headers.get("authorization") ?? "";
@@ -107,6 +152,7 @@ export async function POST(req: Request) {
     conversation_id?: unknown;
     transcript?: unknown;
     workspace?: unknown;
+    documents?: unknown;
   };
   try {
     body = await req.json();
@@ -116,6 +162,7 @@ export async function POST(req: Request) {
 
   const transcript =
     typeof body.transcript === "string" ? body.transcript : "";
+  const submittedDocuments = parseDocuments(body.documents);
   if (transcript.length > MAX_BODY_CHARS) {
     return NextResponse.json({ error: "transcript too large" }, { status: 413 });
   }
@@ -160,17 +207,33 @@ export async function POST(req: Request) {
     );
   }
 
+  const documents =
+    submittedDocuments.length > 0
+      ? await upsertMemoryDocuments({
+          workspaceId: workspace.workspaceId,
+          userId: credential.userId,
+          documents: submittedDocuments,
+        }).catch((err) => {
+          console.error("[agent-session] document upsert failed:", err);
+          return [];
+        })
+      : [];
+
   // Judge inline so the response can carry both the up-to-date brief and
   // any resolution asks for this very session. Capture failures never fail
   // the request — the brief still ships.
   let capture: SessionCaptureResult = { suggestions: [] };
-  if (memoryCaptureEnabled() && transcript.trim().length > 0) {
+  if (
+    memoryCaptureEnabled() &&
+    (transcript.trim().length > 0 || documents.length > 0)
+  ) {
     capture = await captureFromAgentSession({
       workspaceId: workspace.workspaceId,
       workspaceName: workspace.workspaceName,
       userId: credential.userId,
       conversationId,
       transcript: transcript.slice(-MAX_AGENT_TRANSCRIPT_CHARS),
+      documents,
     }).catch((err) => {
       console.error("[agent-session] capture failed:", err);
       return { suggestions: [] };

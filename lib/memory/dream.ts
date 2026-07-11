@@ -154,6 +154,10 @@ Operations, in priority order:
 3. SURFACE insights: patterns visible only across events — a blocker theme recurring, the team converging on a choice never made explicitly, two open decisions that conflict and need a human. An insight must be actionable for a teammate; observations that change nothing are noise. Most dreams surface ZERO insights.
 4. ARCHIVE stale rows: RESOLVED events that stopped informing work (old cleared blockers, absorbed milestones). Decisions that still bind future work stay, however old. Open blockers/dependencies always stay.
 
+Opt-in Markdown documents are supporting evidence for insights and
+contradiction judgment. They are not event ids and cannot be merged,
+superseded, or archived by this tool.
+
 Be conservative: every operation loses information from the active store, and a wrong merge is worse than a duplicate. When unsure, do nothing — empty arrays are the expected output for a healthy store.`;
 
 type StoredEvent = {
@@ -168,6 +172,14 @@ type StoredEvent = {
   task: { shortId: number; title: string } | null;
 };
 
+type StoredDocument = {
+  path: string;
+  title: string;
+  content: string;
+  tags: string[];
+  updatedAt: Date;
+};
+
 function formatEvent(e: StoredEvent): string {
   const date = e.createdAt.toISOString().slice(0, 10);
   const status = e.status === "OPEN" ? " OPEN" : "";
@@ -179,7 +191,8 @@ function formatEvent(e: StoredEvent): string {
 
 async function proposeOperations(
   workspaceName: string,
-  events: StoredEvent[]
+  events: StoredEvent[],
+  documents: StoredDocument[]
 ): Promise<DreamOps | null> {
   const apiKey = getAnthropicApiKey();
   if (!apiKey) return null;
@@ -196,6 +209,16 @@ async function proposeOperations(
           `Workspace: "${workspaceName}" — full active memory store (${events.length} events, oldest first):`,
           ``,
           events.map(formatEvent).join("\n"),
+          ``,
+          `Opt-in memory documents (${documents.length}; supporting evidence, not operation targets):`,
+          documents.length > 0
+            ? documents
+                .map(
+                  (document) =>
+                    `- ${document.path} (${document.title}; tags=${document.tags.join(",") || "none"}; updated=${document.updatedAt.toISOString().slice(0, 10)})\n  ${document.content.slice(0, 1200)}`
+                )
+                .join("\n")
+            : "(none)",
         ].join("\n"),
       },
     ],
@@ -285,37 +308,52 @@ export async function runDreamCycle(input: {
     return report;
   }
 
-  const events: StoredEvent[] = await prisma.memoryEvent.findMany({
-    where: {
-      workspaceId: input.workspaceId,
-      supersededByEventId: null,
-      archivedAt: null,
-    },
-    orderBy: { createdAt: "asc" },
-    take: MAX_EVENTS_REVIEWED,
-    select: {
-      id: true,
-      kind: true,
-      status: true,
-      summary: true,
-      reasoning: true,
-      tags: true,
-      createdAt: true,
-      resolvedAt: true,
-      task: { select: { shortId: true, title: true } },
-    },
-  });
+  const [events, documents]: [StoredEvent[], StoredDocument[]] =
+    await Promise.all([
+      prisma.memoryEvent.findMany({
+        where: {
+          workspaceId: input.workspaceId,
+          supersededByEventId: null,
+          archivedAt: null,
+        },
+        orderBy: { createdAt: "asc" },
+        take: MAX_EVENTS_REVIEWED,
+        select: {
+          id: true,
+          kind: true,
+          status: true,
+          summary: true,
+          reasoning: true,
+          tags: true,
+          createdAt: true,
+          resolvedAt: true,
+          task: { select: { shortId: true, title: true } },
+        },
+      }),
+      prisma.memoryDocument.findMany({
+        where: { workspaceId: input.workspaceId },
+        orderBy: { updatedAt: "desc" },
+        take: 30,
+        select: {
+          path: true,
+          title: true,
+          content: true,
+          tags: true,
+          updatedAt: true,
+        },
+      }),
+    ]);
   report.reviewed = events.length;
 
-  if (events.length < MIN_EVENTS_TO_DREAM) {
-    report.skipped = `only ${events.length} events (min ${MIN_EVENTS_TO_DREAM})`;
+  if (events.length + documents.length < MIN_EVENTS_TO_DREAM) {
+    report.skipped = `only ${events.length} events + ${documents.length} documents (min ${MIN_EVENTS_TO_DREAM} signals)`;
     await logDreamRun(report, startedAt);
     return report;
   }
 
   bumpMemoryMetric(input.workspaceId, "dream_run", { sum: events.length });
 
-  const ops = await proposeOperations(workspace.name, events);
+  const ops = await proposeOperations(workspace.name, events, documents);
   if (!ops) {
     report.skipped = "model call produced no operations";
     await logDreamRun(report, startedAt);

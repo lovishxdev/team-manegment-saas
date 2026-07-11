@@ -12,11 +12,11 @@ import {
  * calls. get_project_context remains the on-demand, query-scoped deep pull.
  */
 
-const MAX_TASKS = 12;
-const MAX_DECISIONS = 8;
-const MAX_BLOCKERS = 10;
-const MAX_RECENT = 6;
-const MAX_INSIGHTS = 3;
+const MAX_TASKS = 8;
+const MAX_DECISIONS = 4;
+const MAX_BLOCKERS = 5;
+const MAX_RECENT = 3;
+const MAX_INSIGHTS = 2;
 
 const STATUS_LABEL: Record<string, string> = {
   TODO: "todo",
@@ -24,11 +24,21 @@ const STATUS_LABEL: Record<string, string> = {
   DONE: "done",
 };
 
-function formatEventLine(e: MemoryEventRow): string {
+function formatEventLine(
+  e: MemoryEventRow,
+  options?: { includeReasoning?: boolean }
+): string {
   const task = e.task ? ` · task #${e.task.shortId}` : "";
   const tags =
     e.tags.length > 0 ? ` · ${e.tags.map((t) => `#${t}`).join(" ")}` : "";
-  const why = e.reasoning ? `\n  why: ${e.reasoning}` : "";
+  const why =
+    options?.includeReasoning && e.reasoning
+      ? `\n  why: ${
+          e.reasoning.length > 240
+            ? `${e.reasoning.slice(0, 237)}...`
+            : e.reasoning
+        }`
+      : "";
   return `- [${e.kind}] ${e.summary}${why}\n  (${e.createdAt.toISOString().slice(0, 10)}${task}${tags} · id: ${e.id})`;
 }
 
@@ -91,27 +101,34 @@ export async function buildWorkspaceBrief(input: {
   const sections: string[] = [
     `# Euclis project memory — ${input.workspaceName}`,
     ``,
-    `Live brief from Euclis (source of truth for tasks, decisions, blockers).`,
+    `Compact index from Euclis (source of truth for tasks, decisions, blockers).`,
     `Auto-refreshed after each agent run — do not edit by hand.`,
+    `Pull only relevant detail with \`get_project_context({ query })\` before working.`,
   ];
 
   sections.push(``, `## Open blockers & dependencies`);
   sections.push(
     openEvents.length > 0
-      ? openEvents.map(formatEventLine).join("\n")
+      ? openEvents
+          .map((event) =>
+            formatEventLine(event, { includeReasoning: true })
+          )
+          .join("\n")
       : `(none)`
   );
 
   sections.push(``, `## Current decisions`);
   sections.push(
     decisions.length > 0
-      ? decisions.map(formatEventLine).join("\n")
+      ? decisions.map((event) => formatEventLine(event)).join("\n")
       : `(none recorded yet)`
   );
 
   if (insights.length > 0) {
     sections.push(``, `## Patterns & insights`);
-    sections.push(insights.map(formatEventLine).join("\n"));
+    sections.push(
+      insights.map((event) => formatEventLine(event)).join("\n")
+    );
   }
 
   sections.push(``, `## Recent memory activity`);

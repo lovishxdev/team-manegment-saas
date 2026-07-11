@@ -148,16 +148,40 @@ Claude Code `Stop`):
   the agent already keeps on disk (its own dedicated context — nothing is
   intercepted mid-session), extracts only user/agent message text (tool
   output and diffs never leave the machine), and POSTs the delta since the
-  last run to `/api/ingest/agent-session`. Server-side, one judge call
+  last run to `/api/ingest/agent-session`. It also sends changed/untracked
+  explicit memory documents under `.euclis/memory/**/*.md` when their YAML
+  frontmatter contains `euclis-memory: true`. This keeps ordinary README,
+  docs, marketing copy, and generated context out by construction. Payloads
+  are bounded (max 12 files, 8k chars each / 48k total) and content-hashed so
+  unchanged docs are never resent. Euclis upserts a bounded
+  `MemoryDocument` snapshot (title, body, tags, path and hash) for web/agent
+  preview. Events extracted primarily from a document retain a relation plus
+  repository-relative path + version hash as provenance. Server-side, one judge call
   ([lib/memory/agent-capture.ts](../lib/memory/agent-capture.ts)) applies
   four tests — future-why, coordination, commitment, onboarding (see
   [memory-architecture.md](memory-architecture.md#5-the-judge-criteria)) —
   not phrase patterns. Most runs produce zero events. A session that
   plausibly cleared an open blocker triggers the usual WhatsApp
   confirmation ask, never an auto-resolve.
-- **Context (memory → session):** the ingest response returns the current
-  workspace brief ([lib/memory/brief.ts](../lib/memory/brief.ts)) — open
-  blockers, current decisions, active tasks — written where each agent
+
+  Example source:
+
+  ```markdown
+  ---
+  euclis-memory: true
+  title: Authentication boundary
+  tags: [auth, rbac]
+  ---
+  # Authentication boundary
+
+  Durable rationale, constraints, and decisions go here.
+  ```
+- **Context (memory → session):** the ingest response returns a compact
+  workspace index ([lib/memory/brief.ts](../lib/memory/brief.ts)) — capped
+  blockers, decisions, insights, and active tasks. Query-scoped
+  `get_project_context` uses hybrid recall followed by a small model selector
+  so merely adjacent events and unrelated global blockers are omitted. The
+  index is written where each agent
   auto-loads context: Cursor → `.cursor/rules/euclis-memory.mdc`
   (`alwaysApply`); Claude Code → `.claude/euclis-memory.md`, imported from
   `CLAUDE.md` via an `@` line (added once by the installer, so the

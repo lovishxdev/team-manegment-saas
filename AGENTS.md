@@ -11,6 +11,11 @@ tasks, decisions, and blockers.
   (what changed, where).
 - When a decision is made during the work (library choice, approach,
   trade-off), record it via `record_decision` with the reasoning.
+- For a multi-decision handoff or ADR, write
+ `.euclis/memory/<topic>.md` with YAML frontmatter containing
+ `euclis-memory: true` and 1-4 stable topic `tags`. The ambient hook
+ uses it as bounded evidence;
+ ordinary README/docs files are never ingested.
 - If your work clears an open blocker, confirm with the user, then call
  `resolve_blocker` with the blocker's event id.
 - When committing work that belongs to a Euclis task, reference it in the

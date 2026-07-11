@@ -57,6 +57,7 @@ import {
   resolveMemoryEvent,
   type MemoryEventRow,
 } from "@/lib/services/memory";
+import { getMemoryDocument } from "@/lib/memory/documents";
 
 export type ActionState = {
   error?: string;
@@ -632,6 +633,15 @@ export type MemoryEventView = {
   resolvedAt: string | null;
   authorLabel: string | null;
   task: { shortId: number; title: string } | null;
+  sourceDocumentPath: string | null;
+  sourceDocument: {
+    id: string;
+    path: string;
+    title: string;
+    tags: string[];
+    updatedAt: string;
+    currentVersion: boolean;
+  } | null;
   /** Curated by a dream pass yet? False = fresh capture, not reviewed. */
   reviewed: boolean;
 };
@@ -648,6 +658,19 @@ function toMemoryEventView(e: MemoryEventRow): MemoryEventView {
     resolvedAt: e.resolvedAt ? e.resolvedAt.toISOString() : null,
     authorLabel: e.author ? displayUser(e.author) : null,
     task: e.task,
+    sourceDocumentPath: e.sourceDocumentPath,
+    sourceDocument: e.sourceDocument
+      ? {
+          id: e.sourceDocument.id,
+          path: e.sourceDocument.path,
+          title: e.sourceDocument.title,
+          tags: e.sourceDocument.tags,
+          updatedAt: e.sourceDocument.updatedAt.toISOString(),
+          currentVersion:
+            e.sourceDocumentHash !== null &&
+            e.sourceDocument.contentHash === e.sourceDocumentHash,
+        }
+      : null,
     reviewed: e.dreamedAt !== null,
   };
 }
@@ -666,6 +689,25 @@ export async function fetchTaskMemoryAction(
     return { events: events.map(toMemoryEventView) };
   } catch (err) {
     return { events: [], error: errorMessage(err) };
+  }
+}
+
+export async function fetchMemoryDocumentAction(
+  workspaceId: string,
+  documentId: string
+): Promise<{ content: string | null; error?: string }> {
+  const user = await requireUser();
+  try {
+    const document = await getMemoryDocument({
+      workspaceId,
+      userId: user.id,
+      documentId,
+    });
+    return document
+      ? { content: document.content }
+      : { content: null, error: "Memory document not found" };
+  } catch (err) {
+    return { content: null, error: errorMessage(err) };
   }
 }
 

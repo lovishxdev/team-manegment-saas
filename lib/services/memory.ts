@@ -41,6 +41,18 @@ const eventSelect = {
   resolvedAt: true,
   supersededByEventId: true,
   dreamedAt: true,
+  sourceDocumentPath: true,
+  sourceDocumentHash: true,
+  sourceDocument: {
+    select: {
+      id: true,
+      path: true,
+      title: true,
+      contentHash: true,
+      tags: true,
+      updatedAt: true,
+    },
+  },
   author: { select: { id: true, username: true, email: true } },
   task: { select: { shortId: true, title: true } },
 } satisfies Prisma.MemoryEventSelect;
@@ -57,6 +69,16 @@ export type MemoryEventRow = {
   supersededByEventId: string | null;
   /** Last dream pass that reviewed this event; null = not yet curated. */
   dreamedAt: Date | null;
+  sourceDocumentPath: string | null;
+  sourceDocumentHash: string | null;
+  sourceDocument?: {
+    id: string;
+    path: string;
+    title: string;
+    contentHash: string;
+    tags: string[];
+    updatedAt: Date;
+  } | null;
   author: { id: string; username: string; email: string | null } | null;
   task: { shortId: number; title: string } | null;
 };
@@ -91,22 +113,76 @@ async function resolveTaskId(
 const MAX_TAGS = 4;
 const MAX_TAG_LENGTH = 32;
 
-/** Lowercase, kebab-ish, deduped, capped — judges and humans both feed this. */
+const TAG_ALIASES: Record<string, string> = {
+  authentication: "auth",
+  authorization: "auth",
+  "access-control": "auth",
+  "user-interface": "ui",
+  frontend: "ui",
+  database: "db",
+  postgresql: "postgres",
+  "whatsapp-bot": "whatsapp",
+  "coding-agents": "ai-agents",
+  "coding-agent": "ai-agents",
+  "ai-agent": "ai-agents",
+};
+
+function canonicalMemoryTag(raw: string): string {
+  const normalized = raw
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/^#/, "")
+    .slice(0, MAX_TAG_LENGTH);
+  return TAG_ALIASES[normalized] ?? normalized;
+}
+
+/** Lowercase, canonicalized, deduped, capped — every capture source uses it. */
 export function normalizeMemoryTags(tags: unknown): string[] {
   if (!Array.isArray(tags)) return [];
   const seen = new Set<string>();
   for (const raw of tags) {
     if (typeof raw !== "string") continue;
-    const tag = raw
-      .trim()
-      .toLowerCase()
-      .replace(/\s+/g, "-")
-      .replace(/^#/, "")
-      .slice(0, MAX_TAG_LENGTH);
+    const tag = canonicalMemoryTag(raw);
     if (tag) seen.add(tag);
     if (seen.size >= MAX_TAGS) break;
   }
   return [...seen];
+}
+
+export function queryMemoryTagScore(query: string, tags: string[]): number {
+  if (tags.length === 0) return 0;
+  const normalizedQuery = query.toLowerCase().replace(/[_-]+/g, " ");
+  const queryTokens = new Set(
+    normalizedQuery.split(/[^a-z0-9]+/).filter((token) => token.length >= 2)
+  );
+  let best = 0;
+
+  for (const rawTag of tags) {
+    const canonical = canonicalMemoryTag(rawTag);
+    const aliases = [
+      canonical,
+      ...Object.entries(TAG_ALIASES)
+        .filter(([, target]) => target === canonical)
+        .map(([alias]) => alias),
+    ];
+    for (const alias of aliases) {
+      const phrase = alias.replace(/-/g, " ");
+      if (normalizedQuery.includes(phrase)) {
+        best = Math.max(best, 1);
+        continue;
+      }
+      const parts = phrase.split(" ").filter(Boolean);
+      if (parts.length > 0 && parts.every((part) => queryTokens.has(part))) {
+        best = Math.max(best, 0.85);
+      } else if (
+        parts.some((part) => part.length >= 4 && queryTokens.has(part))
+      ) {
+        best = Math.max(best, 0.35);
+      }
+    }
+  }
+  return best;
 }
 
 export function memoryEventDocument(event: {
@@ -161,6 +237,10 @@ export type CreateMemoryEventInput = {
   sourceUpdateId?: string;
   /** Provenance: the PostMessage this was extracted from. */
   sourcePostMessageId?: string;
+  /** Provenance: repository-relative agent-authored Markdown evidence. */
+  sourceDocumentId?: string;
+  sourceDocumentPath?: string;
+  sourceDocumentHash?: string;
   /** Original speaker when the capture pipeline records on someone's behalf. */
   authorId?: string;
   /** Older decision this event supersedes (linked, never deleted). */
@@ -211,6 +291,9 @@ export async function createMemoryEvent(
       taskId,
       sourceUpdateId: input.sourceUpdateId ?? null,
       sourcePostMessageId: input.sourcePostMessageId ?? null,
+      sourceDocumentId: input.sourceDocumentId ?? null,
+      sourceDocumentPath: input.sourceDocumentPath?.slice(0, 500) ?? null,
+      sourceDocumentHash: input.sourceDocumentHash?.slice(0, 128) ?? null,
       kind: input.kind,
       status,
       resolvedAt: status === "RESOLVED" ? new Date() : null,
@@ -277,7 +360,7 @@ async function buildMemoryEventWhere(
   if (input.kind) where.kind = input.kind;
   if (input.status) where.status = input.status;
   if (input.statusNot) where.status = { not: input.statusNot };
-  if (input.tag) where.tags = { has: input.tag.trim().toLowerCase() };
+  if (input.tag) where.tags = { has: canonicalMemoryTag(input.tag) };
   if (!input.includeSuperseded) where.supersededByEventId = null;
   // Dream-archived events are retired from active memory (never deleted).
   where.archivedAt = null;
@@ -462,7 +545,7 @@ export async function recallMemory(
   }
   if (input.kind) where.kind = input.kind;
   if (input.status) where.status = input.status;
-  if (input.tag) where.tags = { has: input.tag.trim().toLowerCase() };
+  if (input.tag) where.tags = { has: canonicalMemoryTag(input.tag) };
 
   // Tier retention: hide events older than the workspace's window (never deleted).
   const cutoff = await memoryRetentionCutoff(input.workspaceId);
@@ -493,6 +576,7 @@ export async function recallMemory(
       row.summary,
       [row.reasoning, row.tags.join(" ")].filter(Boolean).join("\n")
     );
+    const tagScore = queryMemoryTagScore(query, row.tags);
 
     let sem: number | null = null;
     const stored = parseEmbeddingJson(embedding);
@@ -500,12 +584,21 @@ export async function recallMemory(
       sem = semanticScore(cosineSimilarity(queryVector, stored));
     }
 
-    const score =
+    const baseScore =
       sem !== null
         ? SEMANTIC_WEIGHT * sem + KEYWORD_WEIGHT * keywordScore
         : keywordScore;
+    // Tags are explicit topical structure, so exact/alias matches deserve a
+    // strong additive boost over merely adjacent embedding similarity.
+    const score = Math.min(1, baseScore + 0.18 * tagScore);
 
-    if (score < MIN_HYBRID_SCORE && keywordScore < MIN_KEYWORD_SCORE) continue;
+    if (
+      score < MIN_HYBRID_SCORE &&
+      keywordScore < MIN_KEYWORD_SCORE &&
+      tagScore < 0.85
+    ) {
+      continue;
+    }
     hits.push({ ...row, score });
   }
 

@@ -57,6 +57,7 @@ type SessionEvent = {
   tags?: string[];
   task_short_id?: number;
   supersedes_event_id?: string;
+  source_document_path?: string;
 };
 
 type SessionAnalysis = {
@@ -108,6 +109,11 @@ const SESSION_TOOL: Anthropic.Tool = {
               description:
                 "Id of a listed recorded DECISION this new decision replaces/contradicts (same question, different answer). Omit otherwise.",
             },
+            source_document_path: {
+              type: "string",
+              description:
+                "Exact path of one supplied Markdown document that is the primary evidence for this event. Omit when the transcript is the source.",
+            },
           },
           required: ["kind", "summary"],
         },
@@ -144,7 +150,10 @@ What qualifies maps to these kinds:
 Never memory (fails the durability bar):
 - Progress narration: files edited, functions written, tests passing, bugs fixed.
 - Implementation descriptions dressed as decisions: "X redesigned/refactored/improved to do Y" is changelog, not memory — git history already records it. It only qualifies if it sets a convention or contract others must follow.
-- Anything recoverable by reading the repo.
+- Implementation details recoverable by reading code. Durable rationale,
+  constraints, contracts, and settled choices written in a supplied Markdown
+  document may qualify — the memory event indexes the important why, it does
+  not copy the document.
 - Exploration, questions, dead ends, and proposals that didn't get adopted.
 - Process state: "fix deployed, awaiting confirmation/verification/testing" must never become an event of any kind.
 - Restatements or rephrasings of already-recorded memory (listed below).
@@ -212,6 +221,7 @@ function formatExistingEvents(events: MemoryEventRow[]): string {
 
 async function judgeSession(input: {
   transcript: string;
+  documents: AgentSessionDocument[];
   workspaceName: string;
   username: string;
   tasks: { shortId: number; title: string; status: string }[];
@@ -241,6 +251,16 @@ async function judgeSession(input: {
     `"""`,
     input.transcript,
     `"""`,
+    ``,
+    `Markdown documents created or changed during this agent run:`,
+    input.documents.length > 0
+      ? input.documents
+          .map(
+            (document) =>
+              `--- ${document.path} (title=${document.title ?? "untitled"}; tags=${document.tags?.join(",") || "none"}; sha256=${document.hash}) ---\n${document.content}`
+          )
+          .join("\n\n")
+      : "(none)",
   ].join("\n");
 
   const res = await anthropic.messages.create({
@@ -266,19 +286,37 @@ export type SessionCaptureResult = {
 
 const NO_RESULT: SessionCaptureResult = { suggestions: [] };
 
+export type AgentSessionDocument = {
+  documentId?: string;
+  /** Repository-relative path. */
+  path: string;
+  /** SHA-256 of the exact content supplied. */
+  hash: string;
+  content: string;
+  title?: string;
+  tags?: string[];
+};
+
 export async function captureFromAgentSession(input: {
   workspaceId: string;
   workspaceName: string;
   userId: string;
   conversationId: string;
   transcript: string;
+  documents?: AgentSessionDocument[];
 }): Promise<SessionCaptureResult> {
   if (!memoryCaptureEnabled()) return NO_RESULT;
 
   const transcript = input.transcript
     .trim()
     .slice(-MAX_AGENT_TRANSCRIPT_CHARS);
-  if (transcript.length < MIN_AGENT_TRANSCRIPT_CHARS) return NO_RESULT;
+  const documents = input.documents ?? [];
+  if (
+    transcript.length < MIN_AGENT_TRANSCRIPT_CHARS &&
+    documents.length === 0
+  ) {
+    return NO_RESULT;
+  }
 
   const cooldownKey = `${input.workspaceId}:${input.conversationId}`;
   if (judgeCooldown.get(cooldownKey)) return NO_RESULT;
@@ -323,6 +361,8 @@ export async function captureFromAgentSession(input: {
         resolvedAt: true,
         supersededByEventId: true,
         dreamedAt: true,
+        sourceDocumentPath: true,
+        sourceDocumentHash: true,
         author: { select: { id: true, username: true, email: true } },
         task: { select: { shortId: true, title: true } },
       },
@@ -336,6 +376,7 @@ export async function captureFromAgentSession(input: {
 
   const analysis = await judgeSession({
     transcript,
+    documents,
     workspaceName: input.workspaceName,
     username: user.username,
     tasks,
@@ -415,6 +456,11 @@ export async function captureFromAgentSession(input: {
       decisionIds.has(candidate.supersedes_event_id)
         ? candidate.supersedes_event_id
         : undefined;
+    const sourceDocument = candidate.source_document_path
+      ? documents.find(
+          (document) => document.path === candidate.source_document_path
+        )
+      : undefined;
 
     try {
       const event = await createMemoryEvent({
@@ -423,11 +469,20 @@ export async function captureFromAgentSession(input: {
         kind,
         summary,
         reasoning: candidate.reasoning,
-        tags: candidate.tags,
+        tags: [
+          ...(sourceDocument?.tags ?? []),
+          ...(candidate.tags ?? []),
+        ],
         taskShortId,
         supersedesEventId,
+        sourceDocumentId: sourceDocument?.documentId,
+        sourceDocumentPath: sourceDocument?.path,
+        sourceDocumentHash: sourceDocument?.hash,
       });
-      bumpMemoryMetric(input.workspaceId, "event_created_agent");
+      bumpMemoryMetric(
+        input.workspaceId,
+        sourceDocument ? "event_created_document" : "event_created_agent"
+      );
 
       if (
         event.status === "OPEN" &&

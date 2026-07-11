@@ -146,6 +146,19 @@ async function MemoryData({
     resolvedAt: e.resolvedAt ? e.resolvedAt.toISOString() : null,
     authorLabel: e.author ? displayUser(e.author) : null,
     task: e.task,
+    sourceDocumentPath: e.sourceDocumentPath,
+    sourceDocument: e.sourceDocument
+      ? {
+          id: e.sourceDocument.id,
+          path: e.sourceDocument.path,
+          title: e.sourceDocument.title,
+          tags: e.sourceDocument.tags,
+          updatedAt: e.sourceDocument.updatedAt.toISOString(),
+          currentVersion:
+            e.sourceDocumentHash !== null &&
+            e.sourceDocument.contentHash === e.sourceDocumentHash,
+        }
+      : null,
     reviewed: e.dreamedAt !== null,
   });
 

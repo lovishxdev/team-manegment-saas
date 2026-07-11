@@ -17,6 +17,7 @@ import {
 import { scheduleDecisionSupersessionCheck } from "@/lib/memory/capture";
 import { buildWorkspaceBrief } from "@/lib/memory/brief";
 import { bumpMemoryMetric } from "@/lib/memory/metrics";
+import { selectRelevantProjectContext } from "@/lib/memory/context-selector";
 import { optionalNum, optionalStr, str, workspaceParam } from "@/lib/tools/helpers";
 import { clearNotedBlocker, noteBlocker } from "@/lib/whatsapp-cache";
 
@@ -43,7 +44,10 @@ export function formatMemoryEvent(e: MemoryEventRow): string {
   const tags =
     e.tags.length > 0 ? ` · ${e.tags.map((t) => `#${t}`).join(" ")}` : "";
   const why = e.reasoning ? `\n  why: ${e.reasoning}` : "";
-  return `- [${e.kind}${status}] ${e.summary}${why}\n  (${date}${author}${task}${tags} · id: ${e.id})`;
+  const source = e.sourceDocumentPath
+    ? `\n  source: ${e.sourceDocumentPath}`
+    : "";
+  return `- [${e.kind}${status}] ${e.summary}${why}${source}\n  (${date}${author}${task}${tags} · id: ${e.id})`;
 }
 
 export function formatMemoryEvents(events: MemoryEventRow[]): string {
@@ -376,22 +380,37 @@ const getProjectContextTool: ToolDef = {
     }
     const shortId = optionalNum(input.shortId);
 
-    const [relevant, blockers] = await Promise.all([
+    // Hybrid recall produces a broad candidate set; the selector removes
+    // merely adjacent records. In particular, never append every workspace
+    // blocker to a scoped query — that was polluting unrelated agent work.
+    const [recalled, exactTaskBlockers] = await Promise.all([
       recallMemory({
         workspaceId: ws.workspaceId,
         userId: ctx.userId,
         query,
-        limit: 6,
+        taskShortId: shortId,
+        limit: 15,
       }),
       shortId !== undefined
         ? getOpenBlockersForTaskShortId(ws.workspaceId, shortId)
-        : listMemoryEvents({
-            workspaceId: ws.workspaceId,
-            userId: ctx.userId,
-            status: "OPEN",
-            limit: 10,
-          }),
+        : Promise.resolve([]),
     ]);
+    const candidates = [
+      ...recalled,
+      ...exactTaskBlockers.filter(
+        (blocker) => !recalled.some((event) => event.id === blocker.id)
+      ),
+    ];
+    const selection = await selectRelevantProjectContext({
+      query,
+      candidates,
+    });
+    const relevant = selection.selected;
+    const blockers = relevant.filter(
+      (event) =>
+        event.status === "OPEN" &&
+        (event.kind === "BLOCKER" || event.kind === "DEPENDENCY")
+    );
 
     const sections: string[] = [`Project context for: ${query}`];
     sections.push(
@@ -418,6 +437,7 @@ const getProjectContextTool: ToolDef = {
     return ok(contextBody, {
       blockers: blockers.length,
       decisions: decisions.length,
+      staleOpenOmitted: selection.staleOpen.length,
     });
   },
 };

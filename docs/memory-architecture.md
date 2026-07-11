@@ -60,7 +60,14 @@ Three verbs define the system:
 
 ## 3. Data model
 
-One table, `MemoryEvent` (Prisma/Postgres via Supabase):
+The hybrid store has two complementary records in Prisma/Postgres:
+
+- `MemoryDocument` — bounded snapshot of an explicitly opted-in repository
+  Markdown source (`.euclis/memory/**/*.md` + `euclis-memory: true`
+  frontmatter): title, body, canonical tags, path, hash and author. The repo
+  remains the authoring source; this snapshot powers web/agent preview.
+- `MemoryEvent` — compact structured state extracted from conversations or
+  documents:
 
 | Field | Meaning |
 |---|---|
@@ -70,6 +77,7 @@ One table, `MemoryEvent` (Prisma/Postgres via Supabase):
 | `reasoning` | **why** — the answer to a future "why was X decided" |
 | `taskId?` | nullable — workspace-level decisions have no task |
 | `sourceUpdateId?` | provenance: the `TaskUpdate` it was extracted from (null for agent-session or explicit captures) |
+| `sourceDocumentId? / sourceDocumentPath / sourceDocumentHash` | relation to the previewable Markdown source plus the exact version used for capture |
 | `authorId?` | who said/did it |
 | `resolvedAt / resolvedById / resolvedByUpdateId` | resolution provenance |
 | `supersededByEventId?` | link to the decision that replaced this one (never deleted) |
@@ -116,8 +124,9 @@ Cursor agent run finishes ("stop" hook fires)
         ▼
 .cursor/hooks/euclis-memory.mjs   (local, no deps, fails silent)
         │  reads transcript JSONL
-        │  extracts ONLY user/agent message text
-        │  (tool output & file diffs never leave the machine)
+        │  extracts user/agent message text; also collects only changed
+        │  opt-in .euclis/memory/**/*.md sources (12 files / 48k total)
+        │  (tool output, diffs and ordinary repo docs never leave the machine)
         │  computes delta since last flush (offset state per conversation
         │  in ~/.cursor/euclis-state/)
         │  skips deltas < 300 chars (they accumulate); caps at 24k chars
@@ -125,6 +134,7 @@ Cursor agent run finishes ("stop" hook fires)
 POST /api/ingest/agent-session    (bearer: personal token or OAuth token;
         │                          workspace-pinned credentials confined
         │                          exactly like MCP tool calls)
+        ├──► upsert bounded MemoryDocument snapshots for preview
         ├──► fire-and-forget: session judge (one Haiku call, §5)
         │        creates MemoryEvents · links tasks · flags supersession
         │        blocker created → WhatsApp ping to assignees
@@ -219,11 +229,11 @@ stated as the expected correct output.
 | Surface | Mechanism |
 |---|---|
 | **Ambient brief** (coding agents) | `.cursor/rules/euclis-memory.mdc`, auto-refreshed by the hook after every run: open blockers, current decisions, active tasks + assignees, working agreement. Loads into every new session — no tool call |
-| `get_project_context` | on-demand deep pull, query-scoped: relevant decisions (semantic + keyword search) + open blockers for the work at hand |
-| `recall_memory` | "why was X decided" — hybrid search over events, returns sourced records |
+| `get_project_context` | on-demand deep pull: semantic + keyword + canonical-tag scoring produces candidates, then a small selector keeps only records directly affecting the work |
+| `recall_memory` | "why was X decided" — hybrid search over events; exact/alias tag matches receive an explicit boost and records return document provenance |
 | `list_blockers` | open blockers/dependencies, workspace-wide or per task |
 | Enriched task tools | `read_task` / `ask_task` / `add_task_update` responses append the task's open blockers at exactly the moment an agent touches the task |
-| **Web UI** | Memory tab (blockers + timeline + resolve buttons) and a per-task Memory section in the task modal; live via Supabase Realtime |
+| **Web UI** | Memory tab (blockers + timeline + resolve buttons + inline Markdown source preview) and a per-task Memory section; live via Supabase Realtime |
 | **WhatsApp** | the assistant answers memory questions with the same tools |
 
 ## 7. Alert + resolution lifecycle

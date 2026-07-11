@@ -4,10 +4,12 @@ import { OpenTaskLink } from "@/components/board/open-task-link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
+  fetchMemoryDocumentAction,
   resolveMemoryEventAction,
   type MemoryEventView,
 } from "@/lib/actions/workspace";
 import { ui } from "@/components/ui/ui";
+import { MarkdownContent } from "@/components/markdown/markdown-content";
 
 const KIND_STYLES: Record<string, string> = {
   DECISION: "bg-sky-50 text-sky-700 dark:bg-sky-500/15 dark:text-sky-200",
@@ -54,6 +56,9 @@ export function MemoryEventCard({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [resolvedLocally, setResolvedLocally] = useState(false);
+  const [showSource, setShowSource] = useState(false);
+  const [sourceContent, setSourceContent] = useState<string | null>(null);
+  const [sourceLoading, setSourceLoading] = useState(false);
 
   const isOpen = event.status === "OPEN" && !resolvedLocally;
   const canResolve =
@@ -72,6 +77,32 @@ export function MemoryEventCard({
         router.refresh();
       }
     });
+  }
+
+  async function toggleSource() {
+    if (showSource) {
+      setShowSource(false);
+      return;
+    }
+    if (!event.sourceDocument) return;
+    if (sourceContent !== null) {
+      setShowSource(true);
+      return;
+    }
+
+    setSourceLoading(true);
+    setError(null);
+    const result = await fetchMemoryDocumentAction(
+      workspaceId,
+      event.sourceDocument.id
+    );
+    setSourceLoading(false);
+    if (result.error || result.content === null) {
+      setError(result.error ?? "Memory document could not be loaded");
+      return;
+    }
+    setSourceContent(result.content);
+    setShowSource(true);
   }
 
   return (
@@ -113,6 +144,28 @@ export function MemoryEventCard({
           {event.reasoning}
         </p>
       )}
+      {event.sourceDocument && (
+        <button
+          type="button"
+          onClick={toggleSource}
+          disabled={sourceLoading}
+          aria-expanded={showSource}
+          className="mt-2 font-mono text-[11px] text-ink-soft underline-offset-2 hover:text-ink hover:underline"
+        >
+          {sourceLoading
+            ? "Loading source"
+            : showSource
+              ? "Hide source"
+              : "Preview source"}{" "}
+          ·{" "}
+          {event.sourceDocument.path}
+        </button>
+      )}
+      {!event.sourceDocument && event.sourceDocumentPath && (
+        <p className="mt-2 font-mono text-[11px] text-ink-faint">
+          Source: {event.sourceDocumentPath}
+        </p>
+      )}
       {event.tags.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {event.tags.map((tag) => (
@@ -123,6 +176,26 @@ export function MemoryEventCard({
               #{tag}
             </span>
           ))}
+        </div>
+      )}
+      {showSource && event.sourceDocument && (
+        <div className="mt-3 rounded-lg border border-line bg-paper-deep/45 p-3">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-line/70 pb-2">
+            <div>
+              <p className="text-xs font-medium text-ink">
+                {event.sourceDocument.title}
+              </p>
+              <p className="font-mono text-[10px] text-ink-faint">
+                {event.sourceDocument.path}
+              </p>
+            </div>
+            <span className="rounded bg-card px-1.5 py-0.5 font-mono text-[10px] text-ink-faint">
+              {event.sourceDocument.currentVersion
+                ? "Current snapshot"
+                : "Source updated since capture"}
+            </span>
+          </div>
+          <MarkdownContent source={sourceContent ?? ""} />
         </div>
       )}
 
