@@ -665,7 +665,7 @@ export function LandingStyles() {
       .lp-story-anchor {
         position: relative;
         z-index: 1;
-        width: 62%;
+        width: 68%;
         transform-style: preserve-3d;
         transform-origin: right center;
         transform:
@@ -680,7 +680,7 @@ export function LandingStyles() {
       .lp-story-copy {
         position: relative;
         z-index: 2;
-        width: 35%;
+        width: 29%;
         height: 66svh;
         pointer-events: none;
       }
