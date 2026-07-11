@@ -6,10 +6,15 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 
 var MIN_DELTA_CHARS = 300;
 var MAX_DELTA_CHARS = 24000;
 var MAX_BLOCK_CHARS = 3000;
+var MAX_DOCUMENTS = 12;
+var MAX_DOCUMENT_CHARS = 8000;
+var MAX_DOCUMENT_TOTAL_CHARS = 48000;
 
 function readStdin() {
   return new Promise(function (resolve) {
@@ -117,6 +122,72 @@ function writeBrief(agent, root, brief) {
   writeFileSync(join(claudeDir, "euclis-memory.md"), brief + "\n");
 }
 
+// Markdown is useful evidence the transcript may only mention briefly (ADRs,
+// architecture notes, implementation plans). To avoid uploading arbitrary
+// README/docs/marketing churn, only explicit .euclis/memory/**/*.md files
+// carrying euclis-memory: true frontmatter are eligible.
+function gitLines(root, args) {
+  try {
+    return execFileSync("git", args, {
+      cwd: root,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      maxBuffer: 1024 * 1024,
+    }).split("\n").map(function (s) { return s.trim(); }).filter(Boolean);
+  } catch (e) {
+    return [];
+  }
+}
+
+function collectMarkdown(root, previousHashes) {
+  var paths = [];
+  var commands = [
+    ["diff", "--name-only", "--diff-filter=AM", "--", "*.md"],
+    ["diff", "--cached", "--name-only", "--diff-filter=AM", "--", "*.md"],
+    ["ls-files", "--others", "--exclude-standard", "--", "*.md"],
+  ];
+  for (var i = 0; i < commands.length; i++) {
+    var found = gitLines(root, commands[i]);
+    for (var j = 0; j < found.length; j++) {
+      if (paths.indexOf(found[j]) === -1) paths.push(found[j]);
+    }
+  }
+
+  var documents = [];
+  var nextHashes = Object.assign({}, previousHashes || {});
+  var totalChars = 0;
+  for (var k = 0; k < paths.length && documents.length < MAX_DOCUMENTS; k++) {
+    var relative = paths[k].replace(/\\/g, "/");
+    if (
+      relative.slice(0, 15) !== ".euclis/memory/" ||
+      relative.indexOf("../") !== -1 ||
+      !/\.md$/i.test(relative)
+    ) {
+      continue;
+    }
+    try {
+      var content = readFileSync(join(root, relative), "utf8").trim();
+      if (!content) continue;
+      var frontmatterEnd =
+        content.slice(0, 4) === "---\n" ? content.indexOf("\n---", 4) : -1;
+      if (frontmatterEnd < 0) continue;
+      var frontmatter = content.slice(4, frontmatterEnd);
+      if (!/^euclis-memory:\s*true\s*$/im.test(frontmatter)) continue;
+      var fullHash = createHash("sha256").update(content).digest("hex");
+      nextHashes[relative] = fullHash;
+      if (previousHashes && previousHashes[relative] === fullHash) continue;
+      if (content.length > MAX_DOCUMENT_CHARS) {
+        content = content.slice(0, MAX_DOCUMENT_CHARS) + "\n\n[...document truncated by Euclis hook]";
+      }
+      if (totalChars + content.length > MAX_DOCUMENT_TOTAL_CHARS) break;
+      totalChars += content.length;
+      var snapshotHash = createHash("sha256").update(content).digest("hex");
+      documents.push({ path: relative, hash: snapshotHash, content: content });
+    } catch (e) {}
+  }
+  return { documents: documents, hashes: nextHashes };
+}
+
 async function main() {
   var input = JSON.parse(await readStdin());
   var detected = detectAgent(input);
@@ -130,14 +201,18 @@ async function main() {
   var lines = readFileSync(transcriptPath, "utf8").split("\n");
   var stateDir = join(homedir(), ".euclis", "state");
   var statePath = join(stateDir, detected.conversationId + ".json");
+  var state = {};
   var fromLine = 0;
-  try { fromLine = JSON.parse(readFileSync(statePath, "utf8")).line || 0; } catch (e) {}
+  try { state = JSON.parse(readFileSync(statePath, "utf8")) || {}; } catch (e) {}
+  fromLine = state.line || 0;
   if (fromLine > lines.length) fromLine = 0;
 
   var delta = extractText(lines, fromLine);
+  var markdown = collectMarkdown(detected.root, state.documentHashes || {});
   // Too little new material: keep the old offset so it accumulates into the
-  // next run instead of being dropped.
-  if (delta.length < MIN_DELTA_CHARS) return;
+  // next run instead of being dropped. Changed Markdown can independently
+  // trigger capture even when the transcript delta is short.
+  if (delta.length < MIN_DELTA_CHARS && markdown.documents.length === 0) return;
   if (delta.length > MAX_DELTA_CHARS) delta = delta.slice(-MAX_DELTA_CHARS);
 
   var base = config.url.replace(/\/+$/, "");
@@ -150,6 +225,7 @@ async function main() {
     body: JSON.stringify({
       conversation_id: detected.conversationId,
       transcript: delta,
+      documents: markdown.documents,
     }),
     // The judge runs inline server-side; give it room.
     signal: AbortSignal.timeout(45000),
@@ -157,7 +233,13 @@ async function main() {
   if (!res.ok) return;
 
   mkdirSync(stateDir, { recursive: true });
-  writeFileSync(statePath, JSON.stringify({ line: lines.length }));
+  writeFileSync(
+    statePath,
+    JSON.stringify({
+      line: lines.length,
+      documentHashes: markdown.hashes,
+    })
+  );
 
   var data = null;
   try { data = await res.json(); } catch (e) {}

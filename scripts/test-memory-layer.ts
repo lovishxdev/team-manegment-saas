@@ -185,8 +185,15 @@ check(
     parsedMemoryDoc.body.includes("server-side claims")
 );
 check(
-  "ordinary Markdown is rejected as memory evidence",
-  parseMemoryDocument("# README\n\nNot opted in.") === null
+  "ordinary changed Markdown is accepted as bounded evidence",
+  parseMemoryDocument("# README\n\nArchitecture overview.")?.title === "README"
+);
+check(
+  "Markdown can explicitly opt out of memory evidence",
+  parseMemoryDocument(`---
+euclis-memory: false
+---
+# Private notes`) === null
 );
 
 // ── record_decision fallback (WhatsApp models may send empty args) ──────

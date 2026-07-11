@@ -153,9 +153,9 @@ function writeBrief(agent, root, brief) {
 }
 
 // Markdown is useful evidence the transcript may only mention briefly (ADRs,
-// architecture notes, implementation plans). To avoid uploading arbitrary
-// README/docs/marketing churn, only explicit .euclis/memory/**/*.md files
-// carrying euclis-memory: true frontmatter are eligible.
+// architecture notes, implementation plans, README/docs changed by the
+// agent). Only changed/untracked files are considered; generated agent
+// context/instruction files are always excluded.
 function gitLines(root, args) {
   try {
     return execFileSync("git", args, {
@@ -175,6 +175,10 @@ function collectMarkdown(root, previousHashes) {
     ["diff", "--name-only", "--diff-filter=AM", "--", "*.md"],
     ["diff", "--cached", "--name-only", "--diff-filter=AM", "--", "*.md"],
     ["ls-files", "--others", "--exclude-standard", "--", "*.md"],
+    // Gradually backfill existing tracked Markdown too. Repo-level hashes
+    // mean unchanged files are sent once across all conversations, not once
+    // per chat; the 12-file cap spreads large repos over several runs.
+    ["ls-files", "--", "*.md"],
   ];
   for (var i = 0; i < commands.length; i++) {
     var found = gitLines(root, commands[i]);
@@ -189,7 +193,12 @@ function collectMarkdown(root, previousHashes) {
   for (var k = 0; k < paths.length && documents.length < MAX_DOCUMENTS; k++) {
     var relative = paths[k].replace(/\\/g, "/");
     if (
-      relative.slice(0, 15) !== ".euclis/memory/" ||
+      relative === "AGENTS.md" ||
+      relative === "CLAUDE.md" ||
+      relative.slice(0, 8) === ".cursor/" ||
+      relative.slice(0, 8) === ".claude/" ||
+      relative.slice(0, 13) === "node_modules/" ||
+      relative.slice(0, 5) === ".git/" ||
       relative.indexOf("../") !== -1 ||
       !/\.md$/i.test(relative)
     ) {
@@ -198,11 +207,12 @@ function collectMarkdown(root, previousHashes) {
     try {
       var content = readFileSync(join(root, relative), "utf8").trim();
       if (!content) continue;
-      var frontmatterEnd =
-        content.slice(0, 4) === "---\n" ? content.indexOf("\n---", 4) : -1;
-      if (frontmatterEnd < 0) continue;
-      var frontmatter = content.slice(4, frontmatterEnd);
-      if (!/^euclis-memory:\s*true\s*$/im.test(frontmatter)) continue;
+      if (
+        /-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(content) ||
+        /\b(?:sk-ant-|sk-proj-|ghp_|github_pat_|AKIA)[A-Za-z0-9_-]{16,}/.test(content)
+      ) {
+        continue;
+      }
       var fullHash = createHash("sha256").update(content).digest("hex");
       nextHashes[relative] = fullHash;
       if (previousHashes && previousHashes[relative] === fullHash) continue;
@@ -231,14 +241,21 @@ async function main() {
   var lines = readFileSync(transcriptPath, "utf8").split("\n");
   var stateDir = join(homedir(), ".euclis", "state");
   var statePath = join(stateDir, detected.conversationId + ".json");
+  var repoStateKey = createHash("sha256")
+    .update(detected.root)
+    .digest("hex")
+    .slice(0, 20);
+  var documentStatePath = join(stateDir, "documents-" + repoStateKey + ".json");
   var state = {};
+  var documentState = {};
   var fromLine = 0;
   try { state = JSON.parse(readFileSync(statePath, "utf8")) || {}; } catch (e) {}
+  try { documentState = JSON.parse(readFileSync(documentStatePath, "utf8")) || {}; } catch (e) {}
   fromLine = state.line || 0;
   if (fromLine > lines.length) fromLine = 0;
 
   var delta = extractText(lines, fromLine);
-  var markdown = collectMarkdown(detected.root, state.documentHashes || {});
+  var markdown = collectMarkdown(detected.root, documentState.hashes || {});
   // Too little new material: keep the old offset so it accumulates into the
   // next run instead of being dropped. Changed Markdown can independently
   // trigger capture even when the transcript delta is short.
@@ -265,10 +282,11 @@ async function main() {
   mkdirSync(stateDir, { recursive: true });
   writeFileSync(
     statePath,
-    JSON.stringify({
-      line: lines.length,
-      documentHashes: markdown.hashes,
-    })
+    JSON.stringify({ line: lines.length })
+  );
+  writeFileSync(
+    documentStatePath,
+    JSON.stringify({ hashes: markdown.hashes })
   );
 
   var data = null;

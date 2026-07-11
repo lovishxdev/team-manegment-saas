@@ -29,7 +29,7 @@ export function WhatsAppChatHistory({
 
   return (
     <div
-      className={`space-y-2 overflow-y-auto rounded-xl border border-line bg-[#ECE5DD]/60 p-3 ${className || "max-h-80"}`}
+      className={`space-y-2 overflow-y-auto rounded-xl border border-line bg-[#ECE5DD]/60 p-3 dark:bg-[#0b141a] ${className || "max-h-80"}`}
       aria-label="Recent WhatsApp messages"
     >
       {messages.map((msg, i) => {
@@ -42,8 +42,8 @@ export function WhatsAppChatHistory({
             <div
               className={`max-w-[88%] rounded-2xl px-3 py-2 text-sm leading-snug shadow-sm ${
                 isUser
-                  ? "rounded-tr-sm bg-[#DCF8C6] text-ink"
-                  : "rounded-tl-sm bg-white text-ink"
+                  ? "rounded-tr-sm bg-[#DCF8C6] text-ink dark:bg-[#005c4b]"
+                  : "rounded-tl-sm bg-white text-ink dark:bg-[#202c33]"
               }`}
             >
               <p className="whitespace-pre-wrap break-words">{msg.content}</p>

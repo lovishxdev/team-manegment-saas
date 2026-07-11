@@ -20,8 +20,9 @@ tasks, decisions, and blockers.
 - For a multi-decision handoff or ADR, write
   \`.euclis/memory/<topic>.md\` with YAML frontmatter containing
   \`euclis-memory: true\` and 1-4 stable topic \`tags\`. The ambient hook
-  uses it as bounded evidence;
-  ordinary README/docs files are never ingested.
+  uses changed Markdown files as bounded evidence; this path is the
+  preferred explicit convention. Add \`euclis-memory: false\` frontmatter to
+  any Markdown that must never be uploaded.
 - If your work clears an open blocker, confirm with the user, then call
   \`resolve_blocker\` with the blocker's event id.
 - When committing work that belongs to a Euclis task, reference it in the

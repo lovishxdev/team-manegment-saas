@@ -38,12 +38,12 @@ function unquote(value: string): string {
 
 export function parseMemoryDocument(content: string): ParsedFrontmatter | null {
   const normalized = content.replace(/\r\n/g, "\n").trim();
-  if (!normalized.startsWith("---\n")) return null;
-  const end = normalized.indexOf("\n---", 4);
-  if (end < 0) return null;
-
-  const frontmatter = normalized.slice(4, end);
-  if (!/^euclis-memory:\s*true\s*$/im.test(frontmatter)) return null;
+  if (!normalized) return null;
+  const hasFrontmatter = normalized.startsWith("---\n");
+  const end = hasFrontmatter ? normalized.indexOf("\n---", 4) : -1;
+  const frontmatter = end >= 0 ? normalized.slice(4, end) : "";
+  // Authors can explicitly opt a changed Markdown file out.
+  if (/^euclis-memory:\s*false\s*$/im.test(frontmatter)) return null;
 
   const titleMatch = frontmatter.match(/^title:\s*(.+)$/im);
   const tagsMatch = frontmatter.match(/^tags:\s*(.*)$/im);
@@ -67,7 +67,7 @@ export function parseMemoryDocument(content: string): ParsedFrontmatter | null {
       }
     }
   }
-  const body = normalized.slice(end + 4).trim();
+  const body = end >= 0 ? normalized.slice(end + 4).trim() : normalized;
   const heading = body.match(/^#\s+(.+)$/m)?.[1]?.trim();
 
   return {

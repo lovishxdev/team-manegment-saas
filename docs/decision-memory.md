@@ -149,11 +149,15 @@ Claude Code `Stop`):
   intercepted mid-session), extracts only user/agent message text (tool
   output and diffs never leave the machine), and POSTs the delta since the
   last run to `/api/ingest/agent-session`. It also sends changed/untracked
-  explicit memory documents under `.euclis/memory/**/*.md` when their YAML
-  frontmatter contains `euclis-memory: true`. This keeps ordinary README,
-  docs, marketing copy, and generated context out by construction. Payloads
-  are bounded (max 12 files, 8k chars each / 48k total) and content-hashed so
-  unchanged docs are never resent. Euclis upserts a bounded
+  changed/untracked repository Markdown (ADRs, plans, README and docs).
+  `.euclis/memory/**/*.md` with `euclis-memory: true` frontmatter is the
+  preferred explicit convention; `euclis-memory: false` opts a file out.
+  Generated agent context/instruction files and likely credentials are
+  always rejected. Payloads are bounded (max 12 files, 8k chars each / 48k
+  total) and content-hashed in repo-level hook state so unchanged docs are
+  never resent across conversations. Changed files are prioritized; existing
+  tracked Markdown is gradually backfilled 12 files per successful run.
+  Euclis upserts a bounded
   `MemoryDocument` snapshot (title, body, tags, path and hash) for web/agent
   preview. Events extracted primarily from a document retain a relation plus
   repository-relative path + version hash as provenance. Server-side, one judge call

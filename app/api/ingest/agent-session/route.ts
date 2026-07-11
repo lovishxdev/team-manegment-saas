@@ -79,18 +79,29 @@ function parseDocuments(value: unknown): AgentSessionDocument[] {
         ? item.content.trim().slice(0, MAX_MEMORY_DOCUMENT_CHARS)
         : "";
 
-    // Hooks send repository-relative Markdown only. Reject traversal and
-    // generated Euclis context files even if a custom client submits them.
+    const containsLikelySecret =
+      /-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(content) ||
+      /\b(?:sk-ant-|sk-proj-|ghp_|github_pat_|AKIA)[A-Za-z0-9_-]{16,}/.test(
+        content
+      );
+
+    // Hooks send repository-relative Markdown only. Reject traversal,
+    // generated context/instruction files and likely real credentials even
+    // if a custom client submits them.
     if (
       !path ||
       path.startsWith("/") ||
       path.split(/[\\/]/).includes("..") ||
-      !/^\.euclis\/memory\/[a-z0-9_./-]+\.md$/i.test(path) ||
+      !/^[a-z0-9_./ -]+\.md$/i.test(path) ||
+      path === "AGENTS.md" ||
+      path === "CLAUDE.md" ||
+      path.startsWith(".cursor/") ||
+      path.startsWith(".claude/") ||
+      path.startsWith("node_modules/") ||
+      path.startsWith(".git/") ||
       !/^[a-f0-9]{64}$/i.test(hash) ||
       !content ||
-      !/^---\n[\s\S]*?^euclis-memory:\s*true\s*$[\s\S]*?^---/im.test(
-        content
-      )
+      containsLikelySecret
     ) {
       continue;
     }

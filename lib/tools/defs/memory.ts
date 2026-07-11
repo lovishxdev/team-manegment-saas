@@ -17,7 +17,10 @@ import {
 import { scheduleDecisionSupersessionCheck } from "@/lib/memory/capture";
 import { buildWorkspaceBrief } from "@/lib/memory/brief";
 import { bumpMemoryMetric } from "@/lib/memory/metrics";
-import { selectRelevantProjectContext } from "@/lib/memory/context-selector";
+import {
+  selectRelevantProjectContext,
+  type ContextSelection,
+} from "@/lib/memory/context-selector";
 import { optionalNum, optionalStr, str, workspaceParam } from "@/lib/tools/helpers";
 import { clearNotedBlocker, noteBlocker } from "@/lib/whatsapp-cache";
 
@@ -52,6 +55,23 @@ export function formatMemoryEvent(e: MemoryEventRow): string {
 
 export function formatMemoryEvents(events: MemoryEventRow[]): string {
   return events.map(formatMemoryEvent).join("\n");
+}
+
+function formatSelectedContext(
+  items: ContextSelection["selected"]
+): string {
+  return items
+    .map(({ event, context }) => {
+      const tags =
+        event.tags.length > 0
+          ? ` · ${event.tags.map((tag) => `#${tag}`).join(" ")}`
+          : "";
+      const source = event.sourceDocumentPath
+        ? ` · source: ${event.sourceDocumentPath}`
+        : "";
+      return `- [${event.kind}${event.status === "OPEN" ? " · OPEN" : ""}] ${context}\n  (${event.createdAt.toISOString().slice(0, 10)}${tags}${source} · id: ${event.id})`;
+    })
+    .join("\n");
 }
 
 const recallMemoryTool: ToolDef = {
@@ -407,7 +427,7 @@ const getProjectContextTool: ToolDef = {
     });
     const relevant = selection.selected;
     const blockers = relevant.filter(
-      (event) =>
+      ({ event }) =>
         event.status === "OPEN" &&
         (event.kind === "BLOCKER" || event.kind === "DEPENDENCY")
     );
@@ -415,15 +435,17 @@ const getProjectContextTool: ToolDef = {
     const sections: string[] = [`Project context for: ${query}`];
     sections.push(
       blockers.length > 0
-        ? `\nOpen blockers/dependencies${shortId !== undefined ? ` on task #${shortId}` : ""}:\n${formatMemoryEvents(blockers)}`
+        ? `\nOpen blockers/dependencies${shortId !== undefined ? ` on task #${shortId}` : ""}:\n${formatSelectedContext(blockers)}`
         : `\nNo open blockers${shortId !== undefined ? ` on task #${shortId}` : ""}.`
     );
     // Avoid repeating blocker rows in the relevant-memory section.
-    const blockerIds = new Set(blockers.map((b) => b.id));
-    const decisions = relevant.filter((r) => !blockerIds.has(r.id));
+    const blockerIds = new Set(blockers.map(({ event }) => event.id));
+    const decisions = relevant.filter(
+      ({ event }) => !blockerIds.has(event.id)
+    );
     sections.push(
       decisions.length > 0
-        ? `\nRelevant recorded memory:\n${formatMemoryEvents(decisions)}`
+        ? `\nRelevant recorded memory:\n${formatSelectedContext(decisions)}`
         : `\nNo recorded decisions matched. (recall_memory or ask_task can dig deeper.)`
     );
     sections.push(

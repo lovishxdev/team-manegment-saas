@@ -20,12 +20,17 @@ const CONTEXT_MODEL =
 const MAX_SELECTED = 4;
 
 type Selection = {
-  selected_ids?: string[];
+  selected?: {
+    id?: string;
+    relevance?: number;
+    reason?: string;
+    context?: string;
+  }[];
   stale_open_ids?: string[];
 };
 
 export type ContextSelection = {
-  selected: MemoryEventRow[];
+  selected: { event: MemoryEventRow; context: string }[];
   /** Open rows whose own text says the underlying issue was fixed/verified. */
   staleOpen: MemoryEventRow[];
 };
@@ -37,12 +42,33 @@ const SELECT_TOOL: Anthropic.Tool = {
   input_schema: {
     type: "object",
     properties: {
-      selected_ids: {
+      selected: {
         type: "array",
-        items: { type: "string" },
         maxItems: MAX_SELECTED,
         description:
-          "Candidate ids that directly constrain, explain, or block the requested work. Topical adjacency alone is not enough.",
+          "Only candidates that directly constrain, explain, or block the requested work. Topical adjacency alone is not enough.",
+        items: {
+          type: "object",
+          properties: {
+            id: { type: "string" },
+            relevance: {
+              type: "number",
+              description:
+                "0-100 direct relevance to the concrete work request. Use 70+ only when omitting this record could change the implementation or cause a mistake.",
+            },
+            reason: {
+              type: "string",
+              description:
+                "One short sentence explaining exactly how this record changes the requested work.",
+            },
+            context: {
+              type: "string",
+              description:
+                "One concise, source-grounded sentence containing only the part of this record the agent needs. Remove unrelated implementation and presentation detail.",
+            },
+          },
+          required: ["id", "relevance", "reason", "context"],
+        },
       },
       stale_open_ids: {
         type: "array",
@@ -51,7 +77,7 @@ const SELECT_TOOL: Anthropic.Tool = {
           "OPEN blocker/dependency ids whose own summary/reasoning says the issue was fixed, verified, deployed, or now works. These need human resolution review and must not be presented as active blockers.",
       },
     },
-    required: ["selected_ids", "stale_open_ids"],
+    required: ["selected", "stale_open_ids"],
   },
 };
 
@@ -59,13 +85,10 @@ const SYSTEM = `You select compact project context for a coding agent.
 
 The query describes the work the agent is about to do. Choose a memory record only when knowing it would change implementation, prevent a mistake, explain a binding choice, or identify a blocker that directly affects that work.
 
-Match the requested work domain, not just the same feature name. For example:
-- copy/SEO/content work needs only messaging, claims, feature availability,
-  terminology, and audience positioning. It does not need visual styling,
-  animation, scroll behavior, spacing, component-layout, or implementation
-  decisions even when they describe the same landing page;
-- backend work does not need unrelated landing-page presentation decisions;
-- a broad feature mention inside both texts does not make them relevant.
+Match the concrete objective and operation, not just shared nouns, feature
+names, tags, or product area. For every selected record, state exactly how it
+changes the requested work. If that reason is merely "both mention X", reject
+the record.
 
 Reject:
 - merely topically adjacent records;
@@ -73,7 +96,14 @@ Reject:
 - blockers from unrelated features;
 - an OPEN row whose own wording says the issue was fixed, verified, deployed, or works in a fresh process. Put those ids in stale_open_ids instead — never selected_ids.
 
-Return the smallest sufficient set (normally 1-3 records, hard maximum 4).
+Assign relevance honestly: 70+ means omitting the record could change the
+implementation or cause a mistake. Return the smallest sufficient set
+(normally 1-3 records, hard maximum 4).
+
+For each selected record, write a compact context sentence containing only
+the source-grounded fact needed for this request. A record may contain both
+relevant and irrelevant details; never copy the irrelevant parts into
+context.
 Precision is more important than recall. Returning no records is correct when nothing directly applies. Never invent ids.`;
 
 function formatCandidate(event: MemoryEventRow): string {
@@ -96,7 +126,9 @@ export async function selectRelevantProjectContext(input: {
   const apiKey = getAnthropicApiKey();
   if (!apiKey) {
     return {
-      selected: input.candidates.slice(0, MAX_SELECTED),
+      selected: input.candidates
+        .slice(0, MAX_SELECTED)
+        .map((event) => ({ event, context: event.summary })),
       staleOpen: [],
     };
   }
@@ -105,7 +137,7 @@ export async function selectRelevantProjectContext(input: {
     const anthropic = new Anthropic({ apiKey });
     const response = await anthropic.messages.create({
       model: CONTEXT_MODEL,
-      max_tokens: 500,
+      max_tokens: 1200,
       system: SYSTEM,
       messages: [
         {
@@ -127,12 +159,17 @@ export async function selectRelevantProjectContext(input: {
     );
     if (!toolUse) {
       return {
-        selected: input.candidates.slice(0, MAX_SELECTED),
+        selected: input.candidates
+          .slice(0, MAX_SELECTED)
+          .map((event) => ({ event, context: event.summary })),
         staleOpen: [],
       };
     }
 
     const selection = toolUse.input as Selection;
+    if (process.env.MEMORY_CONTEXT_DEBUG === "1") {
+      console.log("[memory-context] raw selection:", selection);
+    }
     const byId = new Map(input.candidates.map((event) => [event.id, event]));
     const staleIds = new Set(
       (selection.stale_open_ids ?? []).filter((id) => {
@@ -143,10 +180,29 @@ export async function selectRelevantProjectContext(input: {
         );
       })
     );
-    const selected = (selection.selected_ids ?? [])
-      .map((id) => byId.get(id))
-      .filter((event): event is MemoryEventRow => Boolean(event))
-      .filter((event) => !staleIds.has(event.id))
+    const selected = (selection.selected ?? [])
+      .filter(
+        (item) =>
+          typeof item.id === "string" &&
+          typeof item.relevance === "number" &&
+          item.relevance >= 70 &&
+          typeof item.reason === "string" &&
+          item.reason.trim().length >= 8 &&
+          typeof item.context === "string" &&
+          item.context.trim().length >= 8
+      )
+      .sort((a, b) => (b.relevance ?? 0) - (a.relevance ?? 0))
+      .map((item) => ({
+        event: byId.get(item.id!),
+        context: item.context!.trim().slice(0, 500),
+      }))
+      .filter(
+        (
+          item
+        ): item is { event: MemoryEventRow; context: string } =>
+          Boolean(item.event)
+      )
+      .filter((item) => !staleIds.has(item.event.id))
       .slice(0, MAX_SELECTED);
 
     return {
@@ -158,7 +214,9 @@ export async function selectRelevantProjectContext(input: {
   } catch (error) {
     console.error("[memory-context] selector failed, using recall order:", error);
     return {
-      selected: input.candidates.slice(0, MAX_SELECTED),
+      selected: input.candidates
+        .slice(0, MAX_SELECTED)
+        .map((event) => ({ event, context: event.summary })),
       staleOpen: [],
     };
   }

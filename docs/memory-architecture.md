@@ -62,10 +62,11 @@ Three verbs define the system:
 
 The hybrid store has two complementary records in Prisma/Postgres:
 
-- `MemoryDocument` — bounded snapshot of an explicitly opted-in repository
-  Markdown source (`.euclis/memory/**/*.md` + `euclis-memory: true`
-  frontmatter): title, body, canonical tags, path, hash and author. The repo
-  remains the authoring source; this snapshot powers web/agent preview.
+- `MemoryDocument` — bounded snapshot of repository Markdown changed during
+  an agent session: title, body, canonical tags, path, hash and author.
+  `.euclis/memory/**/*.md` is the preferred explicit convention, while any
+  file can opt out with `euclis-memory: false`. The repo remains the
+  authoring source; this snapshot powers web/agent preview.
 - `MemoryEvent` — compact structured state extracted from conversations or
   documents:
 
@@ -125,8 +126,8 @@ Cursor agent run finishes ("stop" hook fires)
 .cursor/hooks/euclis-memory.mjs   (local, no deps, fails silent)
         │  reads transcript JSONL
         │  extracts user/agent message text; also collects only changed
-        │  opt-in .euclis/memory/**/*.md sources (12 files / 48k total)
-        │  (tool output, diffs and ordinary repo docs never leave the machine)
+        │  changed/untracked Markdown sources (12 files / 48k total);
+        │  generated context, instruction files and secrets are excluded
         │  computes delta since last flush (offset state per conversation
         │  in ~/.cursor/euclis-state/)
         │  skips deltas < 300 chars (they accumulate); caps at 24k chars
