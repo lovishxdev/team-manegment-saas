@@ -45,8 +45,11 @@ export function ThemeProvider({
 }) {
   const [preference, setPreferenceState] =
     useState<ThemePreference>(initialPreference);
+  // Deterministic initial value (no matchMedia) so server and first client
+  // render agree. `system` resolves after mount in the effect below; the actual
+  // painted theme is handled pre-paint by the inline no-flash script.
   const [resolved, setResolved] = useState<ResolvedTheme>(() =>
-    resolvePreference(initialPreference),
+    initialPreference === "dark" ? "dark" : "light",
   );
 
   const apply = useCallback((next: ThemePreference) => {

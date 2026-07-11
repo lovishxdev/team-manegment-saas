@@ -82,11 +82,34 @@ const SRC_POSITIONS: { cls: string; canonical: SrcKey }[] = [
 
 const SRC_KEYS: SrcKey[] = ["whatsapp", "cursor", "claudecode", "web"];
 
+/**
+ * Mobile can't fit the two-column anchor (it would stack into a card far taller
+ * than the viewport), so the mobile scroll story plays as one pinned panel that
+ * fills, then flips: Discussion grows → Project memory forms → an agent reads.
+ * No copy text — the card itself is the narrative.
+ */
+const MOBILE_STEPS: {
+  view: "discussion" | "memory";
+  chapter: number;
+  cameo?: boolean;
+}[] = [
+  { view: "discussion", chapter: 0 },
+  { view: "discussion", chapter: 2 },
+  { view: "discussion", chapter: 3 },
+  { view: "memory", chapter: 3 },
+  { view: "memory", chapter: 4 },
+  { view: "memory", chapter: 4, cameo: true },
+];
+
+type StoryMode = "static" | "mobile" | "desktop";
+
 export function ScrollStory() {
   const sectionRef = useRef<HTMLElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
-  const [enhanced, setEnhanced] = useState(false);
+  const [mode, setMode] = useState<StoryMode>("static");
   const [chapter, setChapter] = useState(0);
+  // Discrete step for the mobile panel-flip story (see MOBILE_STEPS).
+  const [mStep, setMStep] = useState(0);
   // True only while the hero sits at the very top (before any untilt begins).
   // The peek-a-boo plays only here; once scrolling starts the frame untilts
   // and the squares must vanish so they never float over the moving frame.
@@ -106,23 +129,26 @@ export function ScrollStory() {
     });
   };
 
-  // Decide whether to run the pinned experience (wide viewport, motion allowed).
-  // Re-evaluated on resize so widening the window activates it.
+  // Decide which experience to run. Reduced motion → static stacked fallback;
+  // wide viewport → the two-column pinned story; otherwise the mobile panel-flip
+  // story. Re-evaluated on resize so rotating/resizing swaps cleanly.
   useEffect(() => {
     const evaluate = () => {
       const reduce = window.matchMedia(
         "(prefers-reduced-motion: reduce)"
       ).matches;
-      setEnhanced(window.innerWidth >= 900 && !reduce);
+      setMode(
+        reduce ? "static" : window.innerWidth >= 900 ? "desktop" : "mobile"
+      );
     };
     evaluate();
     window.addEventListener("resize", evaluate);
     return () => window.removeEventListener("resize", evaluate);
   }, []);
 
-  // Scroll-driven progress — only while the pinned experience is active.
+  // Scroll-driven progress — only while a pinned experience is active.
   useEffect(() => {
-    if (!enhanced) return;
+    if (mode === "static") return;
     const section = sectionRef.current;
     const stage = stageRef.current;
     if (!section || !stage) return;
@@ -142,6 +168,12 @@ export function ScrollStory() {
       stage.style.setProperty("--pin", pin.toFixed(4));
       const ch = Math.min(CHAPTERS.length - 1, Math.floor(p * CHAPTERS.length));
       setChapter((prev) => (prev === ch ? prev : ch));
+      const ms = clamp(
+        Math.floor(p * MOBILE_STEPS.length),
+        0,
+        MOBILE_STEPS.length - 1
+      );
+      setMStep((prev) => (prev === ms ? prev : ms));
       // "At top" = essentially unscrolled, before the untilt is perceptible.
       const top = p < 0.05;
       setAtTop((prev) => (prev === top ? prev : top));
@@ -162,10 +194,10 @@ export function ScrollStory() {
       window.removeEventListener("resize", onScroll);
       cancelAnimationFrame(raf);
     };
-  }, [enhanced]);
+  }, [mode]);
 
-  // Stacked fallback (mobile / reduced-motion): a normal hero + stacked beats.
-  if (!enhanced) {
+  // Stacked fallback (reduced-motion): a normal hero + stacked beats.
+  if (mode === "static") {
     return (
       <section ref={sectionRef} className="lp-story-fallback">
         <div className="mx-auto max-w-6xl px-5 pb-16 pt-32 sm:px-8 sm:pt-36">
@@ -205,6 +237,96 @@ export function ScrollStory() {
                   {c.body}
                 </p>
               </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  // Pinned panel-flip scroll-story (mobile / narrow viewports). No copy text —
+  // just the anchor card telling the story as it fills and flips.
+  if (mode === "mobile") {
+    const step = MOBILE_STEPS[mStep];
+    return (
+      <section
+        ref={sectionRef}
+        className="lp-story-m"
+        style={{ height: `calc(100svh * ${MOBILE_STEPS.length * 0.85})` }}
+      >
+        <div ref={stageRef} className="lp-story-m-sticky" data-enhanced>
+          <div className="lp-story-bg" aria-hidden />
+
+          <div className={`lp-story-m-intro ${mStep > 0 ? "is-gone" : ""}`}>
+            <h1 className="font-serif text-[2.15rem] leading-[1.04] tracking-tight text-ink">
+              {CHAPTERS[0].title}
+            </h1>
+            <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+              <Link
+                href="/signup"
+                className={`lp-shimmer px-5 py-3 text-[15px] ${ui.btnPrimary}`}
+              >
+                Start free →
+              </Link>
+              <Link
+                href="/pricing"
+                className={`px-5 py-3 text-[15px] ${ui.btnSecondary}`}
+              >
+                See plans
+              </Link>
+            </div>
+          </div>
+
+          <div className="lp-story-m-anchor">
+            <WorkspaceMemoryStage
+              key={step.view}
+              chapter={step.chapter}
+              view={step.view}
+              variant="mobile"
+            />
+
+            {/* Capture beat: sources tuck behind the card, then peek out from
+                the top & bottom edges (more room than the sides) and stay. */}
+            <div
+              className={`lp-src-cloud lp-src-cloud--m ${
+                mStep >= 1 ? "is-on" : ""
+              }`}
+              aria-hidden
+            >
+              {SRC_POSITIONS.map((p) => {
+                const meta = SRC_META[p.canonical];
+                return (
+                  <span
+                    key={p.cls}
+                    className={`lp-src-pill ${p.cls}`}
+                    title={meta.label}
+                  >
+                    {meta.icon("h-6 w-6")}
+                  </span>
+                );
+              })}
+            </div>
+
+            {/* Shared beat: an agent pulls the same memory */}
+            <div
+              className={`lp-agent-cameo ${step.cameo ? "is-on" : ""}`}
+              aria-hidden
+            >
+              <div className="lp-agent-cameo-head">
+                <ClaudeIcon className="h-4 w-4 text-claude" />
+                <span>Claude Code</span>
+              </div>
+              <code className="lp-agent-call">→ get_project_context()</code>
+              <div className="lp-agent-res">
+                <span className="lp-agent-check">✓</span>
+                6 decisions · 1 open blocker loaded
+              </div>
+            </div>
+          </div>
+
+          <div className="lp-story-dots" aria-hidden>
+            {MOBILE_STEPS.map((_, i) => (
+              <span key={i} className={i === mStep ? "is-active" : ""} />
             ))}
           </div>
         </div>

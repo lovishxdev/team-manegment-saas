@@ -1,6 +1,7 @@
 "use client";
 
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, LogOut } from "lucide-react";
+import { signOutAction } from "@/lib/actions/auth";
 import { OpenSettingsLink } from "@/components/settings/open-settings-link";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { Avatar } from "@/components/ui/ui";
@@ -30,6 +31,16 @@ export function SidebarAccount({
         />
       </OpenSettingsLink>
       <ThemeToggle />
+      <form action={signOutAction}>
+        <button
+          type="submit"
+          title="Sign out"
+          aria-label="Sign out"
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-faint transition hover:bg-white/60 hover:text-ink dark:hover:bg-white/10"
+        >
+          <LogOut className="h-4 w-4" strokeWidth={1.75} />
+        </button>
+      </form>
     </div>
   );
 }

@@ -633,6 +633,9 @@ export function LandingStyles() {
         display: flex;
         align-items: center;
         justify-content: center;
+        /* Offset the fixed nav so the card centers in the space below it
+           instead of the full viewport (keeps it off the navbar). */
+        padding-top: 64px;
         padding-inline: 24px;
         --pin: 0;
         --p: 0;
@@ -660,6 +663,75 @@ export function LandingStyles() {
           radial-gradient(ellipse 45% 55% at 8% 6%, rgba(255, 220, 150, 0.18) 0%, transparent 55%),
           radial-gradient(ellipse 45% 55% at 94% 10%, rgba(255, 200, 214, 0.14) 0%, transparent 55%),
           #fbfaf9;
+      }
+
+      /* ---------- Mobile scroll story (pinned panel-flip, no copy) ---------- */
+      .lp-story-m {
+        position: relative;
+      }
+      .lp-story-m-sticky {
+        position: sticky;
+        top: 0;
+        height: 100svh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        /* Wider side gutters so the horizontal source-square peeks have room. */
+        padding: 84px 38px 52px;
+      }
+      /* Hero copy sits above the card and collapses out once the story starts,
+         letting the card rise and take center stage. */
+      .lp-story-m-intro {
+        position: relative;
+        z-index: 2;
+        width: 100%;
+        max-width: 30rem;
+        max-height: 320px;
+        text-align: center;
+        transition:
+          opacity 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+          transform 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+          max-height 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+          margin 0.45s ease;
+      }
+      .lp-story-m-intro.is-gone {
+        opacity: 0;
+        transform: translateY(-14px);
+        max-height: 0;
+        margin: 0;
+        pointer-events: none;
+        overflow: hidden;
+      }
+      .lp-story-m-anchor {
+        position: relative;
+        z-index: 1;
+        width: 100%;
+        max-width: 460px;
+      }
+      /* Card swaps content between acts — cross-fade the whole panel so the flip
+         from Discussion to Project memory reads as one smooth transition.
+         Kept above the source cloud so tucked squares hide behind it. */
+      .lp-story-m-anchor > .lp-wms {
+        position: relative;
+        z-index: 2;
+        animation: lp-story-m-swap 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+      }
+      @keyframes lp-story-m-swap {
+        from { opacity: 0; transform: translateY(10px) scale(0.985); }
+        to   { opacity: 1; transform: translateY(0) scale(1); }
+      }
+      /* Agent cameo repositioned to sit inside the card's bottom-right on mobile. */
+      .lp-story-m .lp-agent-cameo {
+        right: 10px;
+        bottom: 10px;
+        width: min(210px, 66%);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .lp-story-m-intro,
+        .lp-story-m-anchor > .lp-wms { transition: none; animation: none; }
       }
 
       .lp-story-anchor {
@@ -912,6 +984,31 @@ export function LandingStyles() {
         31%       { transform: translate3d(-6px, 1px, 0) rotate(3deg) scale(1); opacity: 1; }
         42%, 100% { transform: translate3d(-96px, 0, 0) scale(0.7); opacity: 0; }
       }
+
+      /* ---------- Mobile source squares (peek from top & bottom edges) ----------
+         The card is nearly full-width on mobile, so the sides have no room. These
+         tuck behind the card's top/bottom edges (occluded by the frame) and then
+         slide out vertically to peek, where there's open space. Placed after the
+         desktop rules so equal-specificity overrides win. */
+      .lp-src-cloud--m .lp-src-pill {
+        width: 48px;
+        height: 48px;
+        border-radius: 13px;
+        box-shadow: 0 12px 30px -14px rgba(20, 20, 30, 0.36);
+      }
+      /* Desktop mechanic on mobile: two squares emerge horizontally from behind
+         the LEFT edge, two from the RIGHT, at varied heights + tilts, so they
+         slide out sideways from under the frame exactly like desktop. Resting:
+         tucked toward center, hidden behind the card. */
+      .lp-src-cloud--m .pos-1 { top: 7%;  bottom: auto; left: -30px;  right: auto; transform: translate3d(70px, 0, 0) scale(0.7); }
+      .lp-src-cloud--m .pos-4 { top: 56%; bottom: auto; left: -29px;  right: auto; transform: translate3d(70px, 0, 0) scale(0.7); }
+      .lp-src-cloud--m .pos-2 { top: 16%; bottom: auto; right: -32px; left: auto;  transform: translate3d(-70px, 0, 0) scale(0.7); }
+      .lp-src-cloud--m .pos-3 { top: 64%; bottom: auto; right: -36px; left: auto;  transform: translate3d(-70px, 0, 0) scale(0.7); }
+      /* Peeked out (active): slide to the edge, each with a different tilt. */
+      .lp-src-cloud--m.is-on .pos-1 { transform: translate3d(0, 0, 0) rotate(-10deg); }
+      .lp-src-cloud--m.is-on .pos-4 { transform: translate3d(0, 0, 0) rotate(9deg); }
+      .lp-src-cloud--m.is-on .pos-2 { transform: translate3d(0, 0, 0) rotate(8deg); }
+      .lp-src-cloud--m.is-on .pos-3 { transform: translate3d(0, 0, 0) rotate(-9deg); }
 
       /* ---------- Shared beat: agent cameo reading memory ---------- */
       .lp-agent-cameo {

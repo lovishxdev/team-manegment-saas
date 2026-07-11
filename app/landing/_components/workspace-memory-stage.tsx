@@ -135,6 +135,48 @@ const MEMORY: MemoryEvent[] = [
   { from: 4, kind: "INSIGHT", title: "Auth keeps getting relitigated — worth a spec", meta: "dream cycle" },
 ];
 
+// Mobile: fewer, shorter items so each act fits one viewport. Lina is dropped —
+// Aarav carries the opening decision line.
+const MOBILE_FEED: FeedItem[] = [
+  {
+    from: 0,
+    who: "Aarav",
+    source: "whatsapp",
+    img: "/avatars/aarav.jpg",
+    text: "Let's go with Supabase Auth — custom JWT is a rabbit hole.",
+    capturedAt: 2,
+  },
+  {
+    from: 2,
+    who: "Cursor agent",
+    source: "cursor",
+    agent: true,
+    text: "Recorded a decision: adopt Supabase Auth.",
+    capturedAt: 2,
+  },
+  {
+    from: 3,
+    who: "Claude Code",
+    source: "claudecode",
+    agent: true,
+    text: "Flagging a blocker — RLS publication needed before beta.",
+    capturedAt: 3,
+  },
+  {
+    from: 4,
+    who: "@euclis",
+    source: "claude",
+    agent: true,
+    text: "Pulled context: 6 decisions, 1 open blocker.",
+  },
+];
+
+const MOBILE_MEMORY: MemoryEvent[] = [
+  { from: 3, kind: "DECISION", title: "Adopt Supabase Auth, drop custom JWT", meta: "@aarav · WhatsApp" },
+  { from: 3, kind: "BLOCKER", title: "Set RLS publication on deploy", meta: "Claude Code" },
+  { from: 4, kind: "MILESTONE", title: "Closed beta live for 12 teams", meta: "@aarav · WhatsApp" },
+];
+
 function SourceChip({ source }: { source: SourceKey }) {
   const s = SOURCES[source];
   return (
@@ -147,9 +189,189 @@ function SourceChip({ source }: { source: SourceKey }) {
   );
 }
 
-export function WorkspaceMemoryStage({ chapter }: { chapter: number }) {
-  const feed = FEED.filter((f) => chapter >= f.from);
-  const records = MEMORY.filter((e) => chapter >= e.from);
+function DiscussionPanel({
+  feed,
+  chapter,
+  full = false,
+}: {
+  feed: FeedItem[];
+  chapter: number;
+  full?: boolean;
+}) {
+  return (
+    <div
+      className={`min-w-0 bg-shell px-6 py-5 ${
+        full ? "" : "border-b border-line sm:border-b-0 sm:border-r"
+      }`}
+    >
+      <div className="mb-4 flex items-center justify-between">
+        <div className="min-w-0">
+          <h4 className="text-[19px] font-semibold tracking-tight text-ink">
+            Discussion
+          </h4>
+          <p className="mt-0.5 text-[13px] text-ink-soft">Q3 auth &amp; beta</p>
+        </div>
+        <span className="rounded-full bg-paper-deep px-3 py-1 font-mono text-[11px] font-semibold text-ink-soft">
+          5 surfaces
+        </span>
+      </div>
+
+      <ul className="space-y-2.5">
+        {feed.map((f) => {
+          const s = SOURCES[f.source];
+          return (
+            <li
+              key={f.who}
+              className={`lp-wms-in flex gap-2.5 rounded-lg p-2 ${
+                f.agent
+                  ? "bg-gradient-to-br from-amber-50/60 to-transparent"
+                  : ""
+              }`}
+            >
+              {f.agent ? (
+                <span
+                  className={`grid h-9 w-9 shrink-0 place-items-center rounded-md ${s.avatar}`}
+                >
+                  <s.Icon className="h-5 w-5" />
+                </span>
+              ) : f.img ? (
+                <Image
+                  src={f.img}
+                  alt=""
+                  width={36}
+                  height={36}
+                  className="h-9 w-9 shrink-0 rounded-full object-cover ring-1 ring-line/70"
+                />
+              ) : (
+                <span
+                  className={`grid h-9 w-9 shrink-0 place-items-center rounded-full text-[13px] font-semibold ${f.tint}`}
+                >
+                  {f.initial}
+                </span>
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[15px] font-semibold text-ink">
+                    {f.who}
+                  </span>
+                  <SourceChip source={f.source} />
+                </div>
+                <p className="mt-1 text-[15px] leading-snug text-ink-soft">
+                  {f.text}
+                </p>
+              </div>
+            </li>
+          );
+        })}
+
+        {chapter < 2 ? (
+          <li className="flex items-center gap-2.5 p-2">
+            <Image
+              src="/avatars/maya.jpg"
+              alt=""
+              width={36}
+              height={36}
+              className="h-9 w-9 shrink-0 rounded-full object-cover ring-1 ring-line/70"
+            />
+            <span className="lp-typing" aria-label="Maya is typing">
+              <i />
+              <i />
+              <i />
+            </span>
+          </li>
+        ) : null}
+      </ul>
+    </div>
+  );
+}
+
+function MemoryPanel({
+  records,
+  agentReading,
+}: {
+  records: MemoryEvent[];
+  agentReading: boolean;
+}) {
+  return (
+    <div className="min-w-0 bg-paper/60 px-6 py-5">
+      <div className="mb-4 flex flex-nowrap items-center justify-between gap-2">
+        <h4 className="truncate text-[19px] font-semibold tracking-tight text-ink">
+          Project memory
+        </h4>
+        {agentReading ? (
+          <span className="lp-wms-agent inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-emerald-50 px-3 py-1 font-mono text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            reading
+          </span>
+        ) : records.length ? (
+          <span className="shrink-0 rounded-full bg-paper-deep px-3 py-1 font-mono text-[11px] font-semibold text-ink-soft">
+            {records.length}
+          </span>
+        ) : null}
+      </div>
+
+      {records.length === 0 ? (
+        <div className="lp-mem-empty flex h-[236px] flex-col items-center justify-center rounded-lg border border-dashed border-line px-4 text-center">
+          <span className="lp-mem-radar" aria-hidden />
+          <p className="relative text-[15px] font-medium text-ink-soft">
+            Listening for decisions…
+          </p>
+          <p className="relative mt-1.5 text-[13px] leading-snug text-ink-faint">
+            Still buried in the thread
+          </p>
+        </div>
+      ) : (
+        <ul className="space-y-2">
+          {records.map((e) => (
+            <li
+              key={e.title}
+              className={`lp-wms-in rounded-lg border border-line bg-card p-2.5 shadow-sm ${
+                e.superseded ? "opacity-55" : ""
+              }`}
+            >
+              <span
+                className={`inline-block rounded px-2 py-0.5 font-mono text-[11px] font-semibold uppercase tracking-wide ${KIND_STYLE[e.kind]}`}
+              >
+                {e.kind}
+              </span>
+              <p
+                className={`mt-1 text-[15px] font-medium leading-snug text-ink ${
+                  e.superseded ? "line-through decoration-ink-faint/50" : ""
+                }`}
+              >
+                {e.title}
+              </p>
+              <p className="mt-1 font-mono text-[11px] text-ink-faint">
+                {e.meta}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/**
+ * `view`:
+ * - "split"      → both panels side by side (desktop anchor)
+ * - "discussion" → only the discussion, full width (mobile story act 1)
+ * - "memory"     → only the memory panel, full width (mobile story act 2)
+ */
+export function WorkspaceMemoryStage({
+  chapter,
+  view = "split",
+  variant = "default",
+}: {
+  chapter: number;
+  view?: "split" | "discussion" | "memory";
+  variant?: "default" | "mobile";
+}) {
+  const isMobile = variant === "mobile";
+  const feed = (isMobile ? MOBILE_FEED : FEED).filter((f) => chapter >= f.from);
+  const records = (isMobile ? MOBILE_MEMORY : MEMORY).filter(
+    (e) => chapter >= e.from
+  );
   const agentReading = chapter >= 4;
 
   return (
@@ -164,146 +386,16 @@ export function WorkspaceMemoryStage({ chapter }: { chapter: number }) {
         <span className="size-3 rounded-full bg-emerald-300/80" />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-[1.3fr_1fr]">
-        {/* LEFT: multi-source discussion */}
-        <div className="min-w-0 border-b border-line bg-shell px-6 py-6 sm:border-b-0 sm:border-r">
-          <div className="mb-5 flex items-center justify-between">
-            <div className="min-w-0">
-              <h4 className="text-[19px] font-semibold tracking-tight text-ink">
-                Discussion
-              </h4>
-              <p className="mt-1 text-[13px] text-ink-soft">Q3 auth &amp; beta</p>
-            </div>
-            <span className="rounded-full bg-paper-deep px-3 py-1 font-mono text-[11px] font-semibold text-ink-soft">
-              5 surfaces
-            </span>
-          </div>
-
-          <ul className="space-y-3.5">
-            {feed.map((f) => {
-              const s = SOURCES[f.source];
-              return (
-                <li
-                  key={f.who}
-                  className={`lp-wms-in flex gap-3 rounded-lg p-2.5 ${
-                    f.agent
-                      ? "bg-gradient-to-br from-amber-50/60 to-transparent"
-                      : ""
-                  }`}
-                >
-                  {f.agent ? (
-                    <span
-                      className={`grid h-10 w-10 shrink-0 place-items-center rounded-md ${s.avatar}`}
-                    >
-                      <s.Icon className="h-[22px] w-[22px]" />
-                    </span>
-                  ) : f.img ? (
-                    <Image
-                      src={f.img}
-                      alt=""
-                      width={40}
-                      height={40}
-                      className="h-10 w-10 shrink-0 rounded-full object-cover ring-1 ring-line/70"
-                    />
-                  ) : (
-                    <span
-                      className={`grid h-10 w-10 shrink-0 place-items-center rounded-full text-[14px] font-semibold ${f.tint}`}
-                    >
-                      {f.initial}
-                    </span>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-[15px] font-semibold text-ink">
-                        {f.who}
-                      </span>
-                      <SourceChip source={f.source} />
-                    </div>
-                    <p className="mt-1 text-[15px] leading-snug text-ink-soft">
-                      {f.text}
-                    </p>
-                  </div>
-                </li>
-              );
-            })}
-
-            {chapter < 2 ? (
-              <li className="flex items-center gap-3 p-2.5">
-                <Image
-                  src="/avatars/maya.jpg"
-                  alt=""
-                  width={40}
-                  height={40}
-                  className="h-10 w-10 shrink-0 rounded-full object-cover ring-1 ring-line/70"
-                />
-                <span className="lp-typing" aria-label="Maya is typing">
-                  <i />
-                  <i />
-                  <i />
-                </span>
-              </li>
-            ) : null}
-          </ul>
+      {view === "split" ? (
+        <div className="grid grid-cols-1 sm:grid-cols-[1.3fr_1fr]">
+          <DiscussionPanel feed={feed} chapter={chapter} />
+          <MemoryPanel records={records} agentReading={agentReading} />
         </div>
-
-        {/* RIGHT: project memory */}
-        <div className="min-w-0 bg-paper/60 px-6 py-6">
-          <div className="mb-5 flex flex-nowrap items-center justify-between gap-2">
-            <h4 className="truncate text-[19px] font-semibold tracking-tight text-ink">
-              Project memory
-            </h4>
-            {agentReading ? (
-              <span className="lp-wms-agent inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-emerald-50 px-3 py-1 font-mono text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                reading
-              </span>
-            ) : records.length ? (
-              <span className="shrink-0 rounded-full bg-paper-deep px-3 py-1 font-mono text-[11px] font-semibold text-ink-soft">
-                {records.length}
-              </span>
-            ) : null}
-          </div>
-
-          {records.length === 0 ? (
-            <div className="lp-mem-empty flex h-[268px] flex-col items-center justify-center rounded-lg border border-dashed border-line px-4 text-center">
-              <span className="lp-mem-radar" aria-hidden />
-              <p className="relative text-[15px] font-medium text-ink-soft">
-                Listening for decisions…
-              </p>
-              <p className="relative mt-1.5 text-[13px] leading-snug text-ink-faint">
-                Still buried in the thread
-              </p>
-            </div>
-          ) : (
-            <ul className="space-y-2.5">
-              {records.map((e) => (
-                <li
-                  key={e.title}
-                  className={`lp-wms-in rounded-lg border border-line bg-card p-3 shadow-sm ${
-                    e.superseded ? "opacity-55" : ""
-                  }`}
-                >
-                  <span
-                    className={`inline-block rounded px-2 py-0.5 font-mono text-[11px] font-semibold uppercase tracking-wide ${KIND_STYLE[e.kind]}`}
-                  >
-                    {e.kind}
-                  </span>
-                  <p
-                    className={`mt-1.5 text-[15px] font-medium leading-snug text-ink ${
-                      e.superseded ? "line-through decoration-ink-faint/50" : ""
-                    }`}
-                  >
-                    {e.title}
-                  </p>
-                  <p className="mt-1 font-mono text-[11px] text-ink-faint">
-                    {e.meta}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
+      ) : view === "discussion" ? (
+        <DiscussionPanel feed={feed} chapter={chapter} full />
+      ) : (
+        <MemoryPanel records={records} agentReading={agentReading} />
+      )}
     </div>
   );
 }

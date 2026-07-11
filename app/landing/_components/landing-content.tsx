@@ -107,7 +107,7 @@ export function LandingContent() {
           <Reveal delay={80}>
             <h2 className="mt-4 max-w-3xl font-serif text-[2.2rem] leading-[1.06] tracking-tight text-[#f5f4fb] sm:text-[3rem] lg:text-[3.6rem]">
               Your memory isn&apos;t just stored.{" "}
-              <span className="font-medium italic text-white">It thinks.</span>
+              <span className="font-medium italic text-white">It dreams.</span>
             </h2>
           </Reveal>
 
