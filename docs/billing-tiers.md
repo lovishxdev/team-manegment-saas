@@ -210,7 +210,7 @@ Set in `lib/billing/plans.ts`, shown on `/pricing`, and gated via `workspaceFeat
 - [x] **Ambient agent seats (`ambientAgentSeats`)** — `claimAgentSeat` + new `AgentSeat` table (seat = engineer/user); enforced in `app/api/ingest/agent-session` (402 when a new engineer exceeds Hobby's 1 seat; existing seats grandfathered)
 - [x] **Onboarding brief (`onboardingBrief`)** — `scheduleOnboardingBrief` fires from `acceptInvite`; Team-only WhatsApp welcome digest to new members (best-effort, session-window). `backfill:memory` remains a manual script.
 - [x] **Blocker routing (`blockerRouting`)** — auto assignee pings gated at both capture call sites (`lib/memory/capture.ts`, `lib/memory/agent-capture.ts`); manual WhatsApp stays free
-- [x] **Leader analytics (`leaderAnalytics`)** — `getWorkspaceMemoryAnalytics` + "Project insights" panel on workspace Settings (leaders only, Team+)
+- [x] **Leader analytics (`leaderAnalytics`)** — `getWorkspaceMemoryAnalytics` powers workspace-scoped capture, Dreaming, blocker, topic and agent-context analytics on the Memory tab (also summarized in workspace Settings); leaders only, Team+
 - [x] **Guest access (`guestAccess`)** — read-only `GUEST` role (see below)
 
 ### Guest access (read-only client role)

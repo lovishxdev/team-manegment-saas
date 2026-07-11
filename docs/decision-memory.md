@@ -70,9 +70,11 @@ in the shared registry (available on WhatsApp **and** MCP automatically):
 | `resolve_blocker` | mark resolved (only after human confirmation) |
 | `get_project_context` | session entry point for coding agents: compact brief (decisions + blockers) for the work at hand |
 
-Web UI: the **Memory tab** (`/w/<id>/memory`) shows open blockers + timeline
-with resolve buttons; the task modal shows a per-task Memory section with an
-open-blocker badge. Both live-update via Supabase Realtime on `MemoryEvent`.
+Web UI: the **Memory tab** (`/w/<id>/memory`) shows a standalone Markdown
+source library with lazy preview, open blockers, and a timeline with resolve
+buttons. Team leaders also see workspace-scoped capture, Dreaming, blocker,
+topic and agent-context analytics. The task modal retains its per-task Memory
+section; events live-update via Supabase Realtime on `MemoryEvent`.
 
 ## Resolution: confirm, never guess (v1 rule)
 
@@ -157,7 +159,13 @@ Claude Code `Stop`):
   total) and content-hashed in repo-level hook state so unchanged docs are
   never resent across conversations. Changed files are prioritized; existing
   tracked Markdown is gradually backfilled 12 files per successful run.
-  Euclis upserts a bounded
+  Before storage, a Haiku admission gate judges content (not filenames):
+  durable architecture, policy, conventions, constraints and operational
+  knowledge are kept; generic setup, README overview, changelog and
+  boilerplate reference material are rejected. `euclis-memory: true/false`
+  frontmatter overrides the model. Rejected content is not retained, but its
+  path, hash and reason appear in Team leader analytics so exclusion is
+  transparent. Euclis then upserts a bounded
   `MemoryDocument` snapshot (title, body, tags, path and hash) for web/agent
   preview. Events extracted primarily from a document retain a relation plus
   repository-relative path + version hash as provenance. Server-side, one judge call

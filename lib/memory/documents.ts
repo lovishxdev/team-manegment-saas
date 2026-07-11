@@ -11,12 +11,25 @@ export type MemoryDocumentInput = {
   path: string;
   hash: string;
   content: string;
+  title?: string;
+  tags?: string[];
 };
 
 export type PersistedMemoryDocument = MemoryDocumentInput & {
   documentId: string;
   title: string;
   tags: string[];
+};
+
+export type MemoryDocumentListItem = {
+  id: string;
+  path: string;
+  title: string;
+  tags: string[];
+  contentHash: string;
+  updatedAt: Date;
+  author: { username: string; email: string | null } | null;
+  eventCount: number;
 };
 
 type ParsedFrontmatter = {
@@ -126,7 +139,16 @@ export async function upsertMemoryDocuments(input: {
     // Trust content, not a client-supplied hash.
     const hash = crypto.createHash("sha256").update(content).digest("hex");
     totalChars += content.length;
-    const title = (parsed.title || fallbackTitle(document.path)).slice(0, 200);
+    const title = (
+      document.title ||
+      parsed.title ||
+      fallbackTitle(document.path)
+    ).slice(0, 200);
+    const tags = normalizeMemoryTags(
+      document.tags && document.tags.length > 0
+        ? [...parsed.tags, ...document.tags]
+        : parsed.tags
+    );
 
     const row = await prisma.memoryDocument.upsert({
       where: {
@@ -139,7 +161,7 @@ export async function upsertMemoryDocuments(input: {
         title,
         content: parsed.body,
         contentHash: hash,
-        tags: parsed.tags,
+        tags,
         authorId: input.userId,
       },
       create: {
@@ -148,7 +170,7 @@ export async function upsertMemoryDocuments(input: {
         title,
         content: parsed.body,
         contentHash: hash,
-        tags: parsed.tags,
+        tags,
         authorId: input.userId,
       },
       select: {
@@ -213,4 +235,106 @@ export async function getMemoryDocument(input: {
       updatedAt: true,
     },
   });
+}
+
+export async function listMemoryDocuments(input: {
+  workspaceId: string;
+  userId: string;
+  limit?: number;
+}): Promise<MemoryDocumentListItem[]> {
+  const membership = await prisma.workspaceMembership.findUnique({
+    where: {
+      userId_workspaceId: {
+        userId: input.userId,
+        workspaceId: input.workspaceId,
+      },
+    },
+    select: { userId: true },
+  });
+  if (!membership) {
+    throw new ServiceError("You are not a member of this workspace", "FORBIDDEN");
+  }
+
+  const rows = await prisma.memoryDocument.findMany({
+    where: { workspaceId: input.workspaceId },
+    orderBy: { updatedAt: "desc" },
+    take: Math.min(Math.max(input.limit ?? 24, 1), 100),
+    select: {
+      id: true,
+      path: true,
+      title: true,
+      tags: true,
+      contentHash: true,
+      updatedAt: true,
+      author: { select: { username: true, email: true } },
+      _count: { select: { events: true } },
+    },
+  });
+  return rows.map(({ _count, ...row }) => ({
+    ...row,
+    eventCount: _count.events,
+  }));
+}
+
+/** Remove only snapshots with no event provenance; repository files untouched. */
+export async function removeUnlinkedMemoryDocuments(input: {
+  workspaceId: string;
+  paths: string[];
+}): Promise<number> {
+  if (input.paths.length === 0) return 0;
+  const result = await prisma.memoryDocument.deleteMany({
+    where: {
+      workspaceId: input.workspaceId,
+      path: { in: input.paths },
+      events: { none: {} },
+    },
+  });
+  return result.count;
+}
+
+export async function recordMemoryDocumentReviews(input: {
+  workspaceId: string;
+  reviews: {
+    path: string;
+    content: string;
+    accepted: boolean;
+    reason: string;
+    explicit: boolean;
+    title?: string;
+  }[];
+}): Promise<void> {
+  if (input.reviews.length === 0) return;
+  await prisma.$transaction(
+    input.reviews.map((review) => {
+      const contentHash = crypto
+        .createHash("sha256")
+        .update(review.content)
+        .digest("hex");
+      return prisma.memoryDocumentReview.upsert({
+        where: {
+          workspaceId_path: {
+            workspaceId: input.workspaceId,
+            path: review.path,
+          },
+        },
+        update: {
+          contentHash,
+          title: review.title?.slice(0, 200) ?? null,
+          accepted: review.accepted,
+          reason: review.reason.slice(0, 1000),
+          explicit: review.explicit,
+          reviewedAt: new Date(),
+        },
+        create: {
+          workspaceId: input.workspaceId,
+          path: review.path,
+          contentHash,
+          title: review.title?.slice(0, 200) ?? null,
+          accepted: review.accepted,
+          reason: review.reason.slice(0, 1000),
+          explicit: review.explicit,
+        },
+      });
+    })
+  );
 }

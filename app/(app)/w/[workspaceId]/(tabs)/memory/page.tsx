@@ -15,6 +15,18 @@ import { CopyField } from "@/components/ui/copy-field";
 import { CODING_AGENT_RULES_SNIPPET } from "@/lib/memory/rules-snippet";
 import { MemoryContentSkeleton } from "@/components/ui/tab-content-skeleton";
 import { ui } from "@/components/ui/ui";
+import {
+  listMemoryDocuments,
+} from "@/lib/memory/documents";
+import {
+  MemoryDocumentLibrary,
+  type MemoryDocumentView,
+} from "@/components/memory/memory-document-library";
+import {
+  getWorkspaceMemoryAnalytics,
+  type WorkspaceMemoryAnalytics,
+} from "@/lib/services/workspace-analytics";
+import { WorkspaceMemoryInsights } from "@/components/workspace/workspace-memory-insights";
 
 function SeedChecklist() {
   return (
@@ -111,8 +123,11 @@ async function MemoryData({
   let openEvents;
   let timelineEvents;
   let timelineTotal;
+  let documents: MemoryDocumentView[] = [];
+  let analytics: WorkspaceMemoryAnalytics | null = null;
+  let showAnalyticsUpgrade = false;
   try {
-    const [openResult, timelineResult] = await Promise.all([
+    const [openResult, timelineResult, documentRows] = await Promise.all([
       listMemoryEventsPaginated({
         workspaceId,
         userId: user.id,
@@ -126,13 +141,37 @@ async function MemoryData({
         limit: MEMORY_TIMELINE_PAGE_SIZE,
         offset: (page - 1) * MEMORY_TIMELINE_PAGE_SIZE,
       }),
+      listMemoryDocuments({
+        workspaceId,
+        userId: user.id,
+        limit: 100,
+      }),
     ]);
     openEvents = openResult.events;
     timelineEvents = timelineResult.events;
     timelineTotal = timelineResult.total;
+    documents = documentRows.map((document) => ({
+      id: document.id,
+      path: document.path,
+      title: document.title,
+      tags: document.tags,
+      updatedAt: document.updatedAt.toISOString(),
+      authorLabel: document.author ? displayUser(document.author) : null,
+      eventCount: document.eventCount,
+    }));
   } catch (err) {
     if (err instanceof ServiceError) notFound();
     throw err;
+  }
+
+  try {
+    analytics = await getWorkspaceMemoryAnalytics(workspaceId, user.id);
+  } catch (err) {
+    if (err instanceof ServiceError && err.code === "UPGRADE_REQUIRED") {
+      showAnalyticsUpgrade = true;
+    } else if (!(err instanceof ServiceError && err.code === "FORBIDDEN")) {
+      throw err;
+    }
   }
 
   const toView = (e: (typeof openEvents)[number]): MemoryEventView => ({
@@ -164,7 +203,8 @@ async function MemoryData({
 
   const open = openEvents.map(toView);
   const timeline = timelineEvents.map(toView);
-  const hasAnyMemory = open.length > 0 || timelineTotal > 0;
+  const hasAnyMemory =
+    open.length > 0 || timelineTotal > 0 || documents.length > 0;
 
   return (
     <>
@@ -176,6 +216,61 @@ async function MemoryData({
           agent) asking &quot;why&quot;, &quot;what&apos;s blocking&quot;, or
           &quot;what happened with X&quot;.
         </p>
+      </section>
+
+      {(analytics || showAnalyticsUpgrade) && (
+        <section className="mb-10">
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className={ui.settingsSectionTitle}>
+                Memory &amp; dreaming analytics
+              </h2>
+              <p className={ui.fieldHint}>
+                Workspace-scoped capture, curation, blockers and agent-context
+                usage.
+              </p>
+            </div>
+            {analytics && (
+              <span className="rounded bg-paper-deep px-2 py-1 font-mono text-[10px] text-ink-soft">
+                Team leader view
+              </span>
+            )}
+          </div>
+          {analytics ? (
+            <WorkspaceMemoryInsights analytics={analytics} />
+          ) : (
+            <div className="rounded-xl border border-line bg-card p-5">
+              <p className="text-sm font-medium text-ink">
+                Understand how your project memory is working
+              </p>
+              <p className="mt-1 max-w-2xl text-sm text-ink-soft">
+                Team leaders can track capture sources, context usage,
+                blockers, topic trends and every Dreaming cycle.
+              </p>
+              <Link
+                href="/pricing"
+                className={`${ui.btnSecondary} mt-4 inline-flex text-sm`}
+              >
+                View Team plan
+              </Link>
+            </div>
+          )}
+        </section>
+      )}
+
+      <section className="mb-10">
+        <h2 className={`${ui.settingsSectionTitle} mb-1`}>
+          Markdown sources ({documents.length})
+        </h2>
+        <p className={`${ui.fieldHint} mb-4`}>
+          Repository documents synced by coding-agent hooks. Preview the
+          latest bounded snapshot and see how many structured events it
+          supports.
+        </p>
+        <MemoryDocumentLibrary
+          workspaceId={workspaceId}
+          documents={documents}
+        />
       </section>
 
       {!hasAnyMemory ? (

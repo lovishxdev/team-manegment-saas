@@ -87,16 +87,25 @@ export function WorkspaceMemoryInsights({
 }: {
   analytics: WorkspaceMemoryAnalytics;
 }) {
-  const { headline, capture, blockers, curation, contributors, topics, usage } =
-    analytics;
+  const {
+    headline,
+    capture,
+    blockers,
+    curation,
+    contributors,
+    topics,
+    usage,
+    documentReviews,
+  } = analytics;
 
   return (
     <div className="flex flex-col gap-6">
       {/* Headline */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <Stat label="Decisions" value={headline.decisions} />
         <Stat label="Open blockers" value={headline.openBlockers} />
         <Stat label="Insights" value={headline.insights} />
+        <Stat label="Documents" value={headline.documents} />
         <Stat label="Active memory" value={headline.activeMemory} />
       </div>
 
@@ -104,7 +113,7 @@ export function WorkspaceMemoryInsights({
       <div>
         <SectionTitle>Capture activity</SectionTitle>
         <CaptureTrend daily={capture.daily} />
-        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
           <Stat label="Captured (7d)" value={capture.events7d} />
           <Stat label="Captured (30d)" value={capture.events30d} />
           <Stat
@@ -113,11 +122,60 @@ export function WorkspaceMemoryInsights({
             hint="ambient (30d)"
           />
           <Stat
+            label="From documents"
+            value={capture.bySource.document}
+            hint="Markdown (30d)"
+          />
+          <Stat
             label="From discussions"
             value={capture.bySource.discussion + capture.bySource.taskUpdate}
             hint="posts + updates (30d)"
           />
         </div>
+      </div>
+
+      {/* Document admission */}
+      <div>
+        <SectionTitle>Document admission (30d)</SectionTitle>
+        <div className="grid grid-cols-2 gap-3 sm:max-w-xl">
+          <Stat label="Documents accepted" value={documentReviews.accepted30d} />
+          <Stat label="Documents rejected" value={documentReviews.rejected30d} />
+        </div>
+        {documentReviews.rejected.length > 0 ? (
+          <div className="mt-3 rounded-xl border border-line bg-paper px-4 py-3">
+            <p className="mb-3 text-xs font-medium text-ink-soft">
+              Recently rejected documents
+            </p>
+            <ul className="divide-y divide-line/60">
+              {documentReviews.rejected.map((document) => (
+                <li key={document.path} className="py-3 first:pt-0 last:pb-0">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span
+                      className="truncate font-mono text-[11px] text-ink"
+                      title={document.path}
+                    >
+                      {document.path}
+                    </span>
+                    <span className="text-[11px] text-ink-faint">
+                      {document.explicit
+                        ? "Explicitly excluded"
+                        : new Date(document.reviewedAt).toLocaleDateString(
+                            "en-GB",
+                            {
+                              month: "short",
+                              day: "numeric",
+                            }
+                          )}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs leading-relaxed text-ink-soft">
+                    {document.reason}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </div>
 
       {/* Blocker health */}
@@ -170,10 +228,14 @@ export function WorkspaceMemoryInsights({
       {/* Curation health */}
       <div>
         <SectionTitle>Curation health</SectionTitle>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
           <Stat label="Reviewed" value={`${curation.reviewedPct}%`} hint="curated by Dreaming" />
           <Stat label="Awaiting review" value={curation.unreviewed} />
           <Stat label="Deduped / superseded" value={curation.superseded} />
+          <Stat label="Dream runs (30d)" value={curation.dreamRuns30d} />
+          <Stat label="Merged (30d)" value={curation.merged30d} />
+          <Stat label="Insights (30d)" value={curation.insights30d} />
+          <Stat label="Archived (30d)" value={curation.archived30d} />
           <Stat
             label="Last curated"
             value={formatWhen(curation.lastDream?.at ?? null)}
@@ -219,10 +281,15 @@ export function WorkspaceMemoryInsights({
       {/* Usage */}
       <div>
         <SectionTitle>Memory usage (30d)</SectionTitle>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
           <Stat label="Recall queries" value={usage.recall30d} />
           <Stat label="Context pulls" value={usage.contextPull30d} />
           <Stat label="Agent briefs served" value={usage.briefs30d} />
+          <Stat
+            label="Average brief"
+            value={`~${Math.round(usage.briefAvgChars / 4).toLocaleString()}`}
+            hint="estimated tokens"
+          />
           <Stat label="Connected agents" value={usage.agentSeats} />
         </div>
       </div>

@@ -14,7 +14,7 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 /** Keep in sync with the latest migration that changes the generated client. */
-const PRISMA_CLIENT_BUILD = "20260710140000_guest_role";
+const PRISMA_CLIENT_BUILD = "20260711051727_memory_document_reviews";
 
 function createClient(): PrismaClient {
   const adapter = new PrismaPg({
@@ -36,6 +36,8 @@ function getClient(): PrismaClient {
     (!("whatsAppInboundDedup" in cached) ||
       !("whatsAppInboundQueue" in cached) ||
       !("memoryMetric" in cached) ||
+      !("memoryDocument" in cached) ||
+      !("memoryDocumentReview" in cached) ||
       !("workspaceDiscussionTag" in cached));
 
   if (!cached || staleBuild || missingDelegates) {

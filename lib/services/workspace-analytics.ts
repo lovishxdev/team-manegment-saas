@@ -20,13 +20,20 @@ export type WorkspaceMemoryAnalytics = {
     decisions: number;
     openBlockers: number;
     insights: number;
+    documents: number;
     activeMemory: number;
   };
   capture: {
     events7d: number;
     events30d: number;
     daily: DailyPoint[];
-    bySource: { agent: number; discussion: number; taskUpdate: number; explicit: number };
+    bySource: {
+      agent: number;
+      document: number;
+      discussion: number;
+      taskUpdate: number;
+      explicit: number;
+    };
   };
   blockers: {
     open: number;
@@ -40,6 +47,10 @@ export type WorkspaceMemoryAnalytics = {
     unreviewed: number;
     superseded: number;
     archived: number;
+    dreamRuns30d: number;
+    merged30d: number;
+    insights30d: number;
+    archived30d: number;
     lastDream:
       | { at: string; merged: number; superseded: number; insights: number }
       | null;
@@ -52,6 +63,17 @@ export type WorkspaceMemoryAnalytics = {
     briefs30d: number;
     briefAvgChars: number;
     agentSeats: number;
+  };
+  documentReviews: {
+    accepted30d: number;
+    rejected30d: number;
+    rejected: {
+      path: string;
+      title: string | null;
+      reason: string;
+      explicit: boolean;
+      reviewedAt: string;
+    }[];
   };
 };
 
@@ -101,6 +123,7 @@ export async function getWorkspaceMemoryAnalytics(
 
   const [
     byKind,
+    documentCount,
     events7d,
     events30d,
     trendRows,
@@ -115,12 +138,15 @@ export async function getWorkspaceMemoryAnalytics(
     contributorGroups,
     tagRows,
     agentSeats,
+    documentReviewCounts,
+    rejectedDocuments,
   ] = await Promise.all([
     prisma.memoryEvent.groupBy({
       by: ["kind"],
       where: { workspaceId, ...active },
       _count: { _all: true },
     }),
+    prisma.memoryDocument.count({ where: { workspaceId } }),
     prisma.memoryEvent.count({
       where: { workspaceId, createdAt: { gte: since7d } },
     }),
@@ -192,6 +218,23 @@ export async function getWorkspaceMemoryAnalytics(
       select: { tags: true },
     }),
     prisma.agentSeat.count({ where: { workspaceId } }),
+    prisma.memoryDocumentReview.groupBy({
+      by: ["accepted"],
+      where: { workspaceId, reviewedAt: { gte: since30d } },
+      _count: { _all: true },
+    }),
+    prisma.memoryDocumentReview.findMany({
+      where: { workspaceId, accepted: false },
+      orderBy: { reviewedAt: "desc" },
+      take: 10,
+      select: {
+        path: true,
+        title: true,
+        reason: true,
+        explicit: true,
+        reviewedAt: true,
+      },
+    }),
   ]);
 
   const kindCount = (kind: string) =>
@@ -284,6 +327,7 @@ export async function getWorkspaceMemoryAnalytics(
       decisions: kindCount("DECISION"),
       openBlockers: openBlockerRows.length,
       insights: kindCount("INSIGHT"),
+      documents: documentCount,
       activeMemory,
     },
     capture: {
@@ -292,6 +336,7 @@ export async function getWorkspaceMemoryAnalytics(
       daily,
       bySource: {
         agent: metric("event_created_agent"),
+        document: metric("event_created_document"),
         discussion: metric("event_created_post"),
         taskUpdate: metric("event_created_thread"),
         explicit: metric("event_created_explicit"),
@@ -309,6 +354,10 @@ export async function getWorkspaceMemoryAnalytics(
       unreviewed,
       superseded,
       archived,
+      dreamRuns30d: metric("dream_run"),
+      merged30d: metric("dream_merge"),
+      insights30d: metric("dream_insight"),
+      archived30d: metric("dream_archive"),
       lastDream: lastDream
         ? {
             at: lastDream.createdAt.toISOString(),
@@ -326,6 +375,16 @@ export async function getWorkspaceMemoryAnalytics(
       briefs30d,
       briefAvgChars: briefs30d > 0 ? Math.round(metricSum("brief_built") / briefs30d) : 0,
       agentSeats,
+    },
+    documentReviews: {
+      accepted30d:
+        documentReviewCounts.find((row) => row.accepted)?._count._all ?? 0,
+      rejected30d:
+        documentReviewCounts.find((row) => !row.accepted)?._count._all ?? 0,
+      rejected: rejectedDocuments.map((document) => ({
+        ...document,
+        reviewedAt: document.reviewedAt.toISOString(),
+      })),
     },
   };
 }

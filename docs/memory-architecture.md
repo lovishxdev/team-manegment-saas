@@ -66,7 +66,12 @@ The hybrid store has two complementary records in Prisma/Postgres:
   an agent session: title, body, canonical tags, path, hash and author.
   `.euclis/memory/**/*.md` is the preferred explicit convention, while any
   file can opt out with `euclis-memory: false`. The repo remains the
-  authoring source; this snapshot powers web/agent preview.
+  authoring source. A content-based admission model runs before persistence,
+  keeping durable rationale/policy/constraints and rejecting generic setup,
+  overview and boilerplate reference docs. Rejected content is discarded;
+  `MemoryDocumentReview` retains only path/hash, keep/drop reason and explicit
+  override state for Team leader analytics. Accepted snapshots power
+  web/agent preview.
 - `MemoryEvent` — compact structured state extracted from conversations or
   documents:
 

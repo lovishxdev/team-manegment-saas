@@ -18,8 +18,11 @@ import {
   MAX_MEMORY_DOCUMENTS,
   MAX_MEMORY_DOCUMENT_CHARS,
   MAX_MEMORY_DOCUMENT_TOTAL_CHARS,
+  recordMemoryDocumentReviews,
+  removeUnlinkedMemoryDocuments,
   upsertMemoryDocuments,
 } from "@/lib/memory/documents";
+import { selectMemoryDocuments } from "@/lib/memory/document-selector";
 
 /**
  * Ambient ingest for coding-agent sessions. The agent's stop hook (Cursor /
@@ -218,15 +221,77 @@ export async function POST(req: Request) {
     );
   }
 
-  const documents =
+  const modelDocumentDecisions =
     submittedDocuments.length > 0
+      ? await selectMemoryDocuments(submittedDocuments)
+      : [];
+  const storedOverrides =
+    modelDocumentDecisions.length > 0
+      ? await prisma.memoryDocumentReview.findMany({
+          where: {
+            workspaceId: workspace.workspaceId,
+            explicit: true,
+            path: {
+              in: modelDocumentDecisions.map((decision) => decision.path),
+            },
+          },
+          select: { path: true, accepted: true, reason: true },
+        })
+      : [];
+  const documentDecisions = modelDocumentDecisions.map((decision) => {
+    if (decision.explicit) return decision; // Current frontmatter wins.
+    const stored = storedOverrides.find(
+      (override) => override.path === decision.path
+    );
+    return stored
+      ? {
+          ...decision,
+          keep: stored.accepted,
+          reason: stored.reason,
+          explicit: true,
+        }
+      : decision;
+  });
+  await recordMemoryDocumentReviews({
+    workspaceId: workspace.workspaceId,
+    reviews: documentDecisions.map((decision) => {
+      const document = submittedDocuments.find(
+        (candidate) => candidate.path === decision.path
+      )!;
+      return {
+        path: decision.path,
+        content: document.content,
+        accepted: decision.keep,
+        reason: decision.reason,
+        explicit: decision.explicit,
+        title: decision.title,
+      };
+    }),
+  });
+  const acceptedDocuments = documentDecisions
+    .filter((decision) => decision.keep)
+    .map((decision) => {
+      const document = submittedDocuments.find(
+        (candidate) => candidate.path === decision.path
+      )!;
+      return {
+        ...document,
+        title: decision.title,
+        tags: decision.tags,
+      };
+    });
+  await removeUnlinkedMemoryDocuments({
+    workspaceId: workspace.workspaceId,
+    paths: documentDecisions
+      .filter((decision) => !decision.keep)
+      .map((decision) => decision.path),
+  });
+  const documents =
+    acceptedDocuments.length > 0
       ? await upsertMemoryDocuments({
           workspaceId: workspace.workspaceId,
           userId: credential.userId,
-          documents: submittedDocuments,
-        }).catch((err) => {
-          console.error("[agent-session] document upsert failed:", err);
-          return [];
+          documents: acceptedDocuments,
         })
       : [];
 

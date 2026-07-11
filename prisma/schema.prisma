@@ -143,6 +143,7 @@ model Workspace {
   discussionTags  WorkspaceDiscussionTag[]
   memoryEvents    MemoryEvent[]
   memoryDocuments MemoryDocument[]
+  memoryDocumentReviews MemoryDocumentReview[]
   memoryDreamRuns MemoryDreamRun[]
   agentSeats      AgentSeat[]
   lastActiveUsers User[]                @relation("LastActiveWorkspace")
@@ -411,6 +412,27 @@ model MemoryDocument {
   @@unique([workspaceId, path])
   @@index([workspaceId, updatedAt])
   @@index([workspaceId, contentHash])
+}
+
+/// Audit of the Markdown admission gate. Rejected content is not retained;
+/// only path/hash/title and the model's reason remain so Team leaders can
+/// understand what was excluded from project memory.
+model MemoryDocumentReview {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  path        String
+  contentHash String
+  title       String?
+  accepted    Boolean
+  reason      String
+  explicit    Boolean  @default(false)
+  reviewedAt  DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, path])
+  @@index([workspaceId, accepted, reviewedAt])
 }
 
 /// One row per dream-cycle execution — the audit log behind the admin
