@@ -17,8 +17,9 @@ import {
  * the store: merges near-duplicates, reconciles contradicting decisions via
  * supersession, surfaces cross-event insights, and prunes stale events.
  *
- * A single `phase` (0→5) drives every card's state; it advances on a timer
- * once the section scrolls into view, then loops.
+ * A single `phase` (0→5) drives every card's state; on the site it advances on
+ * a timer once the section scrolls into view. Pass `phase` to drive it
+ * externally (e.g. the Remotion reel).
  */
 
 const STEPS = [
@@ -44,12 +45,20 @@ const STEPS = [
   },
 ];
 
-export function DreamCycle() {
+export function DreamCycle({
+  phase: phaseProp,
+}: {
+  /** When set, drives the dream-cycle phase externally (0→5). Left undefined
+   *  on the site, where scroll/intersection + a timer advance it. */
+  phase?: number;
+} = {}) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [active, setActive] = useState(false);
-  const [phase, setPhase] = useState(0);
+  const [phaseState, setPhase] = useState(0);
+  const phase = phaseProp ?? phaseState;
 
   useEffect(() => {
+    if (phaseProp !== undefined) return;
     const el = ref.current;
     if (!el) return;
     const io = new IntersectionObserver(
@@ -58,9 +67,10 @@ export function DreamCycle() {
     );
     io.observe(el);
     return () => io.disconnect();
-  }, []);
+  }, [phaseProp]);
 
   useEffect(() => {
+    if (phaseProp !== undefined) return;
     if (!active) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       setPhase(5);
@@ -68,7 +78,7 @@ export function DreamCycle() {
     }
     const id = setInterval(() => setPhase((p) => (p + 1) % 6), 1700);
     return () => clearInterval(id);
-  }, [active]);
+  }, [active, phaseProp]);
 
   const merged = phase >= 1;
   const superseded = phase >= 2;

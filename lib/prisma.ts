@@ -14,7 +14,7 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 /** Keep in sync with the latest migration that changes the generated client. */
-const PRISMA_CLIENT_BUILD = "20260711051727_memory_document_reviews";
+const PRISMA_CLIENT_BUILD = "20260712052539_memory_candidate_supersession";
 
 function createClient(): PrismaClient {
   const adapter = new PrismaPg({
@@ -38,6 +38,8 @@ function getClient(): PrismaClient {
       !("memoryMetric" in cached) ||
       !("memoryDocument" in cached) ||
       !("memoryDocumentReview" in cached) ||
+      !("memoryCandidate" in cached) ||
+      !("memoryFeedback" in cached) ||
       !("workspaceDiscussionTag" in cached));
 
   if (!cached || staleBuild || missingDelegates) {

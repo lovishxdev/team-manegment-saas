@@ -301,6 +301,7 @@ const recordDecisionTool: ToolDef = {
       reasoning,
       tags: Array.isArray(input.tags) ? (input.tags as string[]) : undefined,
       taskShortId: optionalNum(input.shortId),
+      captureSource: "EXPLICIT",
     });
 
     bumpMemoryMetric(ws.workspaceId, "event_created_explicit");

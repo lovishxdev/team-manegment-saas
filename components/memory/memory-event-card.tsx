@@ -6,10 +6,12 @@ import { useRouter } from "next/navigation";
 import {
   fetchMemoryDocumentAction,
   resolveMemoryEventAction,
+  submitMemoryFeedbackAction,
   type MemoryEventView,
 } from "@/lib/actions/workspace";
 import { ui } from "@/components/ui/ui";
 import { MarkdownContent } from "@/components/markdown/markdown-content";
+import type { MemoryFeedbackReason } from "@/lib/generated/prisma/client";
 
 const KIND_STYLES: Record<string, string> = {
   DECISION: "bg-sky-50 text-sky-700 dark:bg-sky-500/15 dark:text-sky-200",
@@ -47,10 +49,12 @@ export function MemoryEventCard({
   workspaceId,
   event,
   showTaskLink = true,
+  canCurate = false,
 }: {
   workspaceId: string;
   event: MemoryEventView;
   showTaskLink?: boolean;
+  canCurate?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -74,6 +78,22 @@ export function MemoryEventCard({
         setError(result.error);
       } else {
         setResolvedLocally(true);
+        router.refresh();
+      }
+    });
+  }
+
+  function submitFeedback(reason: MemoryFeedbackReason) {
+    setError(null);
+    startTransition(async () => {
+      const result = await submitMemoryFeedbackAction(
+        workspaceId,
+        event.id,
+        reason
+      );
+      if (result.error) {
+        setError(result.error);
+      } else {
         router.refresh();
       }
     });
@@ -219,6 +239,32 @@ export function MemoryEventCard({
           >
             {pending ? "Resolving…" : "Mark resolved"}
           </button>
+        )}
+        {canCurate && !isOpen && (
+          <details className="relative ml-auto">
+            <summary className="cursor-pointer list-none font-mono text-[11px] text-ink-faint hover:text-ink">
+              Memory feedback
+            </summary>
+            <div className="absolute bottom-6 right-0 z-10 w-40 rounded-lg border border-line bg-card p-1.5 shadow-lg">
+              {[
+                ["NOT_USEFUL", "Not useful"],
+                ["WRONG_SCOPE", "Wrong scope"],
+                ["DUPLICATE", "Duplicate"],
+              ].map(([reason, label]) => (
+                <button
+                  key={reason}
+                  type="button"
+                  disabled={pending}
+                  onClick={() =>
+                    submitFeedback(reason as MemoryFeedbackReason)
+                  }
+                  className="block w-full rounded px-2 py-1.5 text-left text-xs text-ink-soft hover:bg-paper-deep hover:text-ink"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </details>
         )}
       </div>
       {error ? <p className={`mt-3 ${ui.errorText}`}>{error}</p> : null}

@@ -41,6 +41,31 @@ enum MemoryEventStatus {
   RESOLVED
 }
 
+enum MemoryCandidateStatus {
+  PENDING
+  PROMOTED
+  REJECTED
+  EXPIRED
+}
+
+enum MemoryCandidateScope {
+  SESSION
+  TASK
+  PROJECT
+}
+
+enum MemoryCandidateAuthority {
+  HUMAN_EXPLICIT
+  DOCUMENT_EXPLICIT
+  AGENT_INFERRED
+}
+
+enum MemoryFeedbackReason {
+  NOT_USEFUL
+  WRONG_SCOPE
+  DUPLICATE
+}
+
 enum PostKind {
   DISCUSSION
   QUESTION
@@ -109,6 +134,8 @@ model User {
   oauthTokens    OAuthToken[]
   memoryEvents   MemoryEvent[]         @relation("AuthoredMemoryEvents")
   memoryDocuments MemoryDocument[]     @relation("AuthoredMemoryDocuments")
+  memoryCandidates MemoryCandidate[]   @relation("AuthoredMemoryCandidates")
+  memoryFeedback MemoryFeedback[]
   whatsappMessages WhatsAppMessage[]
   whatsappPendingActions WhatsAppPendingAction[]
   whatsappChatState WhatsAppChatState?
@@ -144,6 +171,8 @@ model Workspace {
   memoryEvents    MemoryEvent[]
   memoryDocuments MemoryDocument[]
   memoryDocumentReviews MemoryDocumentReview[]
+  memoryCandidates MemoryCandidate[]
+  memoryFeedback MemoryFeedback[]
   memoryDreamRuns MemoryDreamRun[]
   agentSeats      AgentSeat[]
   lastActiveUsers User[]                @relation("LastActiveWorkspace")
@@ -224,6 +253,7 @@ model Task {
   updates     TaskUpdate[]
   embedding   TaskEmbedding?
   memoryEvents MemoryEvent[]
+  memoryCandidates MemoryCandidate[]
   posts       Post[]
 
   @@unique([workspaceId, shortId])
@@ -327,6 +357,9 @@ model MemoryEvent {
   sourceDocumentPath String?
   sourceDocumentHash String?
   sourceDocumentId   String?           @db.Uuid
+  /// TASK_UPDATE | POST_MESSAGE | AGENT_SESSION | AGENT_DOCUMENT |
+  /// EXPLICIT | DREAM | UNKNOWN (legacy).
+  captureSource String @default("UNKNOWN")
   kind        MemoryEventKind
   /// OPEN is only meaningful for BLOCKER/DEPENDENCY; decisions and
   /// milestones are created RESOLVED (they're facts, not open work).
@@ -353,6 +386,7 @@ model MemoryEvent {
   /// Set by the dream cycle when a stale resolved event is retired from
   /// active memory (excluded from listings/recall/briefs, never deleted).
   archivedAt DateTime?
+  archiveReason String?
 
   /// Last dream pass that reviewed this event. Null = captured but not yet
   /// curated ("unreviewed"). Events stay fully live either way — this is a
@@ -382,6 +416,9 @@ model MemoryEvent {
   author       User?       @relation("AuthoredMemoryEvents", fields: [authorId], references: [id], onDelete: SetNull)
   supersededBy MemoryEvent?  @relation("MemoryEventSupersession", fields: [supersededByEventId], references: [id], onDelete: SetNull)
   supersedes   MemoryEvent[] @relation("MemoryEventSupersession")
+  promotedFromCandidate MemoryCandidate? @relation("MemoryCandidatePromotion")
+  candidateSupersessionTargets MemoryCandidate[] @relation("MemoryCandidateSupersessionTarget")
+  feedback     MemoryFeedback[]
 
   @@index([workspaceId, status, kind])
   @@index([taskId, createdAt])
@@ -408,10 +445,73 @@ model MemoryDocument {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   author    User?     @relation("AuthoredMemoryDocuments", fields: [authorId], references: [id], onDelete: SetNull)
   events    MemoryEvent[]
+  candidates MemoryCandidate[]
 
   @@unique([workspaceId, path])
   @@index([workspaceId, updatedAt])
   @@index([workspaceId, contentHash])
+}
+
+/// Hidden staging record for inferred agent memory. Candidates never appear
+/// in normal recall/context until promoted by deterministic authority/quality
+/// policy or a human leader.
+model MemoryCandidate {
+  id          String                   @id @default(uuid()) @db.Uuid
+  workspaceId String                   @db.Uuid
+  taskId      String?                  @db.Uuid
+  sourceDocumentId String?             @db.Uuid
+  authorId    String?                  @db.Uuid
+  conversationId String?
+  kind        MemoryEventKind
+  scope       MemoryCandidateScope
+  authority   MemoryCandidateAuthority
+  status      MemoryCandidateStatus    @default(PENDING)
+  summary     String
+  reasoning   String?
+  evidenceQuote String?
+  tags        String[]                 @default([])
+  durabilityScore   Int                @default(0)
+  coordinationScore Int                @default(0)
+  codeRecoverable   Boolean            @default(false)
+  localReversible   Boolean            @default(false)
+  criticReason      String?
+  promotedEventId   String?            @unique @db.Uuid
+  supersedesEventId String?            @db.Uuid
+  reviewedAt        DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  task      Task?           @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  sourceDocument MemoryDocument? @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
+  author    User?           @relation("AuthoredMemoryCandidates", fields: [authorId], references: [id], onDelete: SetNull)
+  promotedEvent MemoryEvent? @relation("MemoryCandidatePromotion", fields: [promotedEventId], references: [id], onDelete: SetNull)
+  supersedesEvent MemoryEvent? @relation("MemoryCandidateSupersessionTarget", fields: [supersedesEventId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status, createdAt])
+  @@index([taskId, status])
+  @@index([conversationId])
+  @@index([supersedesEventId])
+}
+
+/// Human quality feedback on canonical memory. Negative feedback archives the
+/// event from active recall but preserves both the event and audit trail.
+model MemoryFeedback {
+  id          String               @id @default(uuid()) @db.Uuid
+  workspaceId String               @db.Uuid
+  eventId     String               @db.Uuid
+  userId      String               @db.Uuid
+  reason      MemoryFeedbackReason
+  note        String?
+  createdAt   DateTime             @default(now())
+
+  workspace Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  event     MemoryEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@index([eventId])
+  @@unique([eventId, userId, reason])
 }
 
 /// Audit of the Markdown admission gate. Rejected content is not retained;

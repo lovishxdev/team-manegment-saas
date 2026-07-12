@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
-import { ServiceError } from "@/lib/services/project";
+import { ServiceError, getActorMembership } from "@/lib/services/project";
 import { listMemoryEventsPaginated } from "@/lib/services/memory";
 import type { MemoryEventView } from "@/lib/actions/workspace";
 import { displayUser } from "@/lib/username";
@@ -27,6 +27,18 @@ import {
   type WorkspaceMemoryAnalytics,
 } from "@/lib/services/workspace-analytics";
 import { WorkspaceMemoryInsights } from "@/components/workspace/workspace-memory-insights";
+import {
+  listArchivedMemoryEvents,
+  listPendingMemoryCandidates,
+} from "@/lib/services/memory-candidates";
+import {
+  MemoryCandidateReview,
+  type MemoryCandidateViewModel,
+} from "@/components/memory/memory-candidate-review";
+import {
+  ArchivedMemoryReview,
+  type ArchivedMemoryView,
+} from "@/components/memory/archived-memory-review";
 
 function SeedChecklist() {
   return (
@@ -119,6 +131,10 @@ async function MemoryData({
   page: number;
 }) {
   const user = await requireUser();
+  const membership = await getActorMembership(user.id, workspaceId);
+  if (!membership) notFound();
+  const canCurate =
+    membership.role === "LEADER" || membership.role === "SUB_LEADER";
 
   let openEvents;
   let timelineEvents;
@@ -126,8 +142,17 @@ async function MemoryData({
   let documents: MemoryDocumentView[] = [];
   let analytics: WorkspaceMemoryAnalytics | null = null;
   let showAnalyticsUpgrade = false;
+  let pendingCandidates: MemoryCandidateViewModel[] = [];
+  let archivedEvents: ArchivedMemoryView[] = [];
   try {
-    const [openResult, timelineResult, documentRows] = await Promise.all([
+    const [
+      openResult,
+      timelineResult,
+      documentRows,
+      candidateRows,
+      archivedRows,
+    ] =
+      await Promise.all([
       listMemoryEventsPaginated({
         workspaceId,
         userId: user.id,
@@ -146,6 +171,20 @@ async function MemoryData({
         userId: user.id,
         limit: 100,
       }),
+      canCurate
+        ? listPendingMemoryCandidates({
+            workspaceId,
+            userId: user.id,
+            limit: 20,
+          })
+        : Promise.resolve([]),
+      canCurate
+        ? listArchivedMemoryEvents({
+            workspaceId,
+            userId: user.id,
+            limit: 20,
+          })
+        : Promise.resolve([]),
     ]);
     openEvents = openResult.events;
     timelineEvents = timelineResult.events;
@@ -158,6 +197,29 @@ async function MemoryData({
       updatedAt: document.updatedAt.toISOString(),
       authorLabel: document.author ? displayUser(document.author) : null,
       eventCount: document.eventCount,
+    }));
+    pendingCandidates = candidateRows.map((candidate) => ({
+      id: candidate.id,
+      kind: candidate.kind,
+      scope: candidate.scope,
+      authority: candidate.authority,
+      summary: candidate.summary,
+      reasoning: candidate.reasoning,
+      evidenceQuote: candidate.evidenceQuote,
+      tags: candidate.tags,
+      durabilityScore: candidate.durabilityScore,
+      coordinationScore: candidate.coordinationScore,
+      criticReason: candidate.criticReason,
+      createdAt: candidate.createdAt.toISOString(),
+      task: candidate.task,
+      sourceDocument: candidate.sourceDocument,
+    }));
+    archivedEvents = archivedRows.map((event) => ({
+      id: event.id,
+      kind: event.kind,
+      summary: event.summary,
+      archiveReason: event.archiveReason,
+      archivedAt: event.archivedAt?.toISOString() ?? null,
     }));
   } catch (err) {
     if (err instanceof ServiceError) notFound();
@@ -217,6 +279,19 @@ async function MemoryData({
           &quot;what happened with X&quot;.
         </p>
       </section>
+
+      {pendingCandidates.length > 0 && (
+        <section className="mb-10">
+          <h2 className={`${ui.settingsSectionTitle} mb-1`}>
+            Pending memory review ({pendingCandidates.length})
+          </h2>
+          <p className={`${ui.fieldHint} mb-4`}>
+            Agent-inferred project context stays hidden from retrieval until a
+            leader confirms it.
+          </p>
+          <MemoryCandidateReview candidates={pendingCandidates} />
+        </section>
+      )}
 
       {(analytics || showAnalyticsUpgrade) && (
         <section className="mb-10">
@@ -290,6 +365,7 @@ async function MemoryData({
                     key={event.id}
                     workspaceId={workspaceId}
                     event={event}
+                    canCurate={canCurate}
                   />
                 ))}
               </div>
@@ -323,6 +399,7 @@ async function MemoryData({
                     key={event.id}
                     workspaceId={workspaceId}
                     event={event}
+                    canCurate={canCurate}
                   />
                 ))}
                 <MemoryPagination
@@ -335,6 +412,12 @@ async function MemoryData({
             )}
           </section>
         </>
+      )}
+
+      {canCurate && archivedEvents.length > 0 && (
+        <section className="mb-10">
+          <ArchivedMemoryReview events={archivedEvents} />
+        </section>
       )}
 
       <RulesSnippetSection />

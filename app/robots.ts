@@ -19,6 +19,7 @@ export default function robots(): MetadataRoute.Robots {
         "/auth/",
         "/marketing/",
         "/demo1",
+        "/demo2",
       ],
     },
     sitemap: `${base}/sitemap.xml`,

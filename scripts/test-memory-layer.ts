@@ -26,6 +26,7 @@ import {
   type MemoryEventRow,
 } from "../lib/services/memory";
 import { parseMemoryDocument } from "../lib/memory/documents";
+import { qualifiesForAutomaticPromotion } from "../lib/services/memory-candidates";
 import { BUTTON, parseButtonId } from "../lib/whatsapp-interactive";
 
 let passed = 0;
@@ -94,6 +95,8 @@ const sampleEvent: MemoryEventRow = {
   resolvedAt: null,
   supersededByEventId: null,
   dreamedAt: null,
+  captureSource: "UNKNOWN",
+  archiveReason: null,
   sourceDocumentPath: null,
   sourceDocumentHash: null,
   sourceDocument: null,
@@ -194,6 +197,57 @@ check(
 euclis-memory: false
 ---
 # Private notes`) === null
+);
+
+check(
+  "local task implementation cannot auto-promote to memory",
+  !qualifiesForAutomaticPromotion({
+    kind: "DECISION",
+    summary: "Demo uses sparse sound effects.",
+    evidenceQuote: "Add sparse sound effects to demo2.",
+    scope: "TASK",
+    authority: "HUMAN_EXPLICIT",
+    durabilityScore: 40,
+    coordinationScore: 10,
+    codeRecoverable: true,
+    localReversible: true,
+    recommendation: "REJECT",
+    criticReason: "Local deliverable choice.",
+  })
+);
+
+check(
+  "explicit durable project contract can auto-promote",
+  qualifiesForAutomaticPromotion({
+    kind: "DECISION",
+    summary: "Authorization is enforced server-side.",
+    evidenceQuote: "Use server-side claims for every authorization check.",
+    scope: "PROJECT",
+    authority: "HUMAN_EXPLICIT",
+    durabilityScore: 95,
+    coordinationScore: 90,
+    codeRecoverable: false,
+    localReversible: false,
+    recommendation: "PROMOTE",
+    criticReason: "Cross-project security boundary.",
+  })
+);
+
+check(
+  "high-coordination agent blocker uses critic-gated fast lane",
+  qualifiesForAutomaticPromotion({
+    kind: "BLOCKER",
+    summary: "Deployment is blocked by missing production credentials.",
+    evidenceQuote: "The production API key is unavailable.",
+    scope: "TASK",
+    authority: "AGENT_INFERRED",
+    durabilityScore: 55,
+    coordinationScore: 95,
+    codeRecoverable: false,
+    localReversible: false,
+    recommendation: "PENDING",
+    criticReason: "Requires another teammate to provide access.",
+  })
 );
 
 // ── record_decision fallback (WhatsApp models may send empty args) ──────

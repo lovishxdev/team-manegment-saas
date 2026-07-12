@@ -6,7 +6,7 @@ import {
   scheduleMemoryEventEmbeddingIndex,
 } from "@/lib/services/memory";
 import { memoryCaptureEnabled } from "@/lib/memory/capture";
-import { isNearDuplicate } from "@/lib/memory/agent-capture";
+import { isNearDuplicate } from "@/lib/memory/similarity";
 import { bumpMemoryMetric } from "@/lib/memory/metrics";
 import { workspaceFeature } from "@/lib/billing/entitlements";
 
@@ -58,6 +58,7 @@ type DreamOps = {
     reasoning?: string;
     tags?: string[];
   }[];
+  noise_archive_ids?: string[];
   archive_ids?: string[];
 };
 
@@ -141,8 +142,20 @@ const DREAM_TOOL: Anthropic.Tool = {
         description:
           "RESOLVED events that no longer inform day-to-day work (old cleared blockers, shipped milestones long absorbed into the project). Never open work, never load-bearing decisions.",
       },
+      noise_archive_ids: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "Recent unreviewed AGENT_SESSION/AGENT_DOCUMENT decisions or milestones that are implementation narration, local/reversible choices, or facts recoverable from code. Never open work.",
+      },
     },
-    required: ["merges", "supersessions", "insights", "archive_ids"],
+    required: [
+      "merges",
+      "supersessions",
+      "insights",
+      "noise_archive_ids",
+      "archive_ids",
+    ],
   },
 };
 
@@ -153,6 +166,11 @@ Operations, in priority order:
 2. SUPERSEDE contradictions: two DECISIONs that answer the same question differently — the newer supersedes the older. Only when they genuinely decide the SAME question; adjacent topics are not contradictions.
 3. SURFACE insights: patterns visible only across events — a blocker theme recurring, the team converging on a choice never made explicitly, two open decisions that conflict and need a human. An insight must be actionable for a teammate; observations that change nothing are noise. Most dreams surface ZERO insights.
 4. ARCHIVE stale rows: RESOLVED events that stopped informing work (old cleared blockers, absorbed milestones). Decisions that still bind future work stay, however old. Open blockers/dependencies always stay.
+
+Use noise_archive_ids immediately (no age requirement) for unreviewed
+agent-captured implementation noise: file/UI positioning, timing, local asset
+choices, refactors, code-recoverable details. This is separate from
+archive_ids, which is age-based retirement of formerly useful memory.
 
 Opt-in Markdown documents are supporting evidence for insights and
 contradiction judgment. They are not event ids and cannot be merged,
@@ -169,6 +187,9 @@ type StoredEvent = {
   tags: string[];
   createdAt: Date;
   resolvedAt: Date | null;
+  dreamedAt: Date | null;
+  captureSource: string;
+  promotedFromCandidate: { authority: string } | null;
   task: { shortId: number; title: string } | null;
 };
 
@@ -308,6 +329,17 @@ export async function runDreamCycle(input: {
     return report;
   }
 
+  // Unconfirmed inferred candidates are not permanent backlog. They never
+  // enter recall, and expire after 30 days if leaders ignore them.
+  await prisma.memoryCandidate.updateMany({
+    where: {
+      workspaceId: input.workspaceId,
+      status: "PENDING",
+      createdAt: { lt: new Date(Date.now() - 30 * 24 * 3600 * 1000) },
+    },
+    data: { status: "EXPIRED", reviewedAt: new Date() },
+  });
+
   const [events, documents]: [StoredEvent[], StoredDocument[]] =
     await Promise.all([
       prisma.memoryEvent.findMany({
@@ -327,6 +359,9 @@ export async function runDreamCycle(input: {
           tags: true,
           createdAt: true,
           resolvedAt: true,
+          dreamedAt: true,
+          captureSource: true,
+          promotedFromCandidate: { select: { authority: true } },
           task: { select: { shortId: true, title: true } },
         },
       }),
@@ -445,6 +480,7 @@ export async function runDreamCycle(input: {
     const created = await prisma.memoryEvent.create({
       data: {
         workspaceId: input.workspaceId,
+        captureSource: "DREAM",
         kind: "INSIGHT",
         status: "RESOLVED",
         resolvedAt: new Date(),
@@ -461,7 +497,32 @@ export async function runDreamCycle(input: {
     bumpMemoryMetric(input.workspaceId, "dream_insight");
   }
 
-  // --- 4. Archive ------------------------------------------------------------
+  // --- 4. Immediate agent-noise archive -------------------------------------
+  const noise = (ops.noise_archive_ids ?? [])
+    .map((id) => byId.get(id))
+    .filter((event): event is StoredEvent => Boolean(event))
+    .filter(
+      (event) =>
+        !consumed.has(event.id) &&
+        event.status === "RESOLVED" &&
+        event.dreamedAt === null &&
+        event.promotedFromCandidate === null &&
+        (event.captureSource === "AGENT_SESSION" ||
+          event.captureSource === "AGENT_DOCUMENT")
+    );
+  if (noise.length > 0) {
+    await prisma.memoryEvent.updateMany({
+      where: { id: { in: noise.map((event) => event.id) } },
+      data: {
+        archivedAt: new Date(),
+        archiveReason: "DREAM_NOISE",
+      },
+    });
+    for (const event of noise) consumed.add(event.id);
+    report.archived += noise.length;
+  }
+
+  // --- 5. Age-based archive -------------------------------------------------
   const archiveCutoff = new Date(
     Date.now() - ARCHIVE_MIN_AGE_DAYS * 24 * 3600 * 1000
   );
@@ -477,11 +538,13 @@ export async function runDreamCycle(input: {
   if (archivable.length > 0) {
     await prisma.memoryEvent.updateMany({
       where: { id: { in: archivable.map((e) => e.id) } },
-      data: { archivedAt: new Date() },
+      data: { archivedAt: new Date(), archiveReason: "DREAM_STALE" },
     });
-    report.archived = archivable.length;
+    report.archived += archivable.length;
+  }
+  if (report.archived > 0) {
     bumpMemoryMetric(input.workspaceId, "dream_archive", {
-      count: archivable.length,
+      count: report.archived,
     });
   }
 

@@ -17,6 +17,10 @@ export type MemoryMetricName =
   | "event_created_thread"
   | "event_created_post"
   | "event_created_explicit"
+  | "candidate_created"
+  | "candidate_rejected"
+  | "candidate_promoted"
+  | "feedback_archived"
   /** Near-duplicate caught by the deterministic guard. */
   | "event_skipped_duplicate"
   /** Confirm-only resolution ask surfaced (WhatsApp or in-editor). */

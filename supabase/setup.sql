@@ -100,6 +100,8 @@ alter table public."WorkspaceMessage"    enable row level security;
 alter table public."MemoryEvent"         enable row level security;
 alter table public."MemoryDocument"      enable row level security;
 alter table public."MemoryDocumentReview" enable row level security;
+alter table public."MemoryCandidate"      enable row level security;
+alter table public."MemoryFeedback"       enable row level security;
 
 drop policy if exists "members_read_tasks" on public."Task";
 create policy "members_read_tasks" on public."Task"
@@ -140,6 +142,28 @@ create policy "members_read_memory_documents" on public."MemoryDocument"
 drop policy if exists "members_read_memory_document_reviews" on public."MemoryDocumentReview";
 create policy "members_read_memory_document_reviews" on public."MemoryDocumentReview"
   for select using (public.is_workspace_member("workspaceId"));
+
+drop policy if exists "members_read_memory_candidates" on public."MemoryCandidate";
+create policy "members_read_memory_candidates" on public."MemoryCandidate"
+  for select using (
+    exists (
+      select 1 from public."WorkspaceMembership" wm
+      where wm."workspaceId" = "MemoryCandidate"."workspaceId"
+        and wm."userId" = auth.uid()
+        and wm.role in ('LEADER', 'SUB_LEADER')
+    )
+  );
+
+drop policy if exists "members_read_memory_feedback" on public."MemoryFeedback";
+create policy "members_read_memory_feedback" on public."MemoryFeedback"
+  for select using (
+    exists (
+      select 1 from public."WorkspaceMembership" wm
+      where wm."workspaceId" = "MemoryFeedback"."workspaceId"
+        and wm."userId" = auth.uid()
+        and wm.role in ('LEADER', 'SUB_LEADER')
+    )
+  );
 
 drop policy if exists "users_read_self" on public."User";
 create policy "users_read_self" on public."User"

@@ -75,6 +75,14 @@ The hybrid store has two complementary records in Prisma/Postgres:
 - `MemoryEvent` — compact structured state extracted from conversations or
   documents:
 
+Agent inference adds two guardrail records:
+
+- `MemoryCandidate` — hidden extractor output with scope, authority, evidence,
+  independent critic scores and promotion status. It never enters recall
+  until promoted.
+- `MemoryFeedback` — leader quality feedback on canonical events. Negative
+  feedback archives active recall without deleting the event or audit trail.
+
 | Field | Meaning |
 |---|---|
 | `kind` | `DECISION` \| `BLOCKER` \| `DEPENDENCY` \| `MILESTONE` |

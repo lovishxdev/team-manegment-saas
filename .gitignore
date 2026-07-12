@@ -8,6 +8,9 @@ node_modules/
 out/
 build/
 
+# Remotion — browser/cache leftovers (renders + stills already covered by `out/`)
+.remotion/
+
 # env (keep .env.example tracked)
 .env
 .env.*

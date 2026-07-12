@@ -2,12 +2,18 @@ import Anthropic from "@anthropic-ai/sdk";
 import { getAnthropicApiKey } from "@/lib/anthropic-env";
 import { prisma } from "@/lib/prisma";
 import { createTtlCache } from "@/lib/ttl-cache";
-import {
-  createMemoryEvent,
-  type MemoryEventRow,
-} from "@/lib/services/memory";
+import { type MemoryEventRow } from "@/lib/services/memory";
 import { memoryCaptureEnabled } from "@/lib/memory/capture";
 import { bumpMemoryMetric } from "@/lib/memory/metrics";
+import {
+  critiqueCandidates,
+  type ExtractedCandidate,
+} from "@/lib/memory/candidate-critic";
+import {
+  createMemoryCandidate,
+  promoteMemoryCandidate,
+  qualifiesForAutomaticPromotion,
+} from "@/lib/services/memory-candidates";
 import { notifyBlockerDetected } from "@/lib/whatsapp-notify";
 import { workspaceFeature } from "@/lib/billing/entitlements";
 import {
@@ -58,6 +64,7 @@ type SessionEvent = {
   task_short_id?: number;
   supersedes_event_id?: string;
   source_document_path?: string;
+  evidence_quote?: string;
 };
 
 type SessionAnalysis = {
@@ -114,8 +121,13 @@ const SESSION_TOOL: Anthropic.Tool = {
               description:
                 "Exact path of one supplied Markdown document that is the primary evidence for this event. Omit when the transcript is the source.",
             },
+            evidence_quote: {
+              type: "string",
+              description:
+                "Short verbatim quote from the user, agent, or supplied document that proves this candidate. Required for every event; never paraphrase.",
+            },
           },
-          required: ["kind", "summary"],
+          required: ["kind", "summary", "evidence_quote"],
         },
       },
       resolved_event_ids: {
@@ -164,6 +176,9 @@ task_short_id: only when the transcript explicitly works on that task (mentions 
 
 If the session's work plausibly cleared one of the listed OPEN blockers/dependencies, return its id in resolved_event_ids — the user will be asked to confirm; nothing auto-resolves.
 
+Every event must include a short verbatim evidence_quote from the supplied
+transcript or document. If there is no quote proving the claim, emit no event.
+
 Write summaries in third person, self-contained, naming the actual thing.`;
 
 /**
@@ -173,28 +188,6 @@ Write summaries in third person, self-contained, naming the actual thing.`;
  * Token-overlap (Jaccard) on normalized summaries catches rewordings that
  * exact content hashes miss.
  */
-const NEAR_DUPLICATE_JACCARD = 0.5;
-
-function summaryTokens(text: string): Set<string> {
-  return new Set(
-    text
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, " ")
-      .split(/\s+/)
-      .filter((w) => w.length > 2)
-  );
-}
-
-export function isNearDuplicate(a: string, b: string): boolean {
-  const ta = summaryTokens(a);
-  const tb = summaryTokens(b);
-  if (ta.size === 0 || tb.size === 0) return false;
-  let shared = 0;
-  for (const w of ta) if (tb.has(w)) shared++;
-  const union = ta.size + tb.size - shared;
-  return shared / union >= NEAR_DUPLICATE_JACCARD;
-}
-
 /**
  * Task links are only trusted when the transcript actually references the
  * task — "#N" or its title. The judge is instructed the same way, but it
@@ -361,6 +354,8 @@ export async function captureFromAgentSession(input: {
         resolvedAt: true,
         supersededByEventId: true,
         dreamedAt: true,
+        captureSource: true,
+        archiveReason: true,
         sourceDocumentPath: true,
         sourceDocumentHash: true,
         author: { select: { id: true, username: true, email: true } },
@@ -412,34 +407,12 @@ export async function captureFromAgentSession(input: {
   }
 
   const events = (analysis.events ?? []).slice(0, MAX_EVENTS_PER_SESSION);
-  // Existing summaries + everything committed in this loop; grows as we
-  // create, so the judge emitting the same fact twice also dedupes.
-  const knownSummaries = existingEvents.map((e) => e.summary);
-  if (events.length > 0) {
-    // The judge call takes seconds — a parallel session may have committed
-    // events since our first fetch. Pick up anything new before creating.
-    const fresh = await prisma.memoryEvent.findMany({
-      where: {
-        workspaceId: input.workspaceId,
-        createdAt: { gte: new Date(Date.now() - 5 * 60 * 1000) },
-      },
-      select: { summary: true },
-    });
-    for (const e of fresh) knownSummaries.push(e.summary);
-  }
+  const extracted: ExtractedCandidate[] = [];
   for (const candidate of events) {
     const summary = candidate.summary?.trim();
     const kind = candidate.kind;
-    if (!summary || !kind) continue;
-
-    if (knownSummaries.some((known) => isNearDuplicate(summary, known))) {
-      console.log(
-        `[agent-capture] skipped near-duplicate event: "${summary.slice(0, 80)}"`
-      );
-      bumpMemoryMetric(input.workspaceId, "event_skipped_duplicate");
-      continue;
-    }
-    knownSummaries.push(summary);
+    const evidenceQuote = candidate.evidence_quote?.trim();
+    if (!summary || !kind || !evidenceQuote) continue;
 
     const linkedTask =
       typeof candidate.task_short_id === "number"
@@ -461,58 +434,82 @@ export async function captureFromAgentSession(input: {
           (document) => document.path === candidate.source_document_path
         )
       : undefined;
+    extracted.push({
+      kind,
+      summary,
+      reasoning: candidate.reasoning,
+      tags: [...(sourceDocument?.tags ?? []), ...(candidate.tags ?? [])],
+      taskShortId,
+      sourceDocumentPath: sourceDocument?.path,
+      evidenceQuote,
+      supersedesEventId,
+    });
+  }
 
+  const critiques = await critiqueCandidates({
+    candidates: extracted,
+    transcript,
+    documents,
+  });
+  let promoted = 0;
+  for (const critique of critiques) {
+    const sourceDocument = critique.sourceDocumentPath
+      ? documents.find(
+          (document) => document.path === critique.sourceDocumentPath
+        )
+      : undefined;
     try {
-      const event = await createMemoryEvent({
+      const candidate = await createMemoryCandidate({
         workspaceId: input.workspaceId,
         userId: input.userId,
-        kind,
-        summary,
-        reasoning: candidate.reasoning,
-        tags: [
-          ...(sourceDocument?.tags ?? []),
-          ...(candidate.tags ?? []),
-        ],
-        taskShortId,
-        supersedesEventId,
+        conversationId: input.conversationId,
+        critique,
         sourceDocumentId: sourceDocument?.documentId,
-        sourceDocumentPath: sourceDocument?.path,
-        sourceDocumentHash: sourceDocument?.hash,
       });
-      bumpMemoryMetric(
-        input.workspaceId,
-        sourceDocument ? "event_created_document" : "event_created_agent"
-      );
-
       if (
-        event.status === "OPEN" &&
-        (kind === "BLOCKER" || kind === "DEPENDENCY") &&
-        taskShortId !== undefined &&
-        // Automatic blocker routing to assignees is a paid (Team+) feature.
-        (await workspaceFeature(input.workspaceId, "blockerRouting"))
+        candidate &&
+        promoted === 0 &&
+        candidate.status === "PENDING" &&
+        qualifiesForAutomaticPromotion(critique)
       ) {
-        const task = await prisma.task.findFirst({
-          where: { workspaceId: input.workspaceId, shortId: taskShortId },
-          select: { id: true, title: true },
+        const promotedEvent = await promoteMemoryCandidate({
+          candidateId: candidate.id,
+          actingUserId: input.userId,
         });
-        if (task) {
-          await notifyBlockerDetected({
-            workspaceId: input.workspaceId,
-            workspaceName: input.workspaceName,
-            taskId: task.id,
-            taskShortId,
-            taskTitle: task.title,
-            authorUserId: input.userId,
-            authorUsername: user.username,
-            kindLabel: kind === "BLOCKER" ? "Blocker" : "Dependency",
-            summary: event.summary,
-          }).catch((err) =>
-            console.error("[agent-capture] blocker notify failed:", err)
-          );
+        promoted += 1;
+        if (
+          (critique.kind === "BLOCKER" ||
+            critique.kind === "DEPENDENCY") &&
+          critique.taskShortId !== undefined &&
+          (await workspaceFeature(input.workspaceId, "blockerRouting"))
+        ) {
+          const task = await prisma.task.findFirst({
+            where: {
+              workspaceId: input.workspaceId,
+              shortId: critique.taskShortId,
+            },
+            select: { id: true, title: true },
+          });
+          if (task) {
+            await notifyBlockerDetected({
+              workspaceId: input.workspaceId,
+              workspaceName: input.workspaceName,
+              taskId: task.id,
+              taskShortId: critique.taskShortId,
+              taskTitle: task.title,
+              authorUserId: input.userId,
+              authorUsername: user.username,
+              kindLabel:
+                critique.kind === "BLOCKER" ? "Blocker" : "Dependency",
+              summary: promotedEvent.summary,
+            }).catch((err) =>
+              console.error("[agent-capture] blocker notify failed:", err)
+            );
+          }
         }
       }
     } catch (err) {
-      console.error("[agent-capture] event create failed:", err);
+      console.error("[agent-capture] candidate processing failed:", err);
     }
   }
 

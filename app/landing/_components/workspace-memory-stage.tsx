@@ -222,6 +222,7 @@ function DiscussionPanel({
           return (
             <li
               key={f.who}
+              data-from={f.from}
               className={`lp-wms-in flex gap-2.5 rounded-lg p-2 ${
                 f.agent
                   ? "bg-gradient-to-br from-amber-50/60 to-transparent"
@@ -299,7 +300,10 @@ function MemoryPanel({
           Project memory
         </h4>
         {agentReading ? (
-          <span className="lp-wms-agent inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-emerald-50 px-3 py-1 font-mono text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
+          <span
+            data-from={4}
+            className="lp-wms-agent inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-emerald-50 px-3 py-1 font-mono text-[11px] font-semibold uppercase tracking-wide text-emerald-700"
+          >
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
             reading
           </span>
@@ -325,6 +329,7 @@ function MemoryPanel({
           {records.map((e) => (
             <li
               key={e.title}
+              data-from={e.from}
               className={`lp-wms-in rounded-lg border border-line bg-card p-2.5 shadow-sm ${
                 e.superseded ? "opacity-55" : ""
               }`}

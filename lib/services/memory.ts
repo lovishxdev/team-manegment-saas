@@ -41,6 +41,8 @@ const eventSelect = {
   resolvedAt: true,
   supersededByEventId: true,
   dreamedAt: true,
+  captureSource: true,
+  archiveReason: true,
   sourceDocumentPath: true,
   sourceDocumentHash: true,
   sourceDocument: {
@@ -69,6 +71,8 @@ export type MemoryEventRow = {
   supersededByEventId: string | null;
   /** Last dream pass that reviewed this event; null = not yet curated. */
   dreamedAt: Date | null;
+  captureSource: string;
+  archiveReason: string | null;
   sourceDocumentPath: string | null;
   sourceDocumentHash: string | null;
   sourceDocument?: {
@@ -241,6 +245,13 @@ export type CreateMemoryEventInput = {
   sourceDocumentId?: string;
   sourceDocumentPath?: string;
   sourceDocumentHash?: string;
+  captureSource?:
+    | "TASK_UPDATE"
+    | "POST_MESSAGE"
+    | "AGENT_SESSION"
+    | "AGENT_DOCUMENT"
+    | "EXPLICIT"
+    | "DREAM";
   /** Original speaker when the capture pipeline records on someone's behalf. */
   authorId?: string;
   /** Older decision this event supersedes (linked, never deleted). */
@@ -294,6 +305,7 @@ export async function createMemoryEvent(
       sourceDocumentId: input.sourceDocumentId ?? null,
       sourceDocumentPath: input.sourceDocumentPath?.slice(0, 500) ?? null,
       sourceDocumentHash: input.sourceDocumentHash?.slice(0, 128) ?? null,
+      captureSource: input.captureSource ?? "UNKNOWN",
       kind: input.kind,
       status,
       resolvedAt: status === "RESOLVED" ? new Date() : null,

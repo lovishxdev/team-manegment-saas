@@ -72,8 +72,11 @@ in the shared registry (available on WhatsApp **and** MCP automatically):
 
 Web UI: the **Memory tab** (`/w/<id>/memory`) shows a standalone Markdown
 source library with lazy preview, open blockers, and a timeline with resolve
-buttons. Team leaders also see workspace-scoped capture, Dreaming, blocker,
-topic and agent-context analytics. The task modal retains its per-task Memory
+buttons. Leaders also review hidden inferred candidates and can mark resolved
+events Not useful / Wrong scope / Duplicate; feedback archives the event from
+active recall while retaining an audit trail. Team leaders also see
+workspace-scoped capture, Dreaming, blocker, topic and agent-context
+analytics. The task modal retains its per-task Memory
 section; events live-update via Supabase Realtime on `MemoryEvent`.
 
 ## Resolution: confirm, never guess (v1 rule)
@@ -172,7 +175,15 @@ Claude Code `Stop`):
   ([lib/memory/agent-capture.ts](../lib/memory/agent-capture.ts)) applies
   four tests — future-why, coordination, commitment, onboarding (see
   [memory-architecture.md](memory-architecture.md#5-the-judge-criteria)) —
-  not phrase patterns. Most runs produce zero events. A session that
+  not phrase patterns. Extracted agent facts first become hidden
+  `MemoryCandidate` rows. An independent Sonnet critic assigns
+  SESSION/TASK/PROJECT scope, source authority, durability/coordination
+  scores, and code-recoverable/local-reversible flags. SESSION/TASK noise is
+  rejected; agent-inferred PROJECT candidates stay hidden until a leader
+  confirms them; only explicit high-confidence project contracts can
+  auto-promote (maximum one event per run). BLOCKER/DEPENDENCY candidates
+  have a critic-gated fast lane when coordination is high and the issue is
+  not code-recoverable, preserving immediate Team assignee alerts. Most runs produce zero events. A session that
   plausibly cleared an open blocker triggers the usual WhatsApp
   confirmation ask, never an auto-resolve.
 
@@ -238,10 +249,14 @@ active store offline and tends it — the "who's tending the garden" piece:
   open decisions). Shown in the brief ("Patterns & insights") and Memory tab.
 - **Archive** stale resolved events (`archivedAt`) out of listings, recall,
   briefs, and judge context — never deleted.
+- **Prune recent agent noise** immediately: unreviewed AGENT_SESSION /
+  AGENT_DOCUMENT decisions that are local, reversible or code-recoverable
+  use `archiveReason=DREAM_NOISE` with no 30-day wait. Open work is never
+  eligible. Ignored pending candidates expire after 30 days.
 
 Every operation is validated in code: ids must come from the reviewed set,
-merges stay within one kind, open work can't be hidden or archived, archive
-requires RESOLVED + 30 days old. Runs via Vercel cron
+merges stay within one kind, open work can't be hidden or archived, and
+age-based archive requires RESOLVED + 30 days old. Runs via Vercel cron
 (`/api/cron/memory-dream`, daily; `DREAM_COOLDOWN_DAYS` currently 1 = every
 active workspace dreams daily — raise toward weekly as stores grow) or
 manually: `npm run dream:memory -- --workspace-name X [--force]`. Metrics

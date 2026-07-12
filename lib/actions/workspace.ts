@@ -58,6 +58,13 @@ import {
   type MemoryEventRow,
 } from "@/lib/services/memory";
 import { getMemoryDocument } from "@/lib/memory/documents";
+import {
+  promoteMemoryCandidate,
+  rejectMemoryCandidate,
+  restoreArchivedMemoryEvent,
+  submitMemoryFeedback,
+} from "@/lib/services/memory-candidates";
+import type { MemoryFeedbackReason } from "@/lib/generated/prisma/client";
 
 export type ActionState = {
   error?: string;
@@ -708,6 +715,72 @@ export async function fetchMemoryDocumentAction(
       : { content: null, error: "Memory document not found" };
   } catch (err) {
     return { content: null, error: errorMessage(err) };
+  }
+}
+
+export async function promoteMemoryCandidateAction(
+  candidateId: string
+): Promise<ActionState> {
+  const user = await requireUser();
+  try {
+    await promoteMemoryCandidate({
+      candidateId,
+      actingUserId: user.id,
+      requireLeader: true,
+    });
+    return {};
+  } catch (err) {
+    return { error: errorMessage(err) };
+  }
+}
+
+export async function rejectMemoryCandidateAction(
+  candidateId: string
+): Promise<ActionState> {
+  const user = await requireUser();
+  try {
+    await rejectMemoryCandidate({
+      candidateId,
+      actingUserId: user.id,
+      reason: "Rejected by workspace leader.",
+    });
+    return {};
+  } catch (err) {
+    return { error: errorMessage(err) };
+  }
+}
+
+export async function submitMemoryFeedbackAction(
+  workspaceId: string,
+  eventId: string,
+  reason: MemoryFeedbackReason
+): Promise<ActionState> {
+  const user = await requireUser();
+  try {
+    await submitMemoryFeedback({
+      workspaceId,
+      eventId,
+      userId: user.id,
+      reason,
+    });
+    return {};
+  } catch (err) {
+    return { error: errorMessage(err) };
+  }
+}
+
+export async function restoreArchivedMemoryEventAction(
+  eventId: string
+): Promise<ActionState> {
+  const user = await requireUser();
+  try {
+    await restoreArchivedMemoryEvent({
+      eventId,
+      actingUserId: user.id,
+    });
+    return {};
+  } catch (err) {
+    return { error: errorMessage(err) };
   }
 }
 

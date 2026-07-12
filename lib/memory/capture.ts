@@ -167,6 +167,8 @@ const memoryEventSelect = {
   resolvedAt: true,
   supersededByEventId: true,
   dreamedAt: true,
+  captureSource: true,
+  archiveReason: true,
   sourceDocumentPath: true,
   sourceDocumentHash: true,
   author: { select: { id: true, username: true, email: true } },
@@ -293,6 +295,7 @@ async function applyCaptureAnalysis(
     taskShortId: ctx.task?.shortId,
     sourceUpdateId: ctx.sourceUpdateId,
     sourcePostMessageId: ctx.sourcePostMessageId,
+    captureSource: ctx.sourcePostMessageId ? "POST_MESSAGE" : "TASK_UPDATE",
     supersedesEventId,
     ...(ctx.mode === "backfill" ? { createdAt: ctx.createdAt } : {}),
   });

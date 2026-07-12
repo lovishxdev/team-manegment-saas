@@ -51,11 +51,22 @@ const POINTS = [
  * (space reserved so nothing jumps), showing nesting, agent summaries, and
  * onboarding in a single moment.
  */
-export function DiscussionShowcase() {
+export function DiscussionShowcase({
+  answered: answeredProp,
+  showPoints = true,
+}: {
+  /** When set, drives the reading→summary state externally (e.g. the Remotion
+   *  reel). Left undefined on the site, where scroll/intersection times it. */
+  answered?: boolean;
+  /** Capability points under the card. Hide in the video so the card can scale larger. */
+  showPoints?: boolean;
+} = {}) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const [answered, setAnswered] = useState(false);
+  const [answeredState, setAnswered] = useState(false);
+  const answered = answeredProp ?? answeredState;
 
   useEffect(() => {
+    if (answeredProp !== undefined) return;
     const el = ref.current;
     if (!el) return;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -80,7 +91,7 @@ export function DiscussionShowcase() {
       io.disconnect();
       clearTimeout(timer);
     };
-  }, []);
+  }, [answeredProp]);
 
   return (
     <div ref={ref}>
@@ -235,25 +246,26 @@ export function DiscussionShowcase() {
         </div>
       </div>
 
-      {/* Capability points */}
-      <div className="mx-auto mt-12 grid max-w-4xl gap-8 sm:grid-cols-3">
-        {POINTS.map((p) => (
-          <div
-            key={p.title}
-            className="flex flex-col items-center text-center"
-          >
-            <span className="grid h-9 w-9 place-items-center rounded-lg border border-line bg-paper text-ink shadow-sm">
-              <p.icon className="h-4 w-4" />
-            </span>
-            <h3 className="mt-3 text-[15px] font-semibold tracking-tight text-ink">
-              {p.title}
-            </h3>
-            <p className="mt-1 max-w-[15rem] text-[13px] leading-relaxed text-ink-soft">
-              {p.desc}
-            </p>
-          </div>
-        ))}
-      </div>
+      {showPoints ? (
+        <div className="mx-auto mt-12 grid max-w-4xl gap-8 sm:grid-cols-3">
+          {POINTS.map((p) => (
+            <div
+              key={p.title}
+              className="flex flex-col items-center text-center"
+            >
+              <span className="grid h-9 w-9 place-items-center rounded-lg border border-line bg-paper text-ink shadow-sm">
+                <p.icon className="h-4 w-4" />
+              </span>
+              <h3 className="mt-3 text-[15px] font-semibold tracking-tight text-ink">
+                {p.title}
+              </h3>
+              <p className="mt-1 max-w-[15rem] text-[13px] leading-relaxed text-ink-soft">
+                {p.desc}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

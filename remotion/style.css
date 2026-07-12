@@ -1,0 +1,3 @@
+/* Tailwind + app design tokens for the Remotion CLI bundle. In the Next app
+   (Player preview) these come from app/globals.css instead. */
+@import "../app/globals.css";

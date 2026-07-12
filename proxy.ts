@@ -61,7 +61,11 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Social recording demos — dev-only unless explicitly enabled in production.
-  if (pathname.startsWith("/marketing") || pathname.startsWith("/demo1")) {
+  if (
+    pathname.startsWith("/marketing") ||
+    pathname.startsWith("/demo1") ||
+    pathname.startsWith("/demo2")
+  ) {
     const allowed =
       process.env.NODE_ENV !== "production" ||
       process.env.ENABLE_MARKETING_DEMOS === "true";

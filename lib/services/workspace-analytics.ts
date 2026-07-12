@@ -75,6 +75,13 @@ export type WorkspaceMemoryAnalytics = {
       reviewedAt: string;
     }[];
   };
+  candidateQuality: {
+    pending: number;
+    created30d: number;
+    rejected30d: number;
+    promoted30d: number;
+    feedbackArchived30d: number;
+  };
 };
 
 function daysBetween(from: Date, to: Date): number {
@@ -140,6 +147,7 @@ export async function getWorkspaceMemoryAnalytics(
     agentSeats,
     documentReviewCounts,
     rejectedDocuments,
+    pendingCandidateCount,
   ] = await Promise.all([
     prisma.memoryEvent.groupBy({
       by: ["kind"],
@@ -234,6 +242,9 @@ export async function getWorkspaceMemoryAnalytics(
         explicit: true,
         reviewedAt: true,
       },
+    }),
+    prisma.memoryCandidate.count({
+      where: { workspaceId, status: "PENDING" },
     }),
   ]);
 
@@ -385,6 +396,13 @@ export async function getWorkspaceMemoryAnalytics(
         ...document,
         reviewedAt: document.reviewedAt.toISOString(),
       })),
+    },
+    candidateQuality: {
+      pending: pendingCandidateCount,
+      created30d: metric("candidate_created"),
+      rejected30d: metric("candidate_rejected"),
+      promoted30d: metric("candidate_promoted"),
+      feedbackArchived30d: metric("feedback_archived"),
     },
   };
 }

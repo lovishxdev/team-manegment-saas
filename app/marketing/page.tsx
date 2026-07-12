@@ -22,10 +22,25 @@ export default function MarketingIndexPage() {
         <ul className="mt-10 space-y-4">
           <li>
             <Link
+              href="/demo2"
+              className="block rounded-xl border border-violet-400/30 bg-violet-500/10 px-5 py-4 transition hover:bg-violet-500/15"
+            >
+              <span className="text-lg font-medium">
+                ★ Demo reel 2 · Remotion (~35s)
+              </span>
+              <p className="mt-1 text-sm text-white/60">
+                Project brain story: problem → capture → memory → manage from
+                WhatsApp → agents share context. Frame-accurate; also renders to
+                MP4 via <code className="rounded bg-white/10 px-1 py-0.5">npm run remotion:render</code>.
+              </p>
+            </Link>
+          </li>
+          <li>
+            <Link
               href="/demo1"
               className="block rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-5 py-4 transition hover:bg-emerald-500/15"
             >
-              <span className="text-lg font-medium">★ Full demo reel (~32s)</span>
+              <span className="text-lg font-medium">Full demo reel (~32s)</span>
               <p className="mt-1 text-sm text-white/60">
                 Intro → WhatsApp → Claude → web dashboard → outro (loops)
               </p>

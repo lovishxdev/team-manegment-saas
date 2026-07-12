@@ -96,6 +96,7 @@ export function WorkspaceMemoryInsights({
     topics,
     usage,
     documentReviews,
+    candidateQuality,
   } = analytics;
 
   return (
@@ -130,6 +131,21 @@ export function WorkspaceMemoryInsights({
             label="From discussions"
             value={capture.bySource.discussion + capture.bySource.taskUpdate}
             hint="posts + updates (30d)"
+          />
+        </div>
+      </div>
+
+      {/* Candidate quality */}
+      <div>
+        <SectionTitle>Candidate quality (30d)</SectionTitle>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          <Stat label="Awaiting leader review" value={candidateQuality.pending} />
+          <Stat label="Candidates extracted" value={candidateQuality.created30d} />
+          <Stat label="Rejected by critic" value={candidateQuality.rejected30d} />
+          <Stat label="Promoted" value={candidateQuality.promoted30d} />
+          <Stat
+            label="Archived by feedback"
+            value={candidateQuality.feedbackArchived30d}
           />
         </div>
       </div>
