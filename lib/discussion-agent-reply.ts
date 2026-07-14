@@ -2,6 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { ActionOutcome } from "@/lib/channel-formatters";
 import { pickReplyOutcomes } from "@/lib/whatsapp-reply-guard";
 import type { AgentLoopResult } from "@/lib/whatsapp-agent-loop";
+import { recordAnthropicAIUsage } from "@/lib/memory/model-usage";
 
 const FALLBACK =
   "I couldn't find enough context to answer — try rephrasing the question or adding more detail to the thread.";
@@ -78,8 +79,14 @@ export async function synthesizeDiscussionBranchReply(input: {
   model: string;
   transcript: string;
   toolText: string;
+  usage?: {
+    workspaceId: string;
+    userId: string;
+    conversationId: string;
+  };
 }): Promise<string | null> {
   try {
+    const startedAt = Date.now();
     const response = await input.anthropic.messages.create({
       model: input.model,
       max_tokens: 400,
@@ -100,6 +107,18 @@ export async function synthesizeDiscussionBranchReply(input: {
         },
       ],
     });
+    if (input.usage) {
+      await recordAnthropicAIUsage({
+        ...input.usage,
+        feature: "discussion-agent",
+        operation: "reply-synthesis",
+        model: input.model,
+        response,
+        durationMs: Date.now() - startedAt,
+      }).catch((error) =>
+        console.error("[discussion-reply] usage record failed:", error)
+      );
+    }
     const block = response.content.find(
       (part): part is Anthropic.TextBlock => part.type === "text"
     );
@@ -115,6 +134,11 @@ export async function finalizeDiscussionBranchReply(input: {
   anthropic: Anthropic;
   model: string;
   transcript: string;
+  usage?: {
+    workspaceId: string;
+    userId: string;
+    conversationId: string;
+  };
 }): Promise<string> {
   const { loop, anthropic, model, transcript } = input;
   const directReply = loop.reply?.trim();
@@ -153,6 +177,7 @@ export async function finalizeDiscussionBranchReply(input: {
     model,
     transcript,
     toolText,
+    usage: input.usage,
   });
   if (synthesized && !looksLikeRawToolDump(synthesized)) {
     return synthesized;

@@ -37,6 +37,7 @@
   ],
   "exclude": [
     "node_modules",
-    "team-manegment-saas-landing"
+    "team-manegment-saas-landing",
+    "MemoryArchitectureRef"
   ]
 }

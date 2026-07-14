@@ -79,6 +79,13 @@ workspace-scoped capture, Dreaming, blocker, topic and agent-context
 analytics. The task modal retains its per-task Memory
 section; events live-update via Supabase Realtime on `MemoryEvent`.
 
+Provider usage and COGS are internal-only (`/admin/ai`, localhost admin):
+calls, input/output/cache tokens, estimated cost, latency, errors, feature,
+model, workspace and user. Team analytics exposes value instead — context
+pulls, curation outcomes, average brief size and conservative context tokens
+avoided — never Euclis provider spend. Empty states use product actions
+(connect agent / create task), not developer CLI commands.
+
 ## Resolution: confirm, never guess (v1 rule)
 
 No signal auto-resolves anything. The suggestion engine
@@ -186,6 +193,9 @@ Claude Code `Stop`):
   not code-recoverable, preserving immediate Team assignee alerts. Most runs produce zero events. A session that
   plausibly cleared an open blocker triggers the usual WhatsApp
   confirmation ask, never an auto-resolve.
+- Hook-generated follow-up turns are marked `synthetic`; their transcript is
+  excluded from capture so Euclis resolution prompts and generated context
+  cannot feed back into memory. Real changed Markdown remains eligible.
 
   Example source:
 
@@ -238,7 +248,10 @@ adapters exist — see the adapter matrix in
 
 Live capture only ever sees one moment; the dream cycle
 ([lib/memory/dream.ts](../lib/memory/dream.ts)) reviews a workspace's whole
-active store offline and tends it — the "who's tending the garden" piece:
+active store offline and tends it — the "who's tending the garden" piece.
+Every semantic operation now passes through **Proposer → Adversary → Judge**
+before code applies it; proposals, objections, verdicts and applied counts
+are persisted on `MemoryDreamRun.details` and shown to Team leaders:
 
 - **Merge** near-duplicates under one canonical event (duplicates linked via
   `supersededByEventId`, never deleted).
@@ -256,7 +269,10 @@ active store offline and tends it — the "who's tending the garden" piece:
 
 Every operation is validated in code: ids must come from the reviewed set,
 merges stay within one kind, open work can't be hidden or archived, and
-age-based archive requires RESOLVED + 30 days old. Runs via Vercel cron
+PERMANENT memory cannot be archived. SHORT memory becomes age-eligible after
+7 days; LONG after 30; a recall in the last 14 days protects either. Access
+signals guide curation but zero recalls alone never archives a project
+contract. Runs via Vercel cron
 (`/api/cron/memory-dream`, daily; `DREAM_COOLDOWN_DAYS` currently 1 = every
 active workspace dreams daily — raise toward weekly as stores grow) or
 manually: `npm run dream:memory -- --workspace-name X [--force]`. Metrics
@@ -279,8 +295,11 @@ land on `/admin/memory` ("Dreaming").
 |---|---|
 | `ANTHROPIC_API_KEY` | capture classifier (shared with the WhatsApp agent) |
 | `MEMORY_CAPTURE_MODEL` | classifier model, default `claude-haiku-4-5` |
+| `MEMORY_CRITIC_MODEL` | independent candidate critic, default `claude-sonnet-4-5` |
 | `MEMORY_CAPTURE=0` | kill switch — disables capture entirely (and dreaming) |
-| `MEMORY_DREAM_MODEL` | dream-cycle model, default `claude-sonnet-4-5` |
+| `MEMORY_DREAM_MODEL` | Dream proposer, default `claude-sonnet-4-5` |
+| `MEMORY_DREAM_ADVERSARY_MODEL` | Dream adversary, default `claude-haiku-4-5` |
+| `MEMORY_DREAM_JUDGE_MODEL` | final Dream judge, default `claude-sonnet-4-5` |
 | `CRON_SECRET` | protects `/api/cron/memory-dream` in production |
 | `OPENROUTER_API_KEY` / `OPENAI_API_KEY` | embeddings for semantic recall (keyword-only fallback without) |
 
@@ -289,6 +308,8 @@ land on `/admin/memory` ("Dreaming").
 - `npm run test:memory` — deterministic tests: scope enforcement, event
   formatting, blocker nudges, suggestion button parsing (in CI).
 - `npm run check:tools` — registry parity including the 5 memory tools.
+- `npm run backfill:memory-embeddings` — cursor-paginated embedding repair;
+  resumes through missing `contentHash` rows in bounded pages.
 - The classifier itself is an LLM call — validate on staging by posting
   updates like "can't proceed, design files are missing" and checking the
   Memory tab.

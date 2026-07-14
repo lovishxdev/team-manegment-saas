@@ -4,6 +4,7 @@ import {
   createMemoryEvent,
   getOpenBlockersForTaskShortId,
   listMemoryEvents,
+  markMemoryEventsRecalled,
   recallMemory,
   resolveMemoryEvent,
   type MemoryEventRow,
@@ -149,6 +150,7 @@ const recallMemoryTool: ToolDef = {
         "No memory recorded about that yet. Try ask_task to search the raw update history, or record_decision to capture it now."
       );
     }
+    await markMemoryEventsRecalled(hits.map((hit) => hit.id));
     const body = `Project memory (${hits.length} match${hits.length === 1 ? "" : "es"}):\n${formatMemoryEvents(hits)}`;
     bumpMemoryMetric(ws.workspaceId, "recall_query", { sum: body.length });
     return ok(body, { count: hits.length });
@@ -423,10 +425,15 @@ const getProjectContextTool: ToolDef = {
       ),
     ];
     const selection = await selectRelevantProjectContext({
+      workspaceId: ws.workspaceId,
+      userId: ctx.userId,
       query,
       candidates,
     });
     const relevant = selection.selected;
+    await markMemoryEventsRecalled(
+      relevant.map(({ event }) => event.id)
+    );
     const blockers = relevant.filter(
       ({ event }) =>
         event.status === "OPEN" &&

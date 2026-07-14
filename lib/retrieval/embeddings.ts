@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import { recordAIUsageRaw } from "@/lib/memory/model-usage";
 
 /** Default when using OpenRouter (provider-prefixed slug). */
 export const OPENROUTER_EMBEDDING_MODEL = "openai/text-embedding-3-small";
@@ -68,6 +69,7 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
     headers["X-Title"] = "Euclis";
   }
 
+  const startedAt = Date.now();
   const res = await fetch(`${baseUrl}/embeddings`, {
     method: "POST",
     headers,
@@ -86,7 +88,24 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
 
   const json = (await res.json()) as {
     data: { embedding: number[]; index: number }[];
+    usage?: {
+      prompt_tokens?: number;
+      total_tokens?: number;
+    };
   };
+  const inputTokens =
+    json.usage?.prompt_tokens ?? json.usage?.total_tokens ?? 0;
+  await recordAIUsageRaw({
+    feature: "embeddings",
+    operation: "embed-text",
+    provider,
+    model,
+    inputTokens,
+    estimatedCostUsd: (inputTokens * 0.02) / 1_000_000,
+    durationMs: Date.now() - startedAt,
+  }).catch((error) =>
+    console.error("[embeddings] usage record failed:", error)
+  );
 
   const ordered = [...json.data].sort((a, b) => a.index - b.index);
   return ordered.map((row) => row.embedding);

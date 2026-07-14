@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { getAnthropicApiKey } from "@/lib/anthropic-env";
 import type { MemoryEventRow } from "@/lib/services/memory";
+import { recordMemoryModelUsage } from "@/lib/memory/model-usage";
 
 /**
  * Final precision pass for get_project_context.
@@ -116,6 +117,8 @@ function formatCandidate(event: MemoryEventRow): string {
 }
 
 export async function selectRelevantProjectContext(input: {
+  workspaceId?: string;
+  userId?: string;
   query: string;
   candidates: MemoryEventRow[];
 }): Promise<ContextSelection> {
@@ -135,6 +138,7 @@ export async function selectRelevantProjectContext(input: {
 
   try {
     const anthropic = new Anthropic({ apiKey });
+    const startedAt = Date.now();
     const response = await anthropic.messages.create({
       model: CONTEXT_MODEL,
       max_tokens: 1200,
@@ -153,11 +157,20 @@ export async function selectRelevantProjectContext(input: {
       tools: [SELECT_TOOL],
       tool_choice: { type: "tool", name: "select_project_context" },
     });
-
     const toolUse = response.content.find(
       (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
     );
     if (!toolUse) {
+      await recordMemoryModelUsage({
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+        stage: "context-selector",
+        model: CONTEXT_MODEL,
+        response,
+        durationMs: Date.now() - startedAt,
+      }).catch((error) =>
+        console.error("[memory-context] usage record failed:", error)
+      );
       return {
         selected: input.candidates
           .slice(0, MAX_SELECTED)
@@ -204,6 +217,30 @@ export async function selectRelevantProjectContext(input: {
       )
       .filter((item) => !staleIds.has(item.event.id))
       .slice(0, MAX_SELECTED);
+    const candidateTokens = Math.ceil(
+      input.candidates.reduce(
+        (sum, event) =>
+          sum +
+          event.summary.length +
+          (event.reasoning?.length ?? 0) +
+          event.tags.join(" ").length,
+        0
+      ) / 4
+    );
+    const deliveredTokens = Math.ceil(
+      selected.reduce((sum, item) => sum + item.context.length, 0) / 4
+    );
+    await recordMemoryModelUsage({
+      workspaceId: input.workspaceId,
+      userId: input.userId,
+      stage: "context-selector",
+      model: CONTEXT_MODEL,
+      response,
+      durationMs: Date.now() - startedAt,
+      estimatedTokensSaved: Math.max(0, candidateTokens - deliveredTokens),
+    }).catch((error) =>
+      console.error("[memory-context] usage record failed:", error)
+    );
 
     return {
       selected,

@@ -11,6 +11,7 @@ import { suggestBlockerResolution } from "@/lib/memory/suggest";
 import { scheduleBackgroundTask } from "@/lib/background-task";
 import { postThreadTitle } from "@/lib/post-title";
 import { bumpMemoryMetric } from "@/lib/memory/metrics";
+import { recordMemoryModelUsage } from "@/lib/memory/model-usage";
 
 /**
  * Quiet, after-the-fact memory capture from task updates and discussion
@@ -133,6 +134,8 @@ function formatExistingEvents(events: MemoryEventRow[]): string {
 }
 
 async function analyzeSignal(input: {
+  workspaceId: string;
+  userId: string;
   systemPrompt: string;
   userContent: string;
 }): Promise<CaptureAnalysis | null> {
@@ -140,6 +143,7 @@ async function analyzeSignal(input: {
   if (!apiKey) return null;
   const anthropic = new Anthropic({ apiKey });
 
+  const startedAt = Date.now();
   const res = await anthropic.messages.create({
     model: CAPTURE_MODEL,
     max_tokens: 700,
@@ -148,6 +152,16 @@ async function analyzeSignal(input: {
     tools: [ANALYSIS_TOOL],
     tool_choice: { type: "tool", name: "record_memory_analysis" },
   });
+  await recordMemoryModelUsage({
+    workspaceId: input.workspaceId,
+    userId: input.userId,
+    stage: "thread-extractor",
+    model: CAPTURE_MODEL,
+    response: res,
+    durationMs: Date.now() - startedAt,
+  }).catch((error) =>
+    console.error("[memory-capture] usage record failed:", error)
+  );
 
   const toolUse = res.content.find(
     (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
@@ -163,6 +177,10 @@ const memoryEventSelect = {
   summary: true,
   reasoning: true,
   tags: true,
+  importance: true,
+  retentionTier: true,
+  recallCount: true,
+  lastRecalledAt: true,
   createdAt: true,
   resolvedAt: true,
   supersededByEventId: true,
@@ -361,6 +379,8 @@ export async function captureFromTaskUpdate(
   });
 
   const analysis = await analyzeSignal({
+    workspaceId: update.workspaceId,
+    userId: update.authorId,
     systemPrompt: TASK_SYSTEM_PROMPT,
     userContent: [
       `Task: "${update.task.title}" (status: ${update.task.status})`,
@@ -463,6 +483,8 @@ export async function captureFromPostMessage(
   });
 
   const analysis = await analyzeSignal({
+    workspaceId: post.workspaceId,
+    userId: message.authorId,
     systemPrompt: POST_SYSTEM_PROMPT,
     userContent: [
       `Discussion: "${postTitle}"`,
@@ -552,6 +574,8 @@ export async function captureFromPostClosed(
   });
 
   const analysis = await analyzeSignal({
+    workspaceId: post.workspaceId,
+    userId: closedByUserId,
     systemPrompt: POST_CLOSE_SYSTEM_PROMPT,
     userContent: [
       `Discussion closed by @${closer.username}`,

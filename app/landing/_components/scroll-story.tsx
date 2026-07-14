@@ -324,10 +324,29 @@ export function ScrollStory() {
             </div>
           </div>
 
-          <div className="lp-story-dots" aria-hidden>
+          <div className="lp-story-progress" aria-hidden>
+            <span
+              className="lp-story-progress-fill"
+              style={{
+                height: `${(mStep / Math.max(1, MOBILE_STEPS.length - 1)) * 100}%`,
+              }}
+            />
             {MOBILE_STEPS.map((_, i) => (
-              <span key={i} className={i === mStep ? "is-active" : ""} />
+              <i
+                key={i}
+                className={`${i === mStep ? "is-active" : ""} ${
+                  i < mStep ? "is-complete" : ""
+                }`}
+              />
             ))}
+          </div>
+
+          <div
+            className={`lp-story-scroll-hint ${atTop ? "is-visible" : ""}`}
+            aria-hidden
+          >
+            <span>Scroll to explore</span>
+            <i>↓</i>
           </div>
         </div>
       </section>
@@ -445,11 +464,30 @@ export function ScrollStory() {
           </div>
         </div>
 
-        {/* progress dots */}
-        <div className="lp-story-dots" aria-hidden>
+        {/* Vertical rail mirrors the page's actual direction of travel. */}
+        <div className="lp-story-progress" aria-hidden>
+          <span
+            className="lp-story-progress-fill"
+            style={{
+              height: `${(chapter / Math.max(1, CHAPTERS.length - 1)) * 100}%`,
+            }}
+          />
           {CHAPTERS.map((_, i) => (
-            <span key={i} className={i === chapter ? "is-active" : ""} />
+            <i
+              key={i}
+              className={`${i === chapter ? "is-active" : ""} ${
+                i < chapter ? "is-complete" : ""
+              }`}
+            />
           ))}
+        </div>
+
+        <div
+          className={`lp-story-scroll-hint ${atTop ? "is-visible" : ""}`}
+          aria-hidden
+        >
+          <span>Scroll to explore</span>
+          <i>↓</i>
         </div>
       </div>
     </section>

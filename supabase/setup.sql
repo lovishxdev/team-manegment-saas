@@ -102,6 +102,7 @@ alter table public."MemoryDocument"      enable row level security;
 alter table public."MemoryDocumentReview" enable row level security;
 alter table public."MemoryCandidate"      enable row level security;
 alter table public."MemoryFeedback"       enable row level security;
+alter table public."MemoryModelUsage"     enable row level security;
 
 drop policy if exists "members_read_tasks" on public."Task";
 create policy "members_read_tasks" on public."Task"
@@ -164,6 +165,10 @@ create policy "members_read_memory_feedback" on public."MemoryFeedback"
         and wm.role in ('LEADER', 'SUB_LEADER')
     )
   );
+
+drop policy if exists "leaders_read_memory_model_usage" on public."MemoryModelUsage";
+-- No authenticated-client policy: AI provider usage/cost is internal COGS
+-- and is read only through the localhost admin server.
 
 drop policy if exists "users_read_self" on public."User";
 create policy "users_read_self" on public."User"

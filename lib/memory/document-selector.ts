@@ -7,6 +7,7 @@ import {
   parseMemoryDocument,
   type MemoryDocumentInput,
 } from "@/lib/memory/documents";
+import { recordMemoryModelUsage } from "@/lib/memory/model-usage";
 
 /**
  * Admission gate for Markdown snapshots. File names are weak signals: a
@@ -103,7 +104,8 @@ function explicitPreference(content: string): boolean | null {
 }
 
 export async function selectMemoryDocuments(
-  documents: MemoryDocumentInput[]
+  documents: MemoryDocumentInput[],
+  context?: { workspaceId?: string; userId?: string; conversationId?: string }
 ): Promise<MemoryDocumentDecision[]> {
   if (documents.length === 0) return [];
 
@@ -143,6 +145,7 @@ export async function selectMemoryDocuments(
   }
 
   const anthropic = new Anthropic({ apiKey });
+  const startedAt = Date.now();
   const response = await anthropic.messages.create({
     model: DOCUMENT_MODEL,
     max_tokens: 1800,
@@ -162,6 +165,17 @@ export async function selectMemoryDocuments(
     tools: [SELECT_TOOL],
     tool_choice: { type: "tool", name: "select_memory_documents" },
   });
+  await recordMemoryModelUsage({
+    workspaceId: context?.workspaceId,
+    userId: context?.userId,
+    stage: "document-selector",
+    model: DOCUMENT_MODEL,
+    response,
+    durationMs: Date.now() - startedAt,
+    conversationId: context?.conversationId,
+  }).catch((error) =>
+    console.error("[document-selector] usage record failed:", error)
+  );
   const toolUse = response.content.find(
     (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
   );

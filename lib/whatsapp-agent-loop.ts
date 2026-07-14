@@ -4,6 +4,10 @@ import {
   getClientToolUses,
   runClientToolUses,
 } from "@/lib/whatsapp-tool-batch";
+import {
+  recordAIUsageRaw,
+  recordAnthropicAIUsage,
+} from "@/lib/memory/model-usage";
 
 export type AgentLoopInput = {
   anthropic: Anthropic;
@@ -19,6 +23,13 @@ export type AgentLoopInput = {
     input: Record<string, unknown>
   ) => Promise<{ ok: boolean; message: string }>;
   onProgress?: (action: string, result: string) => void | Promise<void>;
+  usage?: {
+    feature: "whatsapp" | "app-chat" | "discussion-agent";
+    operation: string;
+    workspaceId?: string;
+    userId?: string;
+    conversationId?: string;
+  };
 };
 
 export type AgentLoopResult = {
@@ -61,13 +72,43 @@ export async function runWhatsAppAgentLoop(
   ];
 
   for (let turn = 0; turn < input.maxTurns; turn++) {
-    const response = await input.anthropic.messages.create({
-      model: input.model,
-      max_tokens: input.maxTokens ?? 1024,
-      system,
-      tools,
-      messages,
-    });
+    const startedAt = Date.now();
+    let response: Anthropic.Message;
+    try {
+      response = await input.anthropic.messages.create({
+        model: input.model,
+        max_tokens: input.maxTokens ?? 1024,
+        system,
+        tools,
+        messages,
+      });
+    } catch (error) {
+      if (input.usage) {
+        await recordAIUsageRaw({
+          ...input.usage,
+          operation: `${input.usage.operation}:turn-${turn + 1}`,
+          provider: "anthropic",
+          model: input.model,
+          inputTokens: 0,
+          durationMs: Date.now() - startedAt,
+          status: "ERROR",
+          errorCode:
+            error instanceof Error ? error.name : "UNKNOWN_PROVIDER_ERROR",
+        }).catch(() => {});
+      }
+      throw error;
+    }
+    if (input.usage) {
+      await recordAnthropicAIUsage({
+        ...input.usage,
+        operation: `${input.usage.operation}:turn-${turn + 1}`,
+        model: input.model,
+        response,
+        durationMs: Date.now() - startedAt,
+      }).catch((error) =>
+        console.error("[agent-loop] usage record failed:", error)
+      );
+    }
 
     const toolUses = getClientToolUses(response.content);
 

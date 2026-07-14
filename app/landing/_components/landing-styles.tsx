@@ -774,25 +774,121 @@ export function LandingStyles() {
         pointer-events: auto;
       }
 
-      .lp-story-dots {
+      /* Vertical progress mirrors the page's scroll direction. A horizontal
+         pill/dot row reads like swipeable carousel pagination. */
+      .lp-story-progress {
+        position: absolute;
+        right: clamp(14px, 2.2vw, 32px);
+        top: 50%;
+        z-index: 3;
+        width: 18px;
+        height: 112px;
+        transform: translateY(-50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: space-between;
+        pointer-events: none;
+      }
+      .lp-story-progress::before,
+      .lp-story-progress-fill {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 50%;
+        width: 1px;
+        transform: translateX(-50%);
+        border-radius: 999px;
+      }
+      .lp-story-progress::before {
+        bottom: 0;
+        background: rgba(26, 26, 26, 0.14);
+      }
+      .lp-story-progress-fill {
+        z-index: 1;
+        min-height: 0;
+        background: rgba(26, 26, 26, 0.58);
+        transition: height 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      .lp-story-progress i {
+        position: relative;
+        z-index: 2;
+        width: 7px;
+        height: 7px;
+        flex: 0 0 auto;
+        border: 1px solid rgba(26, 26, 26, 0.2);
+        border-radius: 999px;
+        background: #fbfaf9;
+        transition:
+          width 0.3s ease,
+          height 0.3s ease,
+          border-color 0.3s ease,
+          background 0.3s ease,
+          box-shadow 0.3s ease;
+      }
+      .lp-story-progress i.is-complete {
+        border-color: rgba(26, 26, 26, 0.58);
+        background: rgba(26, 26, 26, 0.58);
+      }
+      .lp-story-progress i.is-active {
+        width: 10px;
+        height: 10px;
+        border-color: rgba(26, 26, 26, 0.78);
+        background: rgba(26, 26, 26, 0.78);
+        box-shadow: 0 0 0 4px rgba(26, 26, 26, 0.08);
+      }
+
+      /* Directional affordance appears only before the story starts. */
+      .lp-story-scroll-hint {
         position: absolute;
         left: 50%;
-        bottom: 26px;
+        bottom: 24px;
         z-index: 3;
-        transform: translateX(-50%);
         display: flex;
-        gap: 7px;
+        align-items: center;
+        gap: 8px;
+        transform: translate(-50%, 8px);
+        opacity: 0;
+        color: rgba(26, 26, 26, 0.48);
+        font-family: var(--font-mono), ui-monospace, monospace;
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        pointer-events: none;
+        transition:
+          opacity 0.35s ease,
+          transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
       }
-      .lp-story-dots span {
-        width: 6px;
-        height: 6px;
-        border-radius: 9999px;
-        background: rgba(26, 26, 26, 0.18);
-        transition: background 0.3s ease, width 0.3s ease;
+      .lp-story-scroll-hint.is-visible {
+        transform: translate(-50%, 0);
+        opacity: 1;
       }
-      .lp-story-dots span.is-active {
-        width: 20px;
-        background: rgba(26, 26, 26, 0.7);
+      .lp-story-scroll-hint i {
+        display: inline-block;
+        font-family: var(--font-sans), ui-sans-serif, sans-serif;
+        font-size: 15px;
+        font-style: normal;
+        animation: lp-scroll-hint 1.6s ease-in-out infinite;
+      }
+      @keyframes lp-scroll-hint {
+        0%, 100% { transform: translateY(-2px); }
+        50%      { transform: translateY(3px); }
+      }
+      @media (max-width: 899px) {
+        .lp-story-progress {
+          right: 10px;
+          height: 88px;
+        }
+        .lp-story-scroll-hint {
+          bottom: 18px;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .lp-story-progress-fill,
+        .lp-story-progress i,
+        .lp-story-scroll-hint { transition: none; }
+        .lp-story-scroll-hint i { animation: none; }
       }
 
       /* Idle "breathing" float — only in the hero so reading chapters stay calm */

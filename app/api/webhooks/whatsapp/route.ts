@@ -1308,6 +1308,13 @@ async function handleMessage(
       tools: TOOLS,
       messages: [...history, { role: "user" as const, content: agentUserText }],
       maxTurns: MAX_TOOL_TURNS,
+      usage: {
+        feature: "whatsapp",
+        operation: "agent-loop",
+        workspaceId: activeCtx.workspaceId ?? undefined,
+        userId,
+        conversationId: from ?? undefined,
+      },
       runTool: (name, input) => executeAction(userId, name, input, session),
       onProgress: (action, result) => progress?.step(action, result),
     });

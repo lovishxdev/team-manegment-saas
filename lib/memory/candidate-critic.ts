@@ -6,6 +6,7 @@ import type {
   MemoryEventKind,
 } from "@/lib/generated/prisma/client";
 import type { AgentSessionDocument } from "@/lib/memory/agent-capture";
+import { recordMemoryModelUsage } from "@/lib/memory/model-usage";
 
 const CRITIC_MODEL =
   process.env.MEMORY_CRITIC_MODEL?.trim() || "claude-sonnet-4-5";
@@ -160,6 +161,9 @@ function determineAuthority(input: {
 }
 
 export async function critiqueCandidates(input: {
+  workspaceId?: string;
+  userId?: string;
+  conversationId?: string;
   candidates: ExtractedCandidate[];
   transcript: string;
   documents: AgentSessionDocument[];
@@ -185,6 +189,7 @@ export async function critiqueCandidates(input: {
   }
 
   const anthropic = new Anthropic({ apiKey });
+  const startedAt = Date.now();
   const response = await anthropic.messages.create({
     model: CRITIC_MODEL,
     max_tokens: 1400,
@@ -204,6 +209,17 @@ export async function critiqueCandidates(input: {
     tools: [CRITIC_TOOL],
     tool_choice: { type: "tool", name: "criticize_memory_candidates" },
   });
+  await recordMemoryModelUsage({
+    workspaceId: input.workspaceId,
+    userId: input.userId,
+    stage: "candidate-critic",
+    model: CRITIC_MODEL,
+    response,
+    durationMs: Date.now() - startedAt,
+    conversationId: input.conversationId,
+  }).catch((error) =>
+    console.error("[candidate-critic] usage record failed:", error)
+  );
   const toolUse = response.content.find(
     (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
   );

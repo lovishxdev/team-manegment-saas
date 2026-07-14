@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import type {
   MemoryEventKind,
   MemoryEventStatus,
+  MemoryRetentionTier,
   Prisma,
 } from "@/lib/generated/prisma/client";
 import { getActorMembership, ServiceError } from "@/lib/services/project";
@@ -37,6 +38,10 @@ const eventSelect = {
   summary: true,
   reasoning: true,
   tags: true,
+  importance: true,
+  retentionTier: true,
+  recallCount: true,
+  lastRecalledAt: true,
   createdAt: true,
   resolvedAt: true,
   supersededByEventId: true,
@@ -66,6 +71,10 @@ export type MemoryEventRow = {
   summary: string;
   reasoning: string | null;
   tags: string[];
+  importance: number;
+  retentionTier: MemoryRetentionTier;
+  recallCount: number;
+  lastRecalledAt: Date | null;
   createdAt: Date;
   resolvedAt: Date | null;
   supersededByEventId: string | null;
@@ -228,6 +237,27 @@ export function scheduleMemoryEventEmbeddingIndex(eventId: string): void {
   );
 }
 
+export async function listUnindexedMemoryEventPage(input?: {
+  cursor?: string;
+  pageSize?: number;
+}): Promise<{ ids: string[]; nextCursor: string | null }> {
+  const pageSize = Math.min(Math.max(input?.pageSize ?? 50, 1), 200);
+  const rows = await prisma.memoryEvent.findMany({
+    where: { contentHash: null },
+    orderBy: { id: "asc" },
+    take: pageSize,
+    ...(input?.cursor
+      ? { cursor: { id: input.cursor }, skip: 1 }
+      : {}),
+    select: { id: true },
+  });
+  return {
+    ids: rows.map((row) => row.id),
+    nextCursor:
+      rows.length === pageSize ? rows[rows.length - 1]?.id ?? null : null,
+  };
+}
+
 export type CreateMemoryEventInput = {
   workspaceId: string;
   /** Acting user (membership-checked). Also the recorded author unless authorId is set. */
@@ -258,6 +288,8 @@ export type CreateMemoryEventInput = {
   supersedesEventId?: string;
   /** Topic tags ("auth", "payments") — normalized, max 4. */
   tags?: string[];
+  importance?: number;
+  retentionTier?: MemoryRetentionTier;
   /** Backfill only: preserve the original moment the event happened. */
   createdAt?: Date;
 };
@@ -295,6 +327,24 @@ export async function createMemoryEvent(
     input.kind === "BLOCKER" || input.kind === "DEPENDENCY"
       ? "OPEN"
       : "RESOLVED";
+  const defaultImportance =
+    input.kind === "BLOCKER"
+      ? 0.9
+      : input.kind === "DEPENDENCY"
+        ? 0.85
+        : input.kind === "DECISION"
+          ? input.captureSource === "EXPLICIT"
+            ? 0.9
+            : 0.75
+          : input.kind === "INSIGHT"
+            ? 0.7
+            : 0.55;
+  const defaultTier: MemoryRetentionTier =
+    input.kind === "DECISION" && input.captureSource === "EXPLICIT"
+      ? "PERMANENT"
+      : input.kind === "MILESTONE"
+        ? "SHORT"
+        : "LONG";
 
   const event = await prisma.memoryEvent.create({
     data: {
@@ -312,6 +362,11 @@ export async function createMemoryEvent(
       summary,
       reasoning,
       tags: normalizeMemoryTags(input.tags),
+      importance: Math.max(
+        0,
+        Math.min(1, input.importance ?? defaultImportance)
+      ),
+      retentionTier: input.retentionTier ?? defaultTier,
       authorId: input.authorId ?? input.userId,
       ...(input.createdAt ? { createdAt: input.createdAt } : {}),
     },
@@ -602,7 +657,15 @@ export async function recallMemory(
         : keywordScore;
     // Tags are explicit topical structure, so exact/alias matches deserve a
     // strong additive boost over merely adjacent embedding similarity.
-    const score = Math.min(1, baseScore + 0.18 * tagScore);
+    const importanceBoost = Math.max(0, row.importance - 0.5) * 0.1;
+    const accessBoost = Math.min(
+      0.06,
+      Math.log1p(row.recallCount) * 0.015
+    );
+    const score = Math.min(
+      1,
+      baseScore + 0.18 * tagScore + importanceBoost + accessBoost
+    );
 
     if (
       score < MIN_HYBRID_SCORE &&
@@ -616,6 +679,18 @@ export async function recallMemory(
 
   hits.sort((a, b) => b.score - a.score);
   return hits.slice(0, limit);
+}
+
+export async function markMemoryEventsRecalled(eventIds: string[]): Promise<void> {
+  const ids = [...new Set(eventIds)];
+  if (ids.length === 0) return;
+  await prisma.memoryEvent.updateMany({
+    where: { id: { in: ids }, archivedAt: null },
+    data: {
+      recallCount: { increment: 1 },
+      lastRecalledAt: new Date(),
+    },
+  });
 }
 
 /** Walk the supersession chain for one event (oldest → newest). */

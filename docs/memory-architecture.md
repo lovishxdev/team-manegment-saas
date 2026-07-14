@@ -82,6 +82,8 @@ Agent inference adds two guardrail records:
   until promoted.
 - `MemoryFeedback` — leader quality feedback on canonical events. Negative
   feedback archives active recall without deleting the event or audit trail.
+- `AIUsageRecord` — actual provider input/output/cache tokens, estimated
+  cost, model and duration by pipeline stage.
 
 | Field | Meaning |
 |---|---|
@@ -96,6 +98,8 @@ Agent inference adds two guardrail records:
 | `resolvedAt / resolvedById / resolvedByUpdateId` | resolution provenance |
 | `supersededByEventId?` | link to the decision that replaced this one (never deleted) |
 | `embedding` | JSON vector over summary+reasoning for semantic recall (indexed fire-and-forget) |
+| `importance / retentionTier` | critic/source-seeded lifecycle metadata (`SHORT`, `LONG`, `PERMANENT`) |
+| `recallCount / lastRecalledAt` | actual per-event utility; incremented only after final recall/context selection |
 | `lastSuggestedAt / suggestionCount / suggestionsSuppressed` | anti-irritation throttles for resolution suggestions |
 
 Deliberately **standalone** (not a flag on `TaskUpdate`) so the layer can
@@ -290,15 +294,21 @@ Per signal, roughly:
 | Path | LLM cost |
 |---|---|
 | Task update | 1 Haiku call (~1–2k tokens in) — most return `none` |
-| Agent session run | 1 Haiku call per substantive delta (≤24k chars of message text; cooldown-throttled) — most return zero events |
-| Recall query | embedding lookup + no generation (records returned raw) |
+| Agent session run | Haiku extractor; Sonnet critic only when candidates exist |
+| Context pull | embedding/keyword candidates + Haiku precision selector |
+| Dreaming | Sonnet proposer; Haiku adversary + Sonnet judge only when proposals exist |
+| Recall query | embedding lookup; selected events increment utility counters |
 | Ambient brief | zero LLM — assembled from the DB on each ingest |
 
 What keeps this flat: message-text-only extraction (tool noise stripped
 locally before upload), minimum-delta accumulation, hard caps, per-
 conversation cooldowns, in-prompt dedupe against existing events, and
 embeddings stored as JSON vectors (no vector-DB infra; pgvector is a
-contained later migration if scale demands).
+contained later migration if scale demands). Every provider call records
+actual tokens/cache/duration and estimated COGS in internal-only
+`AIUsageRecord`; `/admin/ai` aggregates by feature, model, workspace and user.
+Customer leader analytics shows outcomes and conservative context-token
+savings, never Euclis provider spend.
 
 ## 10. File map
 
@@ -317,6 +327,7 @@ contained later migration if scale demands).
 | Scope/pin enforcement | `dispatchMcpTool` in `lib/tools/registry.ts` |
 | Web UI | Memory tab `app/(app)/w/[workspaceId]/(tabs)/memory/`, task modal section `components/board/task-memory-section.tsx` |
 | Background execution | `lib/background-task.ts` (`next/server` `after()`) |
+| Internal AI usage/COGS | `lib/memory/model-usage.ts`, `lib/services/admin-ai.ts`, `/admin/ai` |
 | Backfill | `scripts/backfill-memory-capture.ts` |
 
 ## 11. Known limitations & open questions

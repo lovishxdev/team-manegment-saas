@@ -193,6 +193,13 @@ export async function runDiscussionAgentBranch(input: {
     systemPrompt,
     tools: discussionBranchAnthropicTools(scope),
     messages: [{ role: "user", content: userPrompt }],
+    usage: {
+      feature: "discussion-agent",
+      operation: "branch-loop",
+      workspaceId: input.workspaceId,
+      userId: input.userId,
+      conversationId: input.postId,
+    },
     runTool: async (name, toolInput) => {
       const def = toolDefs.find((tool) => tool.name === name);
       if (!def) {
@@ -215,6 +222,11 @@ export async function runDiscussionAgentBranch(input: {
     anthropic,
     model: DISCUSSION_BRANCH_MODEL,
     transcript,
+    usage: {
+      workspaceId: input.workspaceId,
+      userId: input.userId,
+      conversationId: input.postId,
+    },
   });
 
   const created = await createAgentBranchReply({

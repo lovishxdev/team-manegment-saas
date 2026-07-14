@@ -138,7 +138,7 @@ export function WorkspaceMemoryInsights({
       {/* Candidate quality */}
       <div>
         <SectionTitle>Candidate quality (30d)</SectionTitle>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <Stat label="Awaiting leader review" value={candidateQuality.pending} />
           <Stat label="Candidates extracted" value={candidateQuality.created30d} />
           <Stat label="Rejected by critic" value={candidateQuality.rejected30d} />
@@ -244,7 +244,7 @@ export function WorkspaceMemoryInsights({
       {/* Curation health */}
       <div>
         <SectionTitle>Curation health</SectionTitle>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
           <Stat label="Reviewed" value={`${curation.reviewedPct}%`} hint="curated by Dreaming" />
           <Stat label="Awaiting review" value={curation.unreviewed} />
           <Stat label="Deduped / superseded" value={curation.superseded} />
@@ -257,11 +257,51 @@ export function WorkspaceMemoryInsights({
             value={formatWhen(curation.lastDream?.at ?? null)}
             hint={
               curation.lastDream
-                ? `${curation.lastDream.merged} merged · ${curation.lastDream.insights} insights`
+                ? `${curation.lastDream.approved}/${curation.lastDream.proposals} approved · ${curation.lastDream.rejected} rejected`
                 : undefined
             }
           />
         </div>
+        {curation.lastDream && curation.lastDream.audit.length > 0 ? (
+          <details className="mt-3 rounded-xl border border-line bg-paper px-4 py-3">
+            <summary className="cursor-pointer text-xs font-medium text-ink-soft">
+              Latest Dream proposal audit
+            </summary>
+            <ul className="mt-3 divide-y divide-line/60">
+              {curation.lastDream.audit.map((item) => (
+                <li key={item.key} className="py-3 first:pt-0 last:pb-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-[10px] text-ink-faint">
+                      {item.type}
+                    </span>
+                    <span
+                      className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                        item.approved
+                          ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200"
+                          : "bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-200"
+                      }`}
+                    >
+                      {item.approved ? "Approved" : "Rejected"}
+                    </span>
+                    {item.severity ? (
+                      <span className="text-[10px] text-ink-faint">
+                        objection: {item.severity}
+                      </span>
+                    ) : null}
+                  </div>
+                  {item.objection ? (
+                    <p className="mt-1 text-xs text-ink-soft">
+                      Adversary: {item.objection}
+                    </p>
+                  ) : null}
+                  <p className="mt-1 text-xs text-ink-faint">
+                    Judge: {item.rationale}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
       </div>
 
       {/* Contributors + topics */}
@@ -297,7 +337,7 @@ export function WorkspaceMemoryInsights({
       {/* Usage */}
       <div>
         <SectionTitle>Memory usage (30d)</SectionTitle>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
           <Stat label="Recall queries" value={usage.recall30d} />
           <Stat label="Context pulls" value={usage.contextPull30d} />
           <Stat label="Agent briefs served" value={usage.briefs30d} />
@@ -307,6 +347,11 @@ export function WorkspaceMemoryInsights({
             hint="estimated tokens"
           />
           <Stat label="Connected agents" value={usage.agentSeats} />
+          <Stat
+            label="Context tokens avoided"
+            value={`~${usage.tokensSaved30d.toLocaleString()}`}
+            hint="conservative 30d estimate"
+          />
         </div>
       </div>
     </div>

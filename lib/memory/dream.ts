@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import crypto from "node:crypto";
 import { getAnthropicApiKey } from "@/lib/anthropic-env";
 import { prisma } from "@/lib/prisma";
 import {
@@ -9,12 +10,14 @@ import { memoryCaptureEnabled } from "@/lib/memory/capture";
 import { isNearDuplicate } from "@/lib/memory/similarity";
 import { bumpMemoryMetric } from "@/lib/memory/metrics";
 import { workspaceFeature } from "@/lib/billing/entitlements";
+import { recordMemoryModelUsage } from "@/lib/memory/model-usage";
 
 /**
  * The dream cycle: scheduled, offline maintenance of a workspace's memory
  * store — the piece live capture cannot do because it only ever sees one
- * moment at a time. One model call reviews the whole active store and
- * proposes:
+ * moment at a time. A proposer reviews the active store, then an independent
+ * adversary and judge protect against semantic information loss before code
+ * applies:
  *
  *  - consolidation: near-duplicate events merged under one canonical row
  *    (duplicates linked via supersededByEventId, never deleted);
@@ -34,6 +37,10 @@ const DREAM_MODEL =
   process.env.MEMORY_DREAM_MODEL?.trim() ||
   process.env.MEMORY_CAPTURE_MODEL?.trim() ||
   "claude-sonnet-4-5";
+const DREAM_ADVERSARY_MODEL =
+  process.env.MEMORY_DREAM_ADVERSARY_MODEL?.trim() || "claude-haiku-4-5";
+const DREAM_JUDGE_MODEL =
+  process.env.MEMORY_DREAM_JUDGE_MODEL?.trim() || "claude-sonnet-4-5";
 
 /** Not enough events to consolidate or see patterns across. */
 const MIN_EVENTS_TO_DREAM = 8;
@@ -167,6 +174,12 @@ Operations, in priority order:
 3. SURFACE insights: patterns visible only across events — a blocker theme recurring, the team converging on a choice never made explicitly, two open decisions that conflict and need a human. An insight must be actionable for a teammate; observations that change nothing are noise. Most dreams surface ZERO insights.
 4. ARCHIVE stale rows: RESOLVED events that stopped informing work (old cleared blockers, absorbed milestones). Decisions that still bind future work stay, however old. Open blockers/dependencies always stay.
 
+Lifecycle signals are evidence, not truth: importance, tier, recall count and
+last-recalled date help prioritize. PERMANENT records are never archive
+targets. A rarely recalled project contract may still be load-bearing;
+frequent recall is reinforcement, while zero recall alone is never enough to
+archive.
+
 Use noise_archive_ids immediately (no age requirement) for unreviewed
 agent-captured implementation noise: file/UI positioning, timing, local asset
 choices, refactors, code-recoverable details. This is separate from
@@ -185,6 +198,10 @@ type StoredEvent = {
   summary: string;
   reasoning: string | null;
   tags: string[];
+  importance: number;
+  retentionTier: "SHORT" | "LONG" | "PERMANENT";
+  recallCount: number;
+  lastRecalledAt: Date | null;
   createdAt: Date;
   resolvedAt: Date | null;
   dreamedAt: Date | null;
@@ -207,10 +224,13 @@ function formatEvent(e: StoredEvent): string {
   const task = e.task ? ` task#${e.task.shortId}` : "";
   const tags = e.tags.length > 0 ? ` [${e.tags.join(",")}]` : "";
   const why = e.reasoning ? `\n  why: ${e.reasoning}` : "";
-  return `- id=${e.id} (${e.kind}${status} · ${date}${task}${tags}) ${e.summary}${why}`;
+  const utility = ` · tier=${e.retentionTier} importance=${e.importance.toFixed(2)} recalls=${e.recallCount}${e.lastRecalledAt ? ` last=${e.lastRecalledAt.toISOString().slice(0, 10)}` : ""}`;
+  return `- id=${e.id} (${e.kind}${status} · ${date}${task}${tags}${utility}) ${e.summary}${why}`;
 }
 
 async function proposeOperations(
+  workspaceId: string,
+  runId: string,
   workspaceName: string,
   events: StoredEvent[],
   documents: StoredDocument[]
@@ -219,9 +239,10 @@ async function proposeOperations(
   if (!apiKey) return null;
   const anthropic = new Anthropic({ apiKey });
 
+  const startedAt = Date.now();
   const res = await anthropic.messages.create({
     model: DREAM_MODEL,
-    max_tokens: 2000,
+    max_tokens: 4000,
     system: DREAM_SYSTEM_PROMPT,
     messages: [
       {
@@ -246,11 +267,269 @@ async function proposeOperations(
     tools: [DREAM_TOOL],
     tool_choice: { type: "tool", name: "record_dream_operations" },
   });
+  await recordMemoryModelUsage({
+    workspaceId,
+    stage: "dream-proposer",
+    model: DREAM_MODEL,
+    response: res,
+    durationMs: Date.now() - startedAt,
+    runId,
+  }).catch((error) => console.error("[dream] proposer usage failed:", error));
 
   const toolUse = res.content.find(
     (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
   );
-  return toolUse ? (toolUse.input as DreamOps) : null;
+  if (!toolUse) return null;
+  const ops = toolUse.input as DreamOps;
+  if (
+    !Array.isArray(ops.merges) ||
+    !Array.isArray(ops.supersessions) ||
+    !Array.isArray(ops.insights) ||
+    !Array.isArray(ops.noise_archive_ids) ||
+    !Array.isArray(ops.archive_ids)
+  ) {
+    return null;
+  }
+  return ops;
+}
+
+export type DreamProposal = {
+  key: string;
+  type: "merge" | "supersede" | "insight" | "noise_archive" | "archive";
+  operation: unknown;
+};
+
+type DreamChallenge = {
+  key: string;
+  objection: string | null;
+  severity: "low" | "medium" | "high";
+};
+
+type DreamVerdict = {
+  key: string;
+  approve: boolean;
+  rationale: string;
+};
+
+function flattenDreamOps(
+  ops: DreamOps,
+  events: StoredEvent[]
+): DreamProposal[] {
+  const byId = new Map(events.map((event) => [event.id, event]));
+  const eventEvidence = (id: string | undefined) => {
+    const event = id ? byId.get(id) : undefined;
+    return event
+      ? {
+          id: event.id,
+          kind: event.kind,
+          status: event.status,
+          summary: event.summary,
+          reasoning: event.reasoning,
+          tier: event.retentionTier,
+          importance: event.importance,
+          recallCount: event.recallCount,
+          captureSource: event.captureSource,
+        }
+      : null;
+  };
+  return [
+    ...(ops.merges ?? []).map((operation, index) => ({
+      key: `merge:${index}`,
+      type: "merge" as const,
+      operation: {
+        ...operation,
+        keepEvent: eventEvidence(operation.keep_id),
+        duplicateEvents: (operation.duplicate_ids ?? []).map(eventEvidence),
+      },
+    })),
+    ...(ops.supersessions ?? []).map((operation, index) => ({
+      key: `supersede:${index}`,
+      type: "supersede" as const,
+      operation: {
+        ...operation,
+        olderEvent: eventEvidence(operation.older_decision_id),
+        newerEvent: eventEvidence(operation.newer_decision_id),
+      },
+    })),
+    ...(ops.insights ?? []).map((operation, index) => ({
+      key: `insight:${index}`,
+      type: "insight" as const,
+      operation,
+    })),
+    ...(ops.noise_archive_ids ?? []).map((operation, index) => ({
+      key: `noise_archive:${index}`,
+      type: "noise_archive" as const,
+      operation: {
+        eventId: operation,
+        event: eventEvidence(operation),
+      },
+    })),
+    ...(ops.archive_ids ?? []).map((operation, index) => ({
+      key: `archive:${index}`,
+      type: "archive" as const,
+      operation: {
+        eventId: operation,
+        event: eventEvidence(operation),
+      },
+    })),
+  ];
+}
+
+const ADVERSARY_TOOL: Anthropic.Tool = {
+  name: "challenge_dream_proposals",
+  description: "Challenge every proposed memory operation before it can apply.",
+  input_schema: {
+    type: "object",
+    properties: {
+      challenges: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            key: { type: "string" },
+            objection: { type: ["string", "null"] },
+            severity: {
+              type: "string",
+              enum: ["low", "medium", "high"],
+            },
+          },
+          required: ["key", "objection", "severity"],
+        },
+      },
+    },
+    required: ["challenges"],
+  },
+};
+
+const JUDGE_TOOL: Anthropic.Tool = {
+  name: "judge_dream_proposals",
+  description:
+    "Approve or reject every proposed memory operation after reading adversary challenges.",
+  input_schema: {
+    type: "object",
+    properties: {
+      verdicts: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            key: { type: "string" },
+            approve: { type: "boolean" },
+            rationale: { type: "string" },
+          },
+          required: ["key", "approve", "rationale"],
+        },
+      },
+    },
+    required: ["verdicts"],
+  },
+};
+
+export async function reviewDreamOperations(input: {
+  workspaceId: string;
+  runId: string;
+  proposals: DreamProposal[];
+}): Promise<{
+  challenges: DreamChallenge[];
+  verdicts: DreamVerdict[];
+} | null> {
+  if (input.proposals.length === 0) {
+    return { challenges: [], verdicts: [] };
+  }
+  const apiKey = getAnthropicApiKey();
+  if (!apiKey) return null;
+  const anthropic = new Anthropic({ apiKey });
+  const proposalJson = JSON.stringify(input.proposals);
+
+  const adversaryStarted = Date.now();
+  const adversaryResponse = await anthropic.messages.create({
+    model: DREAM_ADVERSARY_MODEL,
+    max_tokens: 3000,
+    temperature: 0,
+    system: `You are a skeptical project-memory adversary. Challenge every operation that could erase nuance, hide a rare fact, merge distinct decisions, supersede only part of an older rationale, archive a load-bearing project contract, or surface an unsupported insight. Open blockers must never be archived. A high-severity objection means likely information loss. Return one challenge for every key; use null/low when clean.`,
+    messages: [{ role: "user", content: proposalJson }],
+    tools: [ADVERSARY_TOOL],
+    tool_choice: { type: "tool", name: "challenge_dream_proposals" },
+  });
+  await recordMemoryModelUsage({
+    workspaceId: input.workspaceId,
+    stage: "dream-adversary",
+    model: DREAM_ADVERSARY_MODEL,
+    response: adversaryResponse,
+    durationMs: Date.now() - adversaryStarted,
+    runId: input.runId,
+  }).catch((error) => console.error("[dream] adversary usage failed:", error));
+  const adversaryTool = adversaryResponse.content.find(
+    (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
+  );
+  const challenges =
+    (
+      adversaryTool?.input as
+        | { challenges?: DreamChallenge[] }
+        | undefined
+    )?.challenges ?? [];
+  if (challenges.length !== input.proposals.length) return null;
+
+  const judgeStarted = Date.now();
+  const judgeResponse = await anthropic.messages.create({
+    model: DREAM_JUDGE_MODEL,
+    max_tokens: 3000,
+    temperature: 0,
+    system: `You are the final project-memory consolidation judge. Review every proposal and its adversary challenge. Reject operations with unresolved high-severity information-loss risk. Be especially protective of explicit decisions, permanent memories, rare rationale, and source provenance. Approve clean duplicate merges and obvious local/code-recoverable noise. Return one verdict for every key.`,
+    messages: [
+      {
+        role: "user",
+        content: JSON.stringify({
+          proposals: input.proposals,
+          challenges,
+        }),
+      },
+    ],
+    tools: [JUDGE_TOOL],
+    tool_choice: { type: "tool", name: "judge_dream_proposals" },
+  });
+  await recordMemoryModelUsage({
+    workspaceId: input.workspaceId,
+    stage: "dream-judge",
+    model: DREAM_JUDGE_MODEL,
+    response: judgeResponse,
+    durationMs: Date.now() - judgeStarted,
+    runId: input.runId,
+  }).catch((error) => console.error("[dream] judge usage failed:", error));
+  const judgeTool = judgeResponse.content.find(
+    (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
+  );
+  const verdicts =
+    (judgeTool?.input as { verdicts?: DreamVerdict[] } | undefined)?.verdicts ??
+    [];
+  if (verdicts.length !== input.proposals.length) return null;
+  return { challenges, verdicts };
+}
+
+function approvedDreamOps(
+  ops: DreamOps,
+  verdicts: DreamVerdict[]
+): DreamOps {
+  const approved = new Set(
+    verdicts.filter((verdict) => verdict.approve).map((verdict) => verdict.key)
+  );
+  return {
+    merges: (ops.merges ?? []).filter((_, index) =>
+      approved.has(`merge:${index}`)
+    ),
+    supersessions: (ops.supersessions ?? []).filter((_, index) =>
+      approved.has(`supersede:${index}`)
+    ),
+    insights: (ops.insights ?? []).filter((_, index) =>
+      approved.has(`insight:${index}`)
+    ),
+    noise_archive_ids: (ops.noise_archive_ids ?? []).filter((_, index) =>
+      approved.has(`noise_archive:${index}`)
+    ),
+    archive_ids: (ops.archive_ids ?? []).filter((_, index) =>
+      approved.has(`archive:${index}`)
+    ),
+  };
 }
 
 /** Last full (non-skipped) dream per workspace, from the audit log. */
@@ -264,10 +543,16 @@ export async function lastDreamAt(workspaceId: string): Promise<Date | null> {
 }
 
 /** Persist the audit row; a logging failure never fails the dream. */
-async function logDreamRun(report: DreamReport, startedAt: number): Promise<void> {
+async function logDreamRun(
+  report: DreamReport,
+  startedAt: number,
+  runId: string,
+  details?: unknown
+): Promise<void> {
   await prisma.memoryDreamRun
     .create({
       data: {
+        id: runId,
         workspaceId: report.workspaceId,
         reviewed: report.reviewed,
         merged: report.merged,
@@ -276,6 +561,9 @@ async function logDreamRun(report: DreamReport, startedAt: number): Promise<void
         archived: report.archived,
         skipped: report.skipped,
         durationMs: Date.now() - startedAt,
+        ...(details
+          ? { details: JSON.parse(JSON.stringify(details)) }
+          : {}),
       },
     })
     .catch((err) => console.error("[dream] run log failed:", err));
@@ -286,6 +574,7 @@ export async function runDreamCycle(input: {
   force?: boolean;
 }): Promise<DreamReport> {
   const startedAt = Date.now();
+  const runId = crypto.randomUUID();
   const report: DreamReport = {
     workspaceId: input.workspaceId,
     reviewed: 0,
@@ -357,6 +646,10 @@ export async function runDreamCycle(input: {
           summary: true,
           reasoning: true,
           tags: true,
+          importance: true,
+          retentionTier: true,
+          recallCount: true,
+          lastRecalledAt: true,
           createdAt: true,
           resolvedAt: true,
           dreamedAt: true,
@@ -382,18 +675,44 @@ export async function runDreamCycle(input: {
 
   if (events.length + documents.length < MIN_EVENTS_TO_DREAM) {
     report.skipped = `only ${events.length} events + ${documents.length} documents (min ${MIN_EVENTS_TO_DREAM} signals)`;
-    await logDreamRun(report, startedAt);
+    await logDreamRun(report, startedAt, runId);
     return report;
   }
 
   bumpMemoryMetric(input.workspaceId, "dream_run", { sum: events.length });
 
-  const ops = await proposeOperations(workspace.name, events, documents);
-  if (!ops) {
+  const proposedOps = await proposeOperations(
+    input.workspaceId,
+    runId,
+    workspace.name,
+    events,
+    documents
+  );
+  if (!proposedOps) {
     report.skipped = "model call produced no operations";
-    await logDreamRun(report, startedAt);
+    await logDreamRun(report, startedAt, runId);
     return report;
   }
+  const proposals = flattenDreamOps(proposedOps, events);
+  const review = await reviewDreamOperations({
+    workspaceId: input.workspaceId,
+    runId,
+    proposals,
+  });
+  if (!review) {
+    report.skipped = "adversarial review failed closed";
+    await logDreamRun(report, startedAt, runId, { proposals });
+    return report;
+  }
+  const ops = approvedDreamOps(proposedOps, review.verdicts);
+  const dreamDetails = {
+    proposals,
+    challenges: review.challenges,
+    verdicts: review.verdicts,
+    approvedKeys: review.verdicts
+      .filter((verdict) => verdict.approve)
+      .map((verdict) => verdict.key),
+  };
 
   const byId = new Map(events.map((e) => [e.id, e]));
   const consumed = new Set<string>(); // ids already merged/superseded/archived this run
@@ -505,6 +824,7 @@ export async function runDreamCycle(input: {
       (event) =>
         !consumed.has(event.id) &&
         event.status === "RESOLVED" &&
+        event.retentionTier !== "PERMANENT" &&
         event.dreamedAt === null &&
         event.promotedFromCandidate === null &&
         (event.captureSource === "AGENT_SESSION" ||
@@ -523,9 +843,7 @@ export async function runDreamCycle(input: {
   }
 
   // --- 5. Age-based archive -------------------------------------------------
-  const archiveCutoff = new Date(
-    Date.now() - ARCHIVE_MIN_AGE_DAYS * 24 * 3600 * 1000
-  );
+  const recentlyRecalledCutoff = new Date(Date.now() - 14 * 24 * 3600 * 1000);
   const archivable = (ops.archive_ids ?? [])
     .map((id) => byId.get(id))
     .filter((e): e is StoredEvent => Boolean(e))
@@ -533,7 +851,16 @@ export async function runDreamCycle(input: {
       (e) =>
         !consumed.has(e.id) &&
         e.status === "RESOLVED" &&
-        (e.resolvedAt ?? e.createdAt) < archiveCutoff
+        e.retentionTier !== "PERMANENT" &&
+        (e.resolvedAt ?? e.createdAt) <
+          new Date(
+            Date.now() -
+              (e.retentionTier === "SHORT" ? 7 : ARCHIVE_MIN_AGE_DAYS) *
+                24 *
+                3600 *
+                1000
+          ) &&
+        (!e.lastRecalledAt || e.lastRecalledAt < recentlyRecalledCutoff)
     );
   if (archivable.length > 0) {
     await prisma.memoryEvent.updateMany({
@@ -561,6 +888,14 @@ export async function runDreamCycle(input: {
     data: { dreamedAt: new Date() },
   });
 
-  await logDreamRun(report, startedAt);
+  await logDreamRun(report, startedAt, runId, {
+    ...dreamDetails,
+    applied: {
+      merged: report.merged,
+      superseded: report.superseded,
+      insights: report.insights,
+      archived: report.archived,
+    },
+  });
   return report;
 }

@@ -20,6 +20,7 @@ import {
   claimResolutionSuggestion,
   type ClaimedSuggestion,
 } from "@/lib/memory/suggest";
+import { recordMemoryModelUsage } from "@/lib/memory/model-usage";
 
 /**
  * Ambient memory capture from coding-agent sessions (Cursor stop hook →
@@ -215,7 +216,10 @@ function formatExistingEvents(events: MemoryEventRow[]): string {
 async function judgeSession(input: {
   transcript: string;
   documents: AgentSessionDocument[];
+  workspaceId: string;
+  userId: string;
   workspaceName: string;
+  conversationId: string;
   username: string;
   tasks: { shortId: number; title: string; status: string }[];
   existingEvents: MemoryEventRow[];
@@ -256,6 +260,7 @@ async function judgeSession(input: {
       : "(none)",
   ].join("\n");
 
+  const startedAt = Date.now();
   const res = await anthropic.messages.create({
     model: CAPTURE_MODEL,
     max_tokens: 1200,
@@ -264,6 +269,17 @@ async function judgeSession(input: {
     tools: [SESSION_TOOL],
     tool_choice: { type: "tool", name: "record_session_memory" },
   });
+  await recordMemoryModelUsage({
+    workspaceId: input.workspaceId,
+    userId: input.userId,
+    stage: "agent-extractor",
+    model: CAPTURE_MODEL,
+    response: res,
+    durationMs: Date.now() - startedAt,
+    conversationId: input.conversationId,
+  }).catch((error) =>
+    console.error("[agent-capture] usage record failed:", error)
+  );
 
   const toolUse = res.content.find(
     (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
@@ -350,6 +366,10 @@ export async function captureFromAgentSession(input: {
         summary: true,
         reasoning: true,
         tags: true,
+        importance: true,
+        retentionTier: true,
+        recallCount: true,
+        lastRecalledAt: true,
         createdAt: true,
         resolvedAt: true,
         supersededByEventId: true,
@@ -372,7 +392,10 @@ export async function captureFromAgentSession(input: {
   const analysis = await judgeSession({
     transcript,
     documents,
+    workspaceId: input.workspaceId,
+    userId: input.userId,
     workspaceName: input.workspaceName,
+    conversationId: input.conversationId,
     username: user.username,
     tasks,
     existingEvents,
@@ -447,6 +470,9 @@ export async function captureFromAgentSession(input: {
   }
 
   const critiques = await critiqueCandidates({
+    workspaceId: input.workspaceId,
+    userId: input.userId,
+    conversationId: input.conversationId,
     candidates: extracted,
     transcript,
     documents,

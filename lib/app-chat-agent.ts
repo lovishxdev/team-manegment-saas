@@ -136,6 +136,12 @@ export async function runAppChat(input: {
     systemPrompt: buildAppChatSystemPrompt(session),
     tools: webChatAnthropicTools(),
     messages: anthropicMessages,
+    usage: {
+      feature: "app-chat",
+      operation: "agent-loop",
+      workspaceId: session.workspaceId ?? undefined,
+      userId: input.userId,
+    },
     runTool: async (name, toolInput) => {
       const result = await dispatchWebChatTool(
         name,

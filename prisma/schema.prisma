@@ -66,6 +66,12 @@ enum MemoryFeedbackReason {
   DUPLICATE
 }
 
+enum MemoryRetentionTier {
+  SHORT
+  LONG
+  PERMANENT
+}
+
 enum PostKind {
   DISCUSSION
   QUESTION
@@ -136,6 +142,7 @@ model User {
   memoryDocuments MemoryDocument[]     @relation("AuthoredMemoryDocuments")
   memoryCandidates MemoryCandidate[]   @relation("AuthoredMemoryCandidates")
   memoryFeedback MemoryFeedback[]
+  aiUsageRecords AIUsageRecord[]
   whatsappMessages WhatsAppMessage[]
   whatsappPendingActions WhatsAppPendingAction[]
   whatsappChatState WhatsAppChatState?
@@ -173,6 +180,7 @@ model Workspace {
   memoryDocumentReviews MemoryDocumentReview[]
   memoryCandidates MemoryCandidate[]
   memoryFeedback MemoryFeedback[]
+  aiUsageRecords AIUsageRecord[]
   memoryDreamRuns MemoryDreamRun[]
   agentSeats      AgentSeat[]
   lastActiveUsers User[]                @relation("LastActiveWorkspace")
@@ -372,6 +380,12 @@ model MemoryEvent {
   /// lightweight entity nodes: grouping/filtering across tasks without a
   /// knowledge-graph store.
   tags        String[]          @default([])
+  /// Lifecycle signals: critic-seeded importance, retention tier, and actual
+  /// utility from retrieval. Permanent is never age-decayed automatically.
+  importance  Float             @default(0.65)
+  retentionTier MemoryRetentionTier @default(LONG)
+  recallCount Int               @default(0)
+  lastRecalledAt DateTime?
   authorId    String?           @db.Uuid
 
   resolvedAt         DateTime?
@@ -549,12 +563,50 @@ model MemoryDreamRun {
   /// Why nothing ran ("only 3 events (min 8)"), null for full runs.
   skipped     String?
   durationMs  Int      @default(0)
+  /// Proposals, adversary challenges, judge verdicts, and applied operations.
+  details     Json?
   createdAt   DateTime @default(now())
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, createdAt])
   @@index([createdAt])
+}
+
+/// Actual provider token usage plus estimated USD cost for each memory-stage
+/// model call (extractor, critic, selectors, Dream proposer/adversary/judge).
+model AIUsageRecord {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String?  @db.Uuid
+  userId      String?  @db.Uuid
+  feature     String   @default("memory")
+  operation   String   @map("stage")
+  provider    String   @default("anthropic")
+  model       String
+  inputTokens Int
+  outputTokens Int
+  cacheReadTokens Int  @default(0)
+  cacheCreationTokens Int @default(0)
+  estimatedCostUsd Float @default(0)
+  durationMs  Int
+  conversationId String?
+  runId       String?
+  status      String   @default("SUCCESS")
+  errorCode   String?
+  /// Conservative counterfactual: raw/history tokens minus delivered
+  /// context tokens. Zero when no defensible baseline exists.
+  estimatedTokensSaved Int @default(0)
+  createdAt   DateTime @default(now())
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@index([userId, createdAt])
+  @@index([feature, createdAt])
+  @@index([operation, createdAt])
+  @@index([runId])
+  @@map("MemoryModelUsage")
 }
 
 /// Day-bucketed counters for the memory pipeline (capture funnel, recall

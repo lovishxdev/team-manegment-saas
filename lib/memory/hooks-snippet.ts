@@ -273,6 +273,7 @@ async function main() {
       conversation_id: detected.conversationId,
       transcript: delta,
       documents: markdown.documents,
+      synthetic: !detected.canAsk,
     }),
     // The judge runs inline server-side; give it room.
     signal: AbortSignal.timeout(45000),

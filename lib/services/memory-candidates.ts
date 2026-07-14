@@ -239,6 +239,12 @@ export async function promoteMemoryCandidate(input: {
       ? "AGENT_DOCUMENT"
       : "AGENT_SESSION",
     supersedesEventId: candidate.supersedesEvent?.id,
+    importance: Math.max(0.5, candidate.durabilityScore / 100),
+    retentionTier:
+      candidate.authority !== "AGENT_INFERRED" &&
+      candidate.durabilityScore >= 90
+        ? "PERMANENT"
+        : "LONG",
   });
   await prisma.memoryCandidate.update({
     where: { id: candidate.id },

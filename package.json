@@ -17,6 +17,7 @@
     "backfill:usernames": "tsx scripts/backfill-usernames.ts",
     "backfill:task-embeddings": "tsx scripts/backfill-task-embeddings.ts",
     "backfill:memory": "tsx scripts/backfill-memory-capture.ts",
+    "backfill:memory-embeddings": "tsx scripts/backfill-memory-embeddings.ts",
     "dream:memory": "tsx scripts/dream-memory.ts",
     "test:memory": "tsx scripts/test-memory-layer.ts",
     "seed:task-updates": "tsx scripts/seed-task-update-stress-test.ts",

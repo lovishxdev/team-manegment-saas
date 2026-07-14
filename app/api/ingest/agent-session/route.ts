@@ -14,6 +14,7 @@ import { buildWorkspaceBrief } from "@/lib/memory/brief";
 import type { ClaimedSuggestion } from "@/lib/memory/suggest";
 import { bumpMemoryMetric } from "@/lib/memory/metrics";
 import { claimAgentSeat } from "@/lib/billing/entitlements";
+import { recordAIUsageRaw } from "@/lib/memory/model-usage";
 import {
   MAX_MEMORY_DOCUMENTS,
   MAX_MEMORY_DOCUMENT_CHARS,
@@ -167,6 +168,7 @@ export async function POST(req: Request) {
     transcript?: unknown;
     workspace?: unknown;
     documents?: unknown;
+    synthetic?: unknown;
   };
   try {
     body = await req.json();
@@ -176,6 +178,7 @@ export async function POST(req: Request) {
 
   const transcript =
     typeof body.transcript === "string" ? body.transcript : "";
+  const synthetic = body.synthetic === true;
   const submittedDocuments = parseDocuments(body.documents);
   if (transcript.length > MAX_BODY_CHARS) {
     return NextResponse.json({ error: "transcript too large" }, { status: 413 });
@@ -223,7 +226,11 @@ export async function POST(req: Request) {
 
   const modelDocumentDecisions =
     submittedDocuments.length > 0
-      ? await selectMemoryDocuments(submittedDocuments)
+      ? await selectMemoryDocuments(submittedDocuments, {
+          workspaceId: workspace.workspaceId,
+          userId: credential.userId,
+          conversationId,
+        })
       : [];
   const storedOverrides =
     modelDocumentDecisions.length > 0
@@ -301,14 +308,16 @@ export async function POST(req: Request) {
   let capture: SessionCaptureResult = { suggestions: [] };
   if (
     memoryCaptureEnabled() &&
-    (transcript.trim().length > 0 || documents.length > 0)
+    ((!synthetic && transcript.trim().length > 0) || documents.length > 0)
   ) {
     capture = await captureFromAgentSession({
       workspaceId: workspace.workspaceId,
       workspaceName: workspace.workspaceName,
       userId: credential.userId,
       conversationId,
-      transcript: transcript.slice(-MAX_AGENT_TRANSCRIPT_CHARS),
+      transcript: synthetic
+        ? ""
+        : transcript.slice(-MAX_AGENT_TRANSCRIPT_CHARS),
       documents,
     }).catch((err) => {
       console.error("[agent-session] capture failed:", err);
@@ -325,6 +334,38 @@ export async function POST(req: Request) {
     bumpMemoryMetric(workspace.workspaceId, "brief_built", {
       sum: brief.length,
     });
+    const activeMemory = await prisma.memoryEvent.findMany({
+      where: {
+        workspaceId: workspace.workspaceId,
+        archivedAt: null,
+        supersededByEventId: null,
+      },
+      take: 400,
+      select: { summary: true, reasoning: true },
+    });
+    const baselineTokens = Math.ceil(
+      activeMemory.reduce(
+        (sum, event) =>
+          sum + event.summary.length + (event.reasoning?.length ?? 0),
+        0
+      ) / 4
+    );
+    const deliveredTokens = Math.ceil(brief.length / 4);
+    await recordAIUsageRaw({
+      workspaceId: workspace.workspaceId,
+      userId: credential.userId,
+      feature: "context-delivery",
+      operation: "ambient-brief",
+      provider: "internal",
+      model: "deterministic-brief",
+      inputTokens: 0,
+      outputTokens: deliveredTokens,
+      estimatedTokensSaved: Math.max(0, baselineTokens - deliveredTokens),
+      durationMs: 0,
+      conversationId,
+    }).catch((error) =>
+      console.error("[agent-session] context value record failed:", error)
+    );
   }
 
   return NextResponse.json({

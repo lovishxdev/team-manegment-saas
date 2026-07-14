@@ -1,6 +1,7 @@
 import { z } from "zod";
 import Anthropic from "@anthropic-ai/sdk";
 import { getAnthropicApiKey } from "@/lib/anthropic-env";
+import { recordAnthropicAIUsage } from "@/lib/memory/model-usage";
 
 /**
  * Generic tool-input salvage for LLM callers.
@@ -163,6 +164,7 @@ async function repairArgumentsWithModel(
       timeout: REPAIR_TIMEOUT_MS,
       maxRetries: 0,
     });
+    const startedAt = Date.now();
     const res = await anthropic.messages.create({
       model: REPAIR_MODEL,
       max_tokens: 500,
@@ -187,6 +189,15 @@ async function repairArgumentsWithModel(
       tools: [REPAIR_TOOL],
       tool_choice: { type: "tool", name: "repair_arguments" },
     });
+    await recordAnthropicAIUsage({
+      feature: "tool-repair",
+      operation: "input-salvage",
+      model: REPAIR_MODEL,
+      response: res,
+      durationMs: Date.now() - startedAt,
+    }).catch((error) =>
+      console.error("[input-salvage] usage record failed:", error)
+    );
 
     const toolUse = res.content.find(
       (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"

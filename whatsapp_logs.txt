@@ -1,66 +1,20 @@
-2026-07-03 15:33:56.393 [info] [whatsapp-queue] processing wamid.HBgMOTE2MzY3MDc5NDQzFQIAEhggQUM5QUQ1MTQxNzc5RUJGNTY4MkUyMTFFNjdENEIzRUIA for 916367079443
-2026-07-03 15:34:05.116 [info] [orchestrator] judge approve []
-2026-07-03 15:34:05.116 [info] [whatsapp-webhook] orchestrator { route: 'sonnet', intent: 'ask_task', judge: 'approve' }
-2026-07-03 15:33:52.393 [info] [whatsapp-webhook] 2026-07-03T15:33:52.392Z POST received { bodyBytes: '588', phoneNumberIdEnv: '1288532941001543' }
-2026-07-03 15:33:52.394 [info] [whatsapp-webhook] 2026-07-03T15:33:52.393Z POST payload {
-  object: 'whatsapp_business_account',
-  field: 'messages',
-  phoneNumberId: '1288532941001543',
-  displayPhone: '911169270230',
-  messageCount: 1,
-  statusCount: 0,
-  from: '916367079443',
-  messageType: 'text',
-  messageId: 'wamid.HBgMOTE2MzY3MDc5NDQzFQIAEhggQUM5QUQ1MTQxNzc5RUJGNTY4MkUyMTFFNjdENEIzRUIA',
-  textPreview: "What's going on with the stress test"
+{
+  "query": "Compare boop-agent memory architecture reference with Euclis and identify reusable memory management mechanisms",
+  "workspace": "Euclis"
 }
-2026-07-03 15:33:52.394 [info] [whatsapp-webhook] 2026-07-03T15:33:52.393Z inbound message {
-  kind: 'text',
-  from: '916367079443',
-  messageId: 'wamid.HBgMOTE2MzY3MDc5NDQzFQIAEhggQUM5QUQ1MTQxNzc5RUJGNTY4MkUyMTFFNjdENEIzRUIA',
-  preview: "What's going on with the stress test"
-}
-2026-07-03 15:33:52.956 [info] [whatsapp-webhook] 2026-07-03T15:33:52.955Z queued { queueDepth: 1, queueMode: 'queued' }
-2026-07-03 15:33:56.797 [info] [whatsapp-webhook] 2026-07-03T15:33:56.797Z user matched {
-  from: '916367079443',
-  userId: 'd2af044b-5216-4838-b8c7-9c434fbbae98'
-}
-2026-07-03 15:34:07.686 [info] [whatsapp-webhook] 2026-07-03T15:34:07.684Z POST ack { queueDepth: 1, queueMode: 'queued' }
-2026-07-03 15:33:59.636 [info] [orchestrator] triage {
-  model: 'google/gemini-2.5-flash',
-  intent: 'ask_task',
-  complexity: 'complex',
-  confidence: 1
-}
-2026-07-03 15:33:59.636 [info] [orchestrator] route sonnet ask_task 1
 
-2026-07-03 15:34:06.725 [info] [whatsapp-webhook] 2026-07-03T15:34:06.722Z POST received { bodyBytes: '607', phoneNumberIdEnv: '1288532941001543' }
-2026-07-03 15:34:06.726 [info] [whatsapp-webhook] 2026-07-03T15:34:06.722Z POST payload {
-  object: 'whatsapp_business_account',
-  field: 'messages',
-  phoneNumberId: '1288532941001543',
-  displayPhone: '911169270230',
-  messageCount: 0,
-  statusCount: 1,
-  from: null,
-  messageType: null,
-  messageId: null,
-  textPreview: null
-}
-2026-07-03 15:34:06.726 [info] [whatsapp-webhook] 2026-07-03T15:34:06.722Z POST ignored — no inbound user message (status update or unsupported type)
+Project context for: Compare boop-agent memory architecture reference with Euclis and identify reusable memory management mechanisms
 
+No open blockers.
 
-2026-07-03 15:34:07.320 [info] [whatsapp-webhook] 2026-07-03T15:34:07.320Z POST received { bodyBytes: '607', phoneNumberIdEnv: '1288532941001543' }
-2026-07-03 15:34:07.321 [info] [whatsapp-webhook] 2026-07-03T15:34:07.320Z POST payload {
-  object: 'whatsapp_business_account',
-  field: 'messages',
-  phoneNumberId: '1288532941001543',
-  displayPhone: '911169270230',
-  messageCount: 0,
-  statusCount: 1,
-  from: null,
-  messageType: null,
-  messageId: null,
-  textPreview: null
-}
-2026-07-03 15:34:07.321 [info] [whatsapp-webhook] 2026-07-03T15:34:07.320Z POST ignored — no inbound user message (status update or unsupported type)
+Relevant recorded memory:
+- [DECISION] Euclis memory uses hybrid store with MemoryDocument persisting bounded opt-in Markdown snapshots (12 changed files, 8k each max) linked to MemoryEvent canonical structured state; canonical tags boost retrieval and tag aliases normalize vocabulary.
+  (2026-07-11 · #memory #markdown #retrieval #architecture · id: 033cb9d5-0c2a-4043-b863-43514c6b777f)
+- [DECISION] Agent-session memory capture uses local hook pipeline reading transcript and changed Markdown, POSTing delta to ingest endpoint; Haiku classifier produces MemoryEvents with zero mid-session interception; agent infers PROJECT-scope candidates that remain hidden pending leader review with maximum one auto-promoted per run.
+  (2026-07-12 · #memory-architecture #data-model #system-design #capture-pipelines · source: docs/memory-architecture.md · id: d3682c7c-8706-45e7-a3fe-7a808ba3b695)
+- [DECISION] Memory architecture uses MemoryCandidate intermediate stage before MemoryEvent promotion with source-authority rules (human explicit > task statement > agent-inferred), independent critic judging evidence quality, and deterministic policies preventing model errors from reaching canonical memory.
+  (2026-07-12 · #memory #architecture #retrieval #agent-context · id: bf9629d8-6653-4316-81a5-b0081d3f1a83)
+- [DECISION] Deterministic deduplication guard compares summary token overlap (Jaccard similarity) against existing events and events created in last 5 minutes before committing; catches both same-wording and rephrased duplicates without LLM compliance risk.
+  (2026-07-08 · #memory #capture #deduplication #concurrency · id: f30bbf21-7d15-400b-a989-28b29654b64f)
+
+While working: post add_task_update after meaningful progress; record_decision when a decision is made; resolve_blocker (after user confirmation) when a blocker clears.

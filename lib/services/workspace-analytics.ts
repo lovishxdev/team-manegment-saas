@@ -52,7 +52,23 @@ export type WorkspaceMemoryAnalytics = {
     insights30d: number;
     archived30d: number;
     lastDream:
-      | { at: string; merged: number; superseded: number; insights: number }
+      | {
+          at: string;
+          merged: number;
+          superseded: number;
+          insights: number;
+          proposals: number;
+          approved: number;
+          rejected: number;
+          audit: {
+            key: string;
+            type: string;
+            approved: boolean;
+            rationale: string;
+            objection: string | null;
+            severity: string | null;
+          }[];
+        }
       | null;
   };
   contributors: LabelCount[];
@@ -63,6 +79,7 @@ export type WorkspaceMemoryAnalytics = {
     briefs30d: number;
     briefAvgChars: number;
     agentSeats: number;
+    tokensSaved30d: number;
   };
   documentReviews: {
     accepted30d: number;
@@ -148,6 +165,7 @@ export async function getWorkspaceMemoryAnalytics(
     documentReviewCounts,
     rejectedDocuments,
     pendingCandidateCount,
+    contextSavings,
   ] = await Promise.all([
     prisma.memoryEvent.groupBy({
       by: ["kind"],
@@ -214,6 +232,7 @@ export async function getWorkspaceMemoryAnalytics(
         merged: true,
         superseded: true,
         insights: true,
+        details: true,
       },
     }),
     prisma.memoryEvent.groupBy({
@@ -245,6 +264,10 @@ export async function getWorkspaceMemoryAnalytics(
     }),
     prisma.memoryCandidate.count({
       where: { workspaceId, status: "PENDING" },
+    }),
+    prisma.aIUsageRecord.aggregate({
+      where: { workspaceId, createdAt: { gte: since30d } },
+      _sum: { estimatedTokensSaved: true },
     }),
   ]);
 
@@ -330,6 +353,24 @@ export async function getWorkspaceMemoryAnalytics(
   const reviewedTotal = reviewed + unreviewed;
   const reviewedPct =
     reviewedTotal > 0 ? Math.round((reviewed / reviewedTotal) * 100) : 100;
+  const lastDreamDetails =
+    lastDream?.details &&
+    typeof lastDream.details === "object" &&
+    !Array.isArray(lastDream.details)
+      ? (lastDream.details as {
+          proposals?: { key?: string; type?: string }[];
+          challenges?: {
+            key?: string;
+            objection?: string | null;
+            severity?: string;
+          }[];
+          verdicts?: {
+            key?: string;
+            approve?: boolean;
+            rationale?: string;
+          }[];
+        })
+      : null;
 
   const briefs30d = metric("brief_built");
 
@@ -375,6 +416,34 @@ export async function getWorkspaceMemoryAnalytics(
             merged: lastDream.merged,
             superseded: lastDream.superseded,
             insights: lastDream.insights,
+            proposals: lastDreamDetails?.proposals?.length ?? 0,
+            approved:
+              lastDreamDetails?.verdicts?.filter(
+                (verdict) => verdict.approve
+              ).length ?? 0,
+            rejected:
+              lastDreamDetails?.verdicts?.filter(
+                (verdict) => !verdict.approve
+              ).length ?? 0,
+            audit: (lastDreamDetails?.proposals ?? [])
+              .map((proposal) => {
+                const key = proposal.key ?? "unknown";
+                const challenge = lastDreamDetails?.challenges?.find(
+                  (item) => item.key === key
+                );
+                const verdict = lastDreamDetails?.verdicts?.find(
+                  (item) => item.key === key
+                );
+                return {
+                  key,
+                  type: proposal.type ?? "operation",
+                  approved: verdict?.approve === true,
+                  rationale: verdict?.rationale ?? "No judge rationale.",
+                  objection: challenge?.objection ?? null,
+                  severity: challenge?.severity ?? null,
+                };
+              })
+              .slice(0, 20),
           }
         : null,
     },
@@ -386,6 +455,7 @@ export async function getWorkspaceMemoryAnalytics(
       briefs30d,
       briefAvgChars: briefs30d > 0 ? Math.round(metricSum("brief_built") / briefs30d) : 0,
       agentSeats,
+      tokensSaved30d: contextSavings._sum.estimatedTokensSaved ?? 0,
     },
     documentReviews: {
       accepted30d:
