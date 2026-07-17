@@ -105,15 +105,15 @@ import {
   getPendingRemoveMember,
   getPendingDeleteAsset,
   peekContinueMessage,
-  stageContinueMessage,
 } from "@/lib/whatsapp-pending";
 import {
   activateWorkspace,
+  ensurePinnedWorkspace,
   formatNoWorkspaceWhatsAppReply,
   listWorkspacePickerOptions,
   parseWorkspacePickId,
+  messageSkipsWorkspacePicker,
   sendWorkspacePicker,
-  shouldPromptWorkspacePick,
   tryActivateWorkspaceFromText,
   userHasAnyWorkspace,
 } from "@/lib/whatsapp-workspace";
@@ -817,15 +817,25 @@ async function handleInteractiveMessage(
     return;
   }
 
-  // List row without a parseable ws_pick id — let the agent resolve the title.
-  if (!action && title && (await shouldPromptWorkspacePick(userId))) {
+  // List row without a parseable ws_pick id — pin by title and continue.
+  if (!action && title) {
+    const activated = await tryActivateWorkspaceFromText(userId, title).catch(
+      () => null
+    );
     const pending = await peekContinueMessage(from, userId);
     if (pending) {
       await consumeContinueMessage(from, userId);
       await handleMessage(from, pending, undefined, false, undefined, {
+        skipWorkspacePicker: true,
         stagedIntent: pending,
         workspacePickReply: title,
       });
+      return;
+    }
+    if (activated) {
+      const reply = `Switched to *${activated.workspaceName}*. What would you like to do?`;
+      await sendWhatsAppText(from, reply);
+      await recordExchange(userId, userText, reply).catch(() => {});
       return;
     }
   }
@@ -1160,44 +1170,37 @@ async function handleMessage(
   let stagedIntent = opts?.stagedIntent;
   let workspacePickReply = opts?.workspacePickReply;
 
-  // If the message already names a workspace in plain language
-  // ("add this to euclis tasks"), pin it and skip the picker.
-  if (
-    !opts?.skipWorkspacePicker &&
-    hasWorkspace &&
-    (await shouldPromptWorkspacePick(userId))
-  ) {
-    const fromMessage = await tryActivateWorkspaceFromText(userId, text).catch(
-      () => null
-    );
-    if (fromMessage) {
-      opts = { ...opts, skipWorkspacePicker: true };
-    }
+  // Prefer a workspace named in this message ("add to euclis tasks").
+  if (hasWorkspace && !opts?.skipWorkspacePicker) {
+    await tryActivateWorkspaceFromText(userId, text).catch(() => null);
   }
 
-  if (
-    !opts?.skipWorkspacePicker &&
-    hasWorkspace &&
-    (await shouldPromptWorkspacePick(userId))
-  ) {
-    if (!stagedIntent && !workspacePickReply) {
-      const pending = await peekContinueMessage(from, userId);
-      if (!pending) {
-        const options = await listWorkspacePickerOptions(userId);
-        await stageContinueMessage(from, userId, text);
-        await sendWorkspacePicker(
-          from,
-          options.map((m) => m.workspace),
-          "Before I continue, which workspace should this apply to?"
-        );
-        await recordExchange(userId, text, "[workspace picker shown]").catch(
-          () => {}
-        );
+  // Durable pin: never block with "which workspace?" — auto-pin last/cached/
+  // most-recent membership. Create/list/switch don't need a pin first.
+  if (hasWorkspace && !messageSkipsWorkspacePicker(text)) {
+    await ensurePinnedWorkspace(userId).catch(() => null);
+  }
+
+  // Drain any leftover staged message from the old picker flow.
+  if (!stagedIntent && !workspacePickReply) {
+    const pending = await peekContinueMessage(from, userId);
+    if (pending) {
+      const activated = await tryActivateWorkspaceFromText(userId, text).catch(
+        () => null
+      );
+      if (activated) {
+        stagedIntent = pending;
+        workspacePickReply = text;
+        await consumeContinueMessage(from, userId);
+      } else {
+        await consumeContinueMessage(from, userId).catch(() => {});
+        // Re-run the orphaned request now that a pin exists.
+        await ensurePinnedWorkspace(userId).catch(() => null);
+        await handleMessage(from, pending, progress, queued, _inboundMessageId, {
+          skipWorkspacePicker: true,
+        });
         return;
       }
-      stagedIntent = pending;
-      workspacePickReply = text;
-      await consumeContinueMessage(from, userId);
     }
   }
 
@@ -1205,10 +1208,7 @@ async function handleMessage(
     await tryActivateWorkspaceFromText(userId, workspacePickReply).catch(() => {});
   }
 
-  const needsMultiWorkspacePrompt =
-    hasWorkspace &&
-    (await shouldPromptWorkspacePick(userId)) &&
-    Boolean(stagedIntent || workspacePickReply);
+  const needsMultiWorkspacePrompt = Boolean(stagedIntent && workspacePickReply);
 
   const multiWorkspaceNames = needsMultiWorkspacePrompt
     ? (await listWorkspacePickerOptions(userId)).map((m) => m.workspace.name)
@@ -1220,16 +1220,6 @@ async function handleMessage(
     getRecentConversation(userId),
     loadWhatsAppCache(userId),
   ]);
-
-  // Heal a missing User.lastActiveWorkspaceId from the durable WhatsApp cache
-  // so the picker doesn't reappear after the session cache TTL for tasks.
-  if (
-    hasWorkspace &&
-    whatsappCache?.workspaceId &&
-    (await shouldPromptWorkspacePick(userId))
-  ) {
-    await activateWorkspace(userId, whatsappCache.workspaceId).catch(() => {});
-  }
 
   const activeCtx = hasWorkspace
     ? await resolveUserWorkspaceContext(userId)

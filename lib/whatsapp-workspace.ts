@@ -37,7 +37,8 @@ export function parseWorkspacePickId(buttonId: string): string | null {
   return null;
 }
 
-/** Multiple memberships and no pinned active workspace — ask before acting. */
+/** Multiple memberships and no pinned active workspace — ask before acting.
+ * @deprecated Prefer ensurePinnedWorkspace — auto-pins instead of blocking. */
 export async function shouldPromptWorkspacePick(
   userId: string
 ): Promise<boolean> {
@@ -49,6 +50,79 @@ export async function shouldPromptWorkspacePick(
     }),
   ]);
   return count > 1 && !user?.lastActiveWorkspaceId;
+}
+
+/**
+ * Guarantee the user has a durable lastActiveWorkspaceId.
+ * Never blocks with a picker — pins from (1) preferred id, (2) existing pin,
+ * (3) WhatsApp cache, (4) most recently joined membership.
+ */
+export async function ensurePinnedWorkspace(
+  userId: string,
+  preferredWorkspaceId?: string | null
+): Promise<{ workspaceId: string; workspaceName: string } | null> {
+  const memberships = await listWorkspacePickerOptions(userId);
+  if (memberships.length === 0) return null;
+
+  const stillMember = (id: string | null | undefined) =>
+    Boolean(id && memberships.some((m) => m.workspace.id === id));
+
+  if (preferredWorkspaceId && stillMember(preferredWorkspaceId)) {
+    return activateWorkspace(userId, preferredWorkspaceId);
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { lastActiveWorkspaceId: true },
+  });
+  if (stillMember(user?.lastActiveWorkspaceId)) {
+    const hit = memberships.find(
+      (m) => m.workspace.id === user!.lastActiveWorkspaceId
+    )!;
+    return {
+      workspaceId: hit.workspace.id,
+      workspaceName: hit.workspace.name,
+    };
+  }
+
+  const { loadWhatsAppCache } = await import("@/lib/whatsapp-cache");
+  const cache = await loadWhatsAppCache(userId);
+  if (cache?.workspaceId && stillMember(cache.workspaceId)) {
+    return activateWorkspace(userId, cache.workspaceId);
+  }
+
+  // Persist the fallback so the next message never "forgets" again.
+  return activateWorkspace(userId, memberships[0].workspace.id);
+}
+
+/**
+ * Messages that don't need an active workspace — creating/listing/switching
+ * workspaces. Never show the "which workspace?" picker for these.
+ */
+export function messageSkipsWorkspacePicker(text: string): boolean {
+  const t = cleanPickToken(text).toLowerCase();
+  if (!t) return false;
+
+  // "create workspace TripSplit", "make a new workspace called X", "start a board named Y"
+  if (
+    /\b(create|make|start|open|spin\s*up)\b[\s\S]{0,40}\b(workspace|board|project)\b/i.test(
+      t
+    ) ||
+    /\b(new|another)\s+(workspace|board|project)\b/i.test(t)
+  ) {
+    return true;
+  }
+
+  // "list my workspaces", "which workspaces am I in", "switch to Euclis", "use workspace X"
+  if (
+    /\b(list|show|which)\b[\s\S]{0,24}\bworkspaces?\b/i.test(t) ||
+    /\b(switch|change)\b[\s\S]{0,24}\b(workspace|board|project)\b/i.test(t) ||
+    /\b(switch|change)\s+to\b/i.test(t)
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 export async function listWorkspacePickerOptions(userId: string) {

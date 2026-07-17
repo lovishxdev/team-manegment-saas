@@ -5,6 +5,7 @@
 import {
   findWorkspaceMentionedInMessage,
   matchWorkspaceByPickReply,
+  messageSkipsWorkspacePicker,
   normalizeWorkspacePickReply,
   parseWorkspacePickId,
 } from "../lib/whatsapp-workspace";
@@ -84,6 +85,27 @@ assert(
 assert(
   "does not match partial word",
   findWorkspaceMentionedInMessage(workspaces, "euclisian roadmap") === null
+);
+
+assert(
+  "create workspace skips picker",
+  messageSkipsWorkspacePicker("Create workspace TripSplit")
+);
+assert(
+  "make a new workspace skips picker",
+  messageSkipsWorkspacePicker("make a new workspace called Marketing")
+);
+assert(
+  "add task does not skip picker",
+  !messageSkipsWorkspacePicker("add a task to fix login")
+);
+assert(
+  "list workspaces skips picker",
+  messageSkipsWorkspacePicker("list my workspaces")
+);
+assert(
+  "switch workspace skips picker",
+  messageSkipsWorkspacePicker("switch to Euclis")
 );
 
 console.log(failed === 0 ? "\nAll workspace-pick checks passed." : `\n${failed} FAILURES`);
