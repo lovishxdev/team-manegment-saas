@@ -168,7 +168,10 @@ function ConnectorDetail({
 
   if (id === "claude-code") {
     const origin = data.mcpConnectorUrl.replace(/\/api\/mcp\/?$/, "");
-    const mcpCommand = `claude mcp add --transport http euclis ${data.mcpConnectorUrl}`;
+    // Claude Code's `mcp add` only writes local config — it does not start
+    // OAuth. `mcp login` opens the browser consent (workspace pick). Chain
+    // them so users get both steps from one copy.
+    const mcpCommand = `claude mcp add --transport http euclis ${data.mcpConnectorUrl} && claude mcp login euclis`;
     const hooksCommand = `curl -fsSL "${origin}/api/agent-hooks?agent=claude-code" | bash -s -- ${data.user.mcpToken}`;
     const claudeCodeConnections = oauthFor(
       data.mcpOAuthConnections,
@@ -177,9 +180,17 @@ function ConnectorDetail({
     return (
       <div className="space-y-3 border-t border-line bg-paper-deep/20 px-4 py-4 sm:px-5">
         <p className="text-sm text-ink-soft">
-          Add Euclis as an MCP server (sign in when Claude Code prompts):
+          Run this in your terminal. Claude Code registers the server, then
+          opens a browser so you can sign in and pick a workspace:
         </p>
         <CopyField value={mcpCommand} secret={false} />
+        <p className="text-xs text-ink-faint">
+          Already added but stuck on &quot;Needs authentication&quot;? Run{" "}
+          <code className="rounded bg-paper-deep px-1 py-0.5 font-mono text-[11px]">
+            claude mcp login euclis
+          </code>{" "}
+          alone.
+        </p>
         {claudeCodeConnections.length > 0 ? (
           <McpConnectionList connections={claudeCodeConnections} />
         ) : null}
