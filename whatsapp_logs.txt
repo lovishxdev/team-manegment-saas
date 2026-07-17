@@ -18,3 +18,10 @@ Relevant recorded memory:
   (2026-07-08 · #memory #capture #deduplication #concurrency · id: f30bbf21-7d15-400b-a989-28b29654b64f)
 
 While working: post add_task_update after meaningful progress; record_decision when a decision is made; resolve_blocker (after user confirmation) when a blocker clears.
+
+
+shubham
+Create workspace TripSplit
+Invite shubham to TripSplit
+For version1 use equal-split for v1, custom later.
+Continue TripSplit, check project context first.

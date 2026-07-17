@@ -49,7 +49,11 @@ export function McpConnectionList({
               <span className="font-medium text-ink">{row.clientName}</span>
               {" · "}
               {row.scope} scope
-              {row.workspaceId ? " · pinned workspace" : " · all workspaces"}
+              {row.workspaceName
+                ? ` · ${row.workspaceName}`
+                : row.workspaceId
+                  ? " · pinned workspace"
+                  : " · all workspaces"}
               {" · since "}
               {row.connectedAt.slice(0, 10)}
             </span>

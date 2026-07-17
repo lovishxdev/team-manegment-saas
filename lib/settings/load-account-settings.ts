@@ -9,6 +9,8 @@ export type McpOAuthConnection = {
   clientName: string;
   scope: string;
   workspaceId: string | null;
+  /** Display name when the token is confined to one workspace. */
+  workspaceName: string | null;
   /** ISO date of the most recent token for this client. */
   connectedAt: string;
 };
@@ -57,6 +59,21 @@ export async function loadAccountSettingsData(): Promise<AccountSettingsData> {
     include: { client: { select: { id: true, name: true } } },
     orderBy: { createdAt: "desc" },
   });
+  const pinnedWorkspaceIds = [
+    ...new Set(
+      activeTokens
+        .map((token) => token.workspaceId)
+        .filter((id): id is string => Boolean(id))
+    ),
+  ];
+  const workspaceNames = Object.fromEntries(
+    (
+      await prisma.workspace.findMany({
+        where: { id: { in: pinnedWorkspaceIds } },
+        select: { id: true, name: true },
+      })
+    ).map((workspace) => [workspace.id, workspace.name])
+  );
   const byClient = new Map<string, McpOAuthConnection>();
   for (const token of activeTokens) {
     if (byClient.has(token.clientId)) continue;
@@ -65,6 +82,9 @@ export async function loadAccountSettingsData(): Promise<AccountSettingsData> {
       clientName: token.client.name,
       scope: token.scope,
       workspaceId: token.workspaceId,
+      workspaceName: token.workspaceId
+        ? (workspaceNames[token.workspaceId] ?? null)
+        : null,
       connectedAt: token.createdAt.toISOString(),
     });
   }

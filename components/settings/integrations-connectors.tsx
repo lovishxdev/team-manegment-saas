@@ -26,17 +26,20 @@ type ConnectorRow = {
 
 function oauthFor(
   connections: AccountSettingsData["mcpOAuthConnections"],
-  pattern: string
+  pattern: "cursor" | "claude" | "claude-code"
 ) {
-  const needle = pattern.toLowerCase();
-  return connections.filter((row) =>
-    row.clientName.toLowerCase().includes(needle)
-  );
+  return connections.filter((row) => {
+    const name = row.clientName.toLowerCase();
+    if (pattern === "cursor") return name.includes("cursor");
+    if (pattern === "claude-code") return name.includes("claude code");
+    // Claude app: "claude" but not "claude code"
+    return name.includes("claude") && !name.includes("claude code");
+  });
 }
 
 function oauthMatches(
   connections: AccountSettingsData["mcpOAuthConnections"],
-  pattern: string
+  pattern: "cursor" | "claude" | "claude-code"
 ) {
   return oauthFor(connections, pattern).length > 0;
 }
@@ -66,7 +69,7 @@ function buildConnectors(data: AccountSettingsData): ConnectorRow[] {
       name: "Claude Code",
       description: "Ambient project memory for Claude Code sessions.",
       type: "CLI",
-      connected: oauthMatches(data.mcpOAuthConnections, "claude code"),
+      connected: oauthMatches(data.mcpOAuthConnections, "claude-code"),
     },
     {
       id: "euclis",
@@ -167,12 +170,19 @@ function ConnectorDetail({
     const origin = data.mcpConnectorUrl.replace(/\/api\/mcp\/?$/, "");
     const mcpCommand = `claude mcp add --transport http euclis ${data.mcpConnectorUrl}`;
     const hooksCommand = `curl -fsSL "${origin}/api/agent-hooks?agent=claude-code" | bash -s -- ${data.user.mcpToken}`;
+    const claudeCodeConnections = oauthFor(
+      data.mcpOAuthConnections,
+      "claude-code"
+    );
     return (
       <div className="space-y-3 border-t border-line bg-paper-deep/20 px-4 py-4 sm:px-5">
         <p className="text-sm text-ink-soft">
           Add Euclis as an MCP server (sign in when Claude Code prompts):
         </p>
         <CopyField value={mcpCommand} secret={false} />
+        {claudeCodeConnections.length > 0 ? (
+          <McpConnectionList connections={claudeCodeConnections} />
+        ) : null}
         <p className="text-xs text-ink-faint">
           <span className="font-medium text-ink">Ambient memory</span> — run
           this once in each repo. After every session, Euclis quietly captures
