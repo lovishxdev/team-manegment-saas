@@ -8,6 +8,10 @@
  */
 import "dotenv/config";
 import { prisma } from "../lib/prisma";
+import {
+  ensureDefaultCategories,
+  getGeneralCategoryId,
+} from "../lib/services/categories";
 import { createPost, createPostReply } from "../lib/services/post";
 import { createWorkspaceDiscussionTag } from "../lib/services/discussion-tags";
 
@@ -91,15 +95,8 @@ async function main() {
     data: { lastActiveWorkspaceId: workspaceId },
   });
 
-  // Categories — ensure General exists
-  let general = await prisma.workspaceCategory.findFirst({
-    where: { workspaceId, name: "General" },
-  });
-  if (!general) {
-    general = await prisma.workspaceCategory.create({
-      data: { workspaceId, name: "General", sortOrder: 0 },
-    });
-  }
+  await ensureDefaultCategories(workspaceId);
+  const generalCategoryId = await getGeneralCategoryId(workspaceId);
 
   const existingTasks = await prisma.task.count({ where: { workspaceId } });
   const taskByShortId = new Map<number, string>();
@@ -123,7 +120,7 @@ async function main() {
           status: t.status,
           priority: t.priority,
           tags: t.tags,
-          categoryId: general.id,
+          categoryId: generalCategoryId,
           createdById: yc.id,
         },
         select: { id: true, shortId: true },
