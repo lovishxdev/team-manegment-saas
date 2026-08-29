@@ -46,7 +46,7 @@ export type PlanLimits = {
 
 export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
   HOBBY: {
-    maxMembers: 5,
+    maxMembers: 6,
     maxWorkspacesLed: 1,
     memoryRetentionDays: 30,
     maxOpenDiscussions: 15,
