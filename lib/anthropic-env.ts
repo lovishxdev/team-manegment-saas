@@ -67,6 +67,6 @@ export function anthropicKeySetupHint(): string {
 
   return (
     "ANTHROPIC_API_KEY is present but empty. Set it in .env " +
-    '(e.g. ANTHROPIC_API_KEY=sk-ant-api03-...), save, then restart npm run dev.'
+    "(see .env.example), save, then restart npm run dev."
   );
 }

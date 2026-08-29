@@ -180,16 +180,19 @@ function ConnectorDetail({
     return (
       <div className="space-y-3 border-t border-line bg-paper-deep/20 px-4 py-4 sm:px-5">
         <p className="text-sm text-ink-soft">
-          Run this in your terminal. Claude Code registers the server, then
-          opens a browser so you can sign in and pick a workspace:
+          Paste this into your own terminal app (Terminal / iTerm — not inside
+          a Claude Code chat). It registers the server, then opens a browser so
+          you can sign in and pick a workspace:
         </p>
         <CopyField value={mcpCommand} secret={false} />
         <p className="text-xs text-ink-faint">
-          Already added but stuck on &quot;Needs authentication&quot;? Run{" "}
+          Already added but stuck on &quot;Needs authentication&quot;? In the
+          same real terminal run{" "}
           <code className="rounded bg-paper-deep px-1 py-0.5 font-mono text-[11px]">
             claude mcp login euclis
-          </code>{" "}
-          alone.
+          </code>
+          . Login needs an interactive terminal — it will fail if Claude Code
+          runs it for you via a tool.
         </p>
         {claudeCodeConnections.length > 0 ? (
           <McpConnectionList connections={claudeCodeConnections} />

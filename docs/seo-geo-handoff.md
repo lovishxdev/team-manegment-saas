@@ -54,7 +54,7 @@ See also `docs/seo-content-strategy.md` and `docs/billing-tiers.md`.
 - **Framework:** Next.js 16 App Router (`app/` directory)
 - **Rendering:** Server components; marketing homepage is SSR for signed-out users
 - **Auth:** Supabase — signed-in users hitting `/` redirect to `/dashboard` (not indexed)
-- **Analytics:** Google Analytics 4 (`G-WW99N6L4N9`, production only) + Vercel Analytics (`@vercel/analytics/next`)
+- **Analytics:** Google Analytics 4 via `NEXT_PUBLIC_GA_MEASUREMENT_ID` (production only) + Vercel Analytics (`@vercel/analytics/next`)
 
 ---
 
@@ -178,7 +178,7 @@ Secondary:
 
 | Tool | ID / URL |
 |------|----------|
-| Google Analytics 4 | `G-WW99N6L4N9` (`components/analytics/google-analytics.tsx`) |
+| Google Analytics 4 | `NEXT_PUBLIC_GA_MEASUREMENT_ID` (set in Vercel; see `.env.example`) |
 | Vercel Analytics | `@vercel/analytics` in `app/layout.tsx` — enable in Vercel dashboard |
 | Google Search Console | Property: `https://euclis.dev` |
 | Sitemap to submit | `https://euclis.dev/sitemap.xml` |

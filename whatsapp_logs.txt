@@ -25,3 +25,27 @@ Create workspace TripSplit
 Invite shubham to TripSplit
 For version1 use equal-split for v1, custom later.
 Continue TripSplit, check project context first.
+
+
+Screen B (User1 WhatsApp)
+Create workspace: “Create workspace TripSplit”
+
+Screen B (User1 WhatsApp)
+Invite User2: “Invite [User2 phone/name] to TripSplit”
+
+Screen C (User2 WhatsApp)
+User2 accepts / joins. Show both people in the workspace.
+
+Screen A (Cursor + Euclis)
+Connect Euclis MCP / hooks to the mid-build TripSplit repo.
+
+Screen B (User1 WhatsApp)
+Send the decision:
+“Decision: equal-split for v1, custom later.”
+
+Screen A or B (Euclis)
+Show that decision in Memory / board.
+
+Screen A (fresh Cursor chat)
+“Continue TripSplit — check project context first.”
+Show get_project_context already knowing the decision.
