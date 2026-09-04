@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { ui } from "@/components/ui/ui";
 
@@ -17,8 +18,20 @@ export function MarketingArticle({
     <div className="min-h-screen bg-paper">
       <header className="border-b border-line bg-paper/90 backdrop-blur-sm">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-5 py-4 sm:px-8">
-          <Link href="/" className="text-[15px] font-semibold text-ink">
-            Euclis
+          <Link
+            href="/"
+            className="flex min-w-0 items-center gap-2"
+          >
+            <Image
+              src="/euclis-logo-64.webp"
+              alt="Euclis"
+              width={28}
+              height={28}
+              className="shrink-0 rounded-md ring-1 ring-line/80 shadow-sm"
+            />
+            <span className="truncate text-[15px] font-semibold tracking-tight text-ink">
+              Euclis
+            </span>
           </Link>
           <Link
             href="/signup"

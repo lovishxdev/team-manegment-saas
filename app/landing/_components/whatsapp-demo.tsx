@@ -293,8 +293,7 @@ export function WhatsAppDemo() {
       {/* ---------- Right pane: live task card ---------- */}
       <div className="relative">
         <div className="rounded-2xl border border-line bg-paper/85 p-4 shadow-sm backdrop-blur-md sm:p-5">
-          <div className="mb-3 flex items-center gap-2">
-            <span className="lp-pulse" />
+          <div className="mb-3">
             <span className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.14em] text-ink-soft">
               Live · workspace board
             </span>
