@@ -16,6 +16,7 @@ Primary positioning: **project memory for teams and AI agents** (not “WhatsApp
 ### Secondary — still strong
 | Query | Page |
 |-------|------|
+| smart india hackathon / SIH 2026 WhatsApp project tools | `/sih` |
 | manage tasks from whatsapp | `/guides/manage-tasks-from-whatsapp` |
 | whatsapp task management (1:1 bot) | same + `/compare/taskrio` |
 | hackathon task board / project memory | `/guides/hackathon-task-board` |
@@ -37,7 +38,7 @@ Primary positioning: **project memory for teams and AI agents** (not “WhatsApp
 - Prefer plain language over stacked metaphors
 
 ## Indexable public URLs
-`/`, `/pricing`, `/signup`, `/login`,  
+`/`, `/pricing`, `/sih`, `/signup`, `/login`,  
 `/guides/project-memory-dreaming`, `/guides/manage-tasks-from-whatsapp`, `/guides/hackathon-task-board`, `/guides/claude-mcp-task-board`,  
 `/compare/trello`, `/compare/notion`, `/compare/clickup`, `/compare/spreadsheets`, `/compare/taskrio`,  
 `/privacy`, `/terms`, `/llms.txt`

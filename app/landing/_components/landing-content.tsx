@@ -304,6 +304,9 @@ export function LandingContent() {
             <Link href="#faq" className="hover:text-ink">
               FAQ
             </Link>
+            <Link href="/sih" className="hover:text-ink">
+              SIH 2026
+            </Link>
             <Link
               href="/guides/project-memory-dreaming"
               className="hover:text-ink"

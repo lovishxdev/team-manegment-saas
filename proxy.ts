@@ -13,6 +13,7 @@ const PUBLIC_PATHS = [
   "/invite",
   "/landing",
   "/pricing",
+  "/sih",
   "/guides",
   "/compare",
   "/privacy",

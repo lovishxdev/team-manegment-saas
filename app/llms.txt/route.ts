@@ -40,6 +40,8 @@ You also get a kanban board, discussions, whiteboard, and assets — but the pro
 
 - Homepage: ${base}/
 - Pricing: ${base}/pricing
+- Smart India Hackathon 2026: ${base}/sih
+  (WhatsApp + project memory for SIH teams of 6; Hobby free)
 - Sign up: ${base}/signup
 - Sign in: ${base}/login
 - Guide — project memory & Dreaming: ${base}/guides/project-memory-dreaming

@@ -45,4 +45,9 @@ export const HOME_FAQ: FaqItem[] = [
     answer:
       "Small teams that ship with AI in the loop — hackathons, side projects, indie startups, study groups — anyone tired of re-explaining context to new teammates or new agent sessions.",
   },
+  {
+    question: "Can SIH / Smart India Hackathon teams use Euclis?",
+    answer:
+      "Yes. SIH teams of 6 fit on free Hobby, including WhatsApp. Create a workspace, invite teammates, link numbers so people can add tasks from campus chat, and optionally connect MCP so agents share the same brief. See euclis.dev/sih.",
+  },
 ];

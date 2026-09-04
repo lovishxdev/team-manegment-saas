@@ -178,7 +178,7 @@ export function WhatsAppDemo() {
                 </p>
                 <p className="flex items-center gap-1 text-[9.5px] text-emerald-50/85">
                   <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-200" />
-                  <span className="truncate">online · &lt; 2s</span>
+                  <span className="truncate">online</span>
                 </p>
               </div>
               <svg
@@ -283,12 +283,9 @@ export function WhatsAppDemo() {
 
         {/* Floating "what just happened" badge */}
         <div className="lp-float-slow pointer-events-none absolute -right-2 top-20 z-20 hidden max-w-[11rem] rounded-xl border border-line bg-paper/95 px-2.5 py-1.5 text-[10px] shadow-lg backdrop-blur-md sm:block">
-          <div className="flex items-center gap-2">
-            <span className="lp-pulse" />
-            <span className="font-medium text-ink">Understood your message</span>
-          </div>
+          <p className="font-medium text-ink">Understood your message</p>
           <p className="mt-0.5 font-mono text-[9.5px] text-ink-faint">
-            new task · design · high priority
+            new task, design, high priority
           </p>
         </div>
       </div>
