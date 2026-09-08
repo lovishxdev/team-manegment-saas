@@ -4,50 +4,38 @@ import { useEffect, useState } from "react";
 import { ExternalLink, X } from "lucide-react";
 import { useClientMounted } from "@/lib/use-client-mounted";
 
-const STORAGE_PREFIX = "euclis:app-banner-dismissed:";
+/** Bump this when the message changes so dismissed users see the new banner. */
+const BANNER_ID = "demo-video-2026-09";
+const BANNER_TEXT =
+  "Want to use Euclis to its full potential? Check out this quick demo:";
+const BANNER_HREF = "https://youtu.be/0e4h8Couf6U";
+const BANNER_LINK_LABEL = "Watch demo";
 
-function bannerConfig() {
-  const text = process.env.NEXT_PUBLIC_APP_BANNER_TEXT?.trim() ?? "";
-  if (!text) return null;
-
-  const href = process.env.NEXT_PUBLIC_APP_BANNER_HREF?.trim() || null;
-  const linkLabel =
-    process.env.NEXT_PUBLIC_APP_BANNER_LINK_LABEL?.trim() || "Watch demo";
-  const id =
-    process.env.NEXT_PUBLIC_APP_BANNER_ID?.trim() ||
-    `${text}|${href ?? ""}`;
-
-  return { id, text, href, linkLabel };
-}
+const STORAGE_KEY = `euclis:app-banner-dismissed:${BANNER_ID}`;
 
 /**
- * Slim top-of-app announcement. Content comes from NEXT_PUBLIC_APP_BANNER_*
- * env vars — leave TEXT empty to hide. Dismiss is per-banner-id in localStorage.
+ * Slim top-of-app announcement. Edit the constants above to change copy.
+ * Dismiss is remembered in localStorage per BANNER_ID.
  */
 export function AppAnnouncementBanner() {
   const mounted = useClientMounted();
-  const config = bannerConfig();
   const [ready, setReady] = useState(false);
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
-    if (!config) {
-      setReady(true);
-      return;
-    }
     try {
-      setDismissed(localStorage.getItem(STORAGE_PREFIX + config.id) === "1");
+      setDismissed(localStorage.getItem(STORAGE_KEY) === "1");
     } catch {
       setDismissed(false);
     }
     setReady(true);
-  }, [config?.id]);
+  }, []);
 
-  if (!config || !mounted || !ready || dismissed) return null;
+  if (!mounted || !ready || dismissed) return null;
 
   function dismiss() {
     try {
-      localStorage.setItem(STORAGE_PREFIX + config!.id, "1");
+      localStorage.setItem(STORAGE_KEY, "1");
     } catch {
       /* ignore quota / private mode */
     }
@@ -62,25 +50,20 @@ export function AppAnnouncementBanner() {
     >
       <div className="flex items-start gap-3 px-4 py-2.5 sm:items-center sm:px-6 lg:px-8">
         <p className="min-w-0 flex-1 text-[13px] leading-snug text-ink-soft sm:text-sm">
-          <span className="text-ink">{config.text}</span>
-          {config.href ? (
-            <>
-              {" "}
-              <a
-                href={config.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 font-medium text-ink underline decoration-ink/25 underline-offset-2 transition hover:decoration-ink"
-              >
-                {config.linkLabel}
-                <ExternalLink
-                  className="h-3.5 w-3.5 shrink-0 opacity-70"
-                  strokeWidth={1.75}
-                  aria-hidden
-                />
-              </a>
-            </>
-          ) : null}
+          <span className="text-ink">{BANNER_TEXT}</span>{" "}
+          <a
+            href={BANNER_HREF}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 font-medium text-ink underline decoration-ink/25 underline-offset-2 transition hover:decoration-ink"
+          >
+            {BANNER_LINK_LABEL}
+            <ExternalLink
+              className="h-3.5 w-3.5 shrink-0 opacity-70"
+              strokeWidth={1.75}
+              aria-hidden
+            />
+          </a>
         </p>
         <button
           type="button"

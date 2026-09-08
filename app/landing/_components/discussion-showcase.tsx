@@ -1,10 +1,10 @@
 "use client";
 
-import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { FileText, GitBranch, Globe, UserPlus } from "lucide-react";
 import { ClaudeIcon } from "@/components/brand/claude-icon";
 import { WhatsAppIcon } from "@/components/brand/whatsapp-icon";
+import { LandingAvatar } from "./landing-avatar";
 
 type Surface = "web" | "whatsapp" | "claude";
 
@@ -20,7 +20,7 @@ const SURFACE: Record<Surface, { label: string; icon: React.ReactNode }> = {
 function SurfaceChip({ kind }: { kind: Surface }) {
   const m = SURFACE[kind];
   return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-line bg-paper px-2 py-0.5 font-mono text-[9.5px] font-medium text-ink-soft">
+    <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-line bg-paper px-2 py-0.5 font-mono text-[9.5px] font-medium text-ink-soft">
       {m.icon}
       {m.label}
     </span>
@@ -97,32 +97,26 @@ export function DiscussionShowcase({
     <div ref={ref}>
       <div className="mx-auto max-w-2xl">
         <div className="lp-disc-card overflow-hidden rounded-2xl border border-line bg-shell shadow-[0_30px_80px_-40px_rgba(20,20,30,0.25)]">
-          <div className="flex items-center justify-between border-b border-line bg-paper/70 px-5 py-3.5">
-            <div className="flex items-center gap-2">
-              <span className="text-[14px] font-semibold tracking-tight text-ink">
+          <div className="flex items-start justify-between gap-3 border-b border-line bg-paper/70 px-4 py-3 sm:items-center sm:px-5 sm:py-3.5">
+            <div className="min-w-0 space-y-1.5 sm:flex sm:items-center sm:gap-2 sm:space-y-0">
+              <span className="block text-[14px] font-semibold tracking-tight text-ink">
                 Q3 auth &amp; beta
               </span>
-              <span className="rounded-full bg-paper-deep px-2 py-0.5 font-mono text-[9.5px] text-ink-soft">
+              <span className="inline-flex whitespace-nowrap rounded-full bg-paper-deep px-2 py-0.5 font-mono text-[9.5px] text-ink-soft">
                 24 messages · 3 threads
               </span>
             </div>
-            <span className="font-mono text-[10px] uppercase tracking-wide text-ink-faint">
+            <span className="shrink-0 pt-0.5 font-mono text-[10px] uppercase tracking-wide text-ink-faint sm:pt-0">
               Discussion
             </span>
           </div>
 
-          <ul className="space-y-4 px-5 py-5">
+          <ul className="space-y-4 px-4 py-5 sm:px-5">
             {/* Human · web */}
             <li className="flex gap-3">
-              <Image
-                src="/avatars/lina.jpg"
-                alt=""
-                width={36}
-                height={36}
-                className="h-9 w-9 shrink-0 rounded-full object-cover"
-              />
+              <LandingAvatar id="lina" className="h-9 w-9" />
               <div className="min-w-0">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="text-[13px] font-semibold text-ink">Lina</span>
                   <SurfaceChip kind="web" />
                 </div>
@@ -133,7 +127,7 @@ export function DiscussionShowcase({
 
                 {/* Nested sub-thread */}
                 <div className="mt-2 border-l-2 border-line pl-3">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="text-[12px] font-semibold text-ink">
                       Aarav
                     </span>
@@ -151,17 +145,11 @@ export function DiscussionShowcase({
 
             {/* New member joins */}
             <li className="flex gap-3">
-              <Image
-                src="/avatars/sam.jpg"
-                alt=""
-                width={36}
-                height={36}
-                className="h-9 w-9 shrink-0 rounded-full object-cover"
-              />
+              <LandingAvatar id="sam" className="h-9 w-9" />
               <div className="min-w-0">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="text-[13px] font-semibold text-ink">Sam</span>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 font-mono text-[9.5px] font-medium text-emerald-700">
+                  <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-emerald-50 px-2 py-0.5 font-mono text-[9.5px] font-medium text-emerald-700">
                     <UserPlus className="h-3 w-3" /> just joined
                   </span>
                 </div>
@@ -178,11 +166,11 @@ export function DiscussionShowcase({
                 <ClaudeIcon className="h-5 w-5 text-claude" />
               </span>
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="text-[13px] font-semibold text-ink">
                     Claude Code
                   </span>
-                  <span className="rounded-full bg-ink/[0.06] px-2 py-0.5 font-mono text-[9.5px] font-medium text-ink-soft">
+                  <span className="inline-flex shrink-0 whitespace-nowrap rounded-full bg-ink/[0.06] px-2 py-0.5 font-mono text-[9.5px] font-medium text-ink-soft">
                     agent
                   </span>
                 </div>
@@ -190,10 +178,12 @@ export function DiscussionShowcase({
                 <div className="lp-disc-agent mt-1">
                   {/* reading the thread + memory */}
                   <div className={`lp-disc-reading ${answered ? "is-done" : ""}`}>
-                    <span className="inline-flex items-center gap-2 rounded-md bg-paper-deep px-2.5 py-1.5 font-mono text-[11px] text-ink-soft">
-                      <span className="lp-disc-spin" aria-hidden />
-                      reading 24 messages + project memory
-                      <span className="lp-disc-dots" aria-hidden>
+                    <span className="inline-flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-md bg-paper-deep px-2.5 py-1.5 font-mono text-[11px] leading-snug text-ink-soft">
+                      <span className="lp-disc-spin shrink-0" aria-hidden />
+                      <span className="min-w-0">
+                        reading 24 messages + project memory
+                      </span>
+                      <span className="lp-disc-dots shrink-0" aria-hidden>
                         <i />
                         <i />
                         <i />
@@ -209,7 +199,7 @@ export function DiscussionShowcase({
                       </p>
                       <ul className="mt-2 space-y-1.5 text-[12.5px] leading-snug text-ink-soft">
                         <li className="flex gap-2">
-                          <span className="mt-px shrink-0 rounded bg-violet-50 px-1.5 font-mono text-[9px] font-semibold uppercase tracking-wide text-violet-700">
+                          <span className="mt-px inline-flex h-[18px] shrink-0 items-center whitespace-nowrap rounded bg-violet-50 px-1.5 font-mono text-[9px] font-semibold uppercase tracking-wide text-violet-700">
                             decided
                           </span>
                           <span>
@@ -218,7 +208,7 @@ export function DiscussionShowcase({
                           </span>
                         </li>
                         <li className="flex gap-2">
-                          <span className="mt-px shrink-0 rounded bg-amber-50 px-1.5 font-mono text-[9px] font-semibold uppercase tracking-wide text-amber-700">
+                          <span className="mt-px inline-flex h-[18px] shrink-0 items-center whitespace-nowrap rounded bg-amber-50 px-1.5 font-mono text-[9px] font-semibold uppercase tracking-wide text-amber-700">
                             open
                           </span>
                           <span>
@@ -227,7 +217,7 @@ export function DiscussionShowcase({
                           </span>
                         </li>
                         <li className="flex gap-2">
-                          <span className="mt-px shrink-0 rounded bg-sky-50 px-1.5 font-mono text-[9px] font-semibold uppercase tracking-wide text-sky-700">
+                          <span className="mt-px inline-flex h-[18px] shrink-0 items-center whitespace-nowrap rounded bg-sky-50 px-1.5 font-mono text-[9px] font-semibold uppercase tracking-wide text-sky-700">
                             next
                           </span>
                           <span>Clear the blocker before the beta cutoff.</span>

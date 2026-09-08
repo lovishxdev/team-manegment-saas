@@ -672,44 +672,43 @@ export function LandingStyles() {
       .lp-story-m-sticky {
         position: sticky;
         top: 0;
+        /* svh stays stable when mobile browser chrome shows/hides — avoids
+           the sticky panel resizing and "jumping" mid-scroll on real phones. */
         height: 100svh;
         overflow: hidden;
         display: flex;
         flex-direction: column;
         align-items: center;
-        justify-content: center;
-        gap: 18px;
+        justify-content: flex-start;
+        gap: 16px;
         /* Wider side gutters so the horizontal source-square peeks have room. */
-        padding: 84px 38px 52px;
+        padding: 76px 28px 40px;
+        box-sizing: border-box;
       }
-      /* Hero copy sits above the card and collapses out once the story starts,
-         letting the card rise and take center stage. */
+      /* Hero copy sits above the card. When the story starts we only fade it —
+         do NOT collapse height (that left a blank hole and felt like a scroll jump). */
       .lp-story-m-intro {
         position: relative;
         z-index: 2;
         width: 100%;
         max-width: 30rem;
-        max-height: 320px;
         text-align: center;
+        flex: 0 0 auto;
         transition:
-          opacity 0.45s cubic-bezier(0.22, 1, 0.36, 1),
-          transform 0.45s cubic-bezier(0.22, 1, 0.36, 1),
-          max-height 0.45s cubic-bezier(0.22, 1, 0.36, 1),
-          margin 0.45s ease;
+          opacity 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+          visibility 0.4s;
       }
       .lp-story-m-intro.is-gone {
         opacity: 0;
-        transform: translateY(-14px);
-        max-height: 0;
-        margin: 0;
+        visibility: hidden;
         pointer-events: none;
-        overflow: hidden;
       }
       .lp-story-m-anchor {
         position: relative;
         z-index: 1;
         width: 100%;
         max-width: 460px;
+        flex: 0 0 auto;
       }
       /* Card swaps content between acts — cross-fade the whole panel so the flip
          from Discussion to Project memory reads as one smooth transition.

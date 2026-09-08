@@ -1,7 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { Globe } from "lucide-react";
 import { ui } from "@/components/ui/ui";
 import { ClaudeIcon } from "@/components/brand/claude-icon";
@@ -103,10 +109,141 @@ const MOBILE_STEPS: {
 
 type StoryMode = "static" | "mobile" | "desktop";
 
+const WIDE_QUERY = "(min-width: 900px)";
+const REDUCE_QUERY = "(prefers-reduced-motion: reduce)";
+
+function readStoryMode(): StoryMode {
+  if (window.matchMedia(REDUCE_QUERY).matches) return "static";
+  return window.matchMedia(WIDE_QUERY).matches ? "desktop" : "mobile";
+}
+
+function subscribeStoryMode(onChange: () => void) {
+  const wide = window.matchMedia(WIDE_QUERY);
+  const reduce = window.matchMedia(REDUCE_QUERY);
+  wide.addEventListener("change", onChange);
+  reduce.addEventListener("change", onChange);
+  return () => {
+    wide.removeEventListener("change", onChange);
+    reduce.removeEventListener("change", onChange);
+  };
+}
+
+function useStoryMode(): StoryMode {
+  return useSyncExternalStore(subscribeStoryMode, readStoryMode, () => "desktop");
+}
+
+function HeroCtas({ size = "desktop" }: { size?: "desktop" | "mobile" }) {
+  const pad = size === "mobile" ? "px-5 py-3" : "px-6 py-3.5";
+  return (
+    <div
+      className={`flex flex-wrap items-center gap-3 ${
+        size === "mobile" ? "justify-center" : ""
+      }`}
+    >
+      <Link href="/signup" className={`lp-shimmer text-[15px] ${pad} ${ui.btnPrimary}`}>
+        Start free →
+      </Link>
+      <Link href="/pricing" className={`text-[15px] ${pad} ${ui.btnSecondary}`}>
+        See plans
+      </Link>
+    </div>
+  );
+}
+
+const MOBILE_STORY_HEIGHT = `calc(100svh * ${MOBILE_STEPS.length * 0.85})`;
+const DESKTOP_STORY_HEIGHT = `calc(100svh * ${CHAPTERS.length + 0.5})`;
+
+/**
+ * Pre-hydration shell: paint desktop + mobile heroes and let CSS pick which is
+ * visible. Section heights match the interactive story so switching `ready`
+ * does not resize the page and jump scroll on phones.
+ */
+function StoryBootShell() {
+  return (
+    <section className="relative" aria-busy="true">
+      {/* Desktop (≥900px) */}
+      <div
+        className="lp-story max-[899px]:hidden motion-reduce:hidden"
+        style={{ height: DESKTOP_STORY_HEIGHT }}
+      >
+        <div className="lp-story-sticky">
+          <div className="lp-story-bg" aria-hidden />
+          <div className="lp-story-wrap">
+            <div className="lp-story-copy">
+              <div className="lp-story-panel is-active">
+                <h2 className="font-serif text-[clamp(2.75rem,5vw,4.5rem)] leading-[1.02] tracking-tight text-ink">
+                  {CHAPTERS[0].title}
+                </h2>
+                <p className="mt-5 max-w-md text-[15px] leading-relaxed text-ink-soft xl:text-[16px]">
+                  {CHAPTERS[0].body}
+                </p>
+                <div className="mt-8">
+                  <HeroCtas />
+                </div>
+              </div>
+            </div>
+            <div className="lp-story-anchor">
+              <WorkspaceMemoryStage chapter={0} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Mobile (&lt;900px) */}
+      <div
+        className="lp-story-m min-[900px]:hidden motion-reduce:hidden"
+        style={{ height: MOBILE_STORY_HEIGHT }}
+      >
+        <div className="lp-story-m-sticky">
+          <div className="lp-story-bg" aria-hidden />
+          <div className="lp-story-m-intro">
+            <h1 className="font-serif text-[2.15rem] leading-[1.04] tracking-tight text-ink">
+              {CHAPTERS[0].title}
+            </h1>
+            <div className="mt-5">
+              <HeroCtas size="mobile" />
+            </div>
+          </div>
+          <div className="lp-story-m-anchor">
+            <WorkspaceMemoryStage
+              chapter={0}
+              view="discussion"
+              variant="mobile"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Reduced motion */}
+      <div className="mx-auto hidden max-w-6xl px-5 pb-16 pt-32 motion-reduce:block sm:px-8 sm:pt-36">
+        <div className="mx-auto max-w-3xl text-center">
+          <h1 className="font-serif text-[2.6rem] leading-[1.03] tracking-tight text-ink sm:text-[3.4rem]">
+            {CHAPTERS[0].title}
+          </h1>
+          <p className="mx-auto mt-6 max-w-2xl text-[16px] leading-relaxed text-ink-soft sm:text-[17px]">
+            {CHAPTERS[0].body}
+          </p>
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+            <HeroCtas size="mobile" />
+          </div>
+        </div>
+        <div className="mx-auto mt-12 max-w-2xl">
+          <WorkspaceMemoryStage chapter={0} view="discussion" variant="mobile" />
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function ScrollStory() {
+  // Stay on the CSS dual shell through SSR + hydration, then unlock the
+  // interactive story once the real viewport mode is known.
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
+
   const sectionRef = useRef<HTMLElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
-  const [mode, setMode] = useState<StoryMode>("static");
+  const mode = useStoryMode();
   const [chapter, setChapter] = useState(0);
   // Discrete step for the mobile panel-flip story (see MOBILE_STEPS).
   const [mStep, setMStep] = useState(0);
@@ -129,52 +266,38 @@ export function ScrollStory() {
     });
   };
 
-  // Decide which experience to run. Reduced motion → static stacked fallback;
-  // wide viewport → the two-column pinned story; otherwise the mobile panel-flip
-  // story. Re-evaluated on resize so rotating/resizing swaps cleanly.
-  useEffect(() => {
-    const evaluate = () => {
-      const reduce = window.matchMedia(
-        "(prefers-reduced-motion: reduce)"
-      ).matches;
-      setMode(
-        reduce ? "static" : window.innerWidth >= 900 ? "desktop" : "mobile"
-      );
-    };
-    evaluate();
-    window.addEventListener("resize", evaluate);
-    return () => window.removeEventListener("resize", evaluate);
-  }, []);
-
   // Scroll-driven progress — only while a pinned experience is active.
   useEffect(() => {
-    if (mode === "static") return;
+    if (!ready || mode === "static") return;
     const section = sectionRef.current;
     const stage = stageRef.current;
     if (!section || !stage) return;
 
     let raf = 0;
     let ticking = false;
+    let lastWidth = window.innerWidth;
 
     const update = () => {
       ticking = false;
-      const total = section.offsetHeight - window.innerHeight;
-      const p =
-        total > 0
-          ? clamp(-section.getBoundingClientRect().top / total, 0, 1)
-          : 0;
+      // Use sticky stage height (100svh), not window.innerHeight — on real
+      // phones the URL bar show/hide changes innerHeight and jumps progress.
+      const total = Math.max(1, section.offsetHeight - stage.offsetHeight);
+      const p = clamp(-section.getBoundingClientRect().top / total, 0, 1);
       const pin = clamp(p / PIN_FRACTION, 0, 1);
       stage.style.setProperty("--p", p.toFixed(4));
       stage.style.setProperty("--pin", pin.toFixed(4));
       const ch = Math.min(CHAPTERS.length - 1, Math.floor(p * CHAPTERS.length));
       setChapter((prev) => (prev === ch ? prev : ch));
-      const ms = clamp(
-        Math.floor(p * MOBILE_STEPS.length),
-        0,
-        MOBILE_STEPS.length - 1
-      );
+      // Hold the mobile hero a beat longer so a tiny flick doesn't skip it.
+      const ms =
+        mode === "mobile" && p < 0.12
+          ? 0
+          : clamp(
+              Math.floor(p * MOBILE_STEPS.length),
+              0,
+              MOBILE_STEPS.length - 1
+            );
       setMStep((prev) => (prev === ms ? prev : ms));
-      // "At top" = essentially unscrolled, before the untilt is perceptible.
       const top = p < 0.05;
       setAtTop((prev) => (prev === top ? prev : top));
     };
@@ -186,15 +309,27 @@ export function ScrollStory() {
       }
     };
 
+    const onResize = () => {
+      // Ignore URL-bar-only resizes (height changes, width does not).
+      if (window.innerWidth === lastWidth) return;
+      lastWidth = window.innerWidth;
+      onScroll();
+    };
+
     update();
     window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll);
+    window.addEventListener("resize", onResize);
     return () => {
       window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
+      window.removeEventListener("resize", onResize);
       cancelAnimationFrame(raf);
     };
-  }, [mode]);
+  }, [ready, mode]);
+
+  // Until the client knows the viewport, CSS picks the correct first paint.
+  if (!ready) {
+    return <StoryBootShell />;
+  }
 
   // Stacked fallback (reduced-motion): a normal hero + stacked beats.
   if (mode === "static") {
@@ -252,7 +387,7 @@ export function ScrollStory() {
       <section
         ref={sectionRef}
         className="lp-story-m"
-        style={{ height: `calc(100svh * ${MOBILE_STEPS.length * 0.85})` }}
+        style={{ height: MOBILE_STORY_HEIGHT }}
       >
         <div ref={stageRef} className="lp-story-m-sticky" data-enhanced>
           <div className="lp-story-bg" aria-hidden />
@@ -358,7 +493,7 @@ export function ScrollStory() {
     <section
       ref={sectionRef}
       className="lp-story"
-      style={{ height: `calc(100svh * ${CHAPTERS.length + 0.5})` }}
+      style={{ height: DESKTOP_STORY_HEIGHT }}
     >
       <div ref={stageRef} className="lp-story-sticky" data-enhanced>
         <div className="lp-story-bg" aria-hidden />

@@ -1,9 +1,12 @@
-import Image from "next/image";
 import { Globe } from "lucide-react";
 import type { ComponentType } from "react";
 import { ClaudeIcon } from "@/components/brand/claude-icon";
 import { CursorIcon } from "@/components/brand/cursor-icon";
 import { WhatsAppIcon } from "@/components/brand/whatsapp-icon";
+import {
+  LandingAvatar,
+  type LandingAvatarId,
+} from "./landing-avatar";
 
 /**
  * The hybrid anchor element for the scroll story: a live Euclis discussion on
@@ -62,7 +65,7 @@ type FeedItem = {
   initial?: string;
   tint?: string;
   /** Portrait for human contributors. */
-  img?: string;
+  avatar?: LandingAvatarId;
   /** Chapter at which a "captured to memory" cue appears. */
   capturedAt?: number;
 };
@@ -72,7 +75,7 @@ const FEED: FeedItem[] = [
     from: 0,
     who: "Lina",
     source: "web",
-    img: "/avatars/lina.jpg",
+    avatar: "lina",
     text: "Let's go with Supabase Auth — custom JWT is a rabbit hole.",
     capturedAt: 2,
   },
@@ -80,7 +83,7 @@ const FEED: FeedItem[] = [
     from: 0,
     who: "Aarav",
     source: "whatsapp",
-    img: "/avatars/aarav.jpg",
+    avatar: "aarav",
     text: "Agreed. But realtime won't work until we set the RLS publication on deploy.",
     capturedAt: 2,
   },
@@ -142,7 +145,7 @@ const MOBILE_FEED: FeedItem[] = [
     from: 0,
     who: "Aarav",
     source: "whatsapp",
-    img: "/avatars/aarav.jpg",
+    avatar: "aarav",
     text: "Let's go with Supabase Auth — custom JWT is a rabbit hole.",
     capturedAt: 2,
   },
@@ -181,7 +184,7 @@ function SourceChip({ source }: { source: SourceKey }) {
   const s = SOURCES[source];
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[11px] font-semibold ${s.chip}`}
+      className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 font-mono text-[11px] font-semibold ${s.chip}`}
     >
       <s.Icon className="h-3.5 w-3.5" />
       {s.label}
@@ -193,15 +196,18 @@ function DiscussionPanel({
   feed,
   chapter,
   full = false,
+  priorityAvatars = false,
 }: {
   feed: FeedItem[];
   chapter: number;
   full?: boolean;
+  /** Eager-load portraits when this panel is in the first viewport. */
+  priorityAvatars?: boolean;
 }) {
   return (
     <div
       className={`min-w-0 bg-shell px-6 py-5 ${
-        full ? "" : "border-b border-line sm:border-b-0 sm:border-r"
+        full ? "" : "border-b border-line min-[900px]:border-b-0 min-[900px]:border-r"
       }`}
     >
       <div className="mb-4 flex items-center justify-between">
@@ -211,7 +217,7 @@ function DiscussionPanel({
           </h4>
           <p className="mt-0.5 text-[13px] text-ink-soft">Q3 auth &amp; beta</p>
         </div>
-        <span className="rounded-full bg-paper-deep px-3 py-1 font-mono text-[11px] font-semibold text-ink-soft">
+        <span className="inline-flex shrink-0 whitespace-nowrap rounded-full bg-paper-deep px-3 py-1 font-mono text-[11px] font-semibold text-ink-soft">
           5 surfaces
         </span>
       </div>
@@ -223,7 +229,9 @@ function DiscussionPanel({
             <li
               key={f.who}
               data-from={f.from}
-              className={`lp-wms-in flex gap-2.5 rounded-lg p-2 ${
+              className={`flex gap-2.5 rounded-lg p-2 ${
+                f.from > 0 ? "lp-wms-in " : ""
+              }${
                 f.agent
                   ? "bg-gradient-to-br from-amber-50/60 to-transparent"
                   : ""
@@ -235,13 +243,11 @@ function DiscussionPanel({
                 >
                   <s.Icon className="h-5 w-5" />
                 </span>
-              ) : f.img ? (
-                <Image
-                  src={f.img}
-                  alt=""
-                  width={36}
-                  height={36}
-                  className="h-9 w-9 shrink-0 rounded-full object-cover ring-1 ring-line/70"
+              ) : f.avatar ? (
+                <LandingAvatar
+                  id={f.avatar}
+                  className="h-9 w-9"
+                  priority={priorityAvatars}
                 />
               ) : (
                 <span
@@ -267,12 +273,10 @@ function DiscussionPanel({
 
         {chapter < 2 ? (
           <li className="flex items-center gap-2.5 p-2">
-            <Image
-              src="/avatars/maya.jpg"
-              alt=""
-              width={36}
-              height={36}
-              className="h-9 w-9 shrink-0 rounded-full object-cover ring-1 ring-line/70"
+            <LandingAvatar
+              id="maya"
+              className="h-9 w-9"
+              priority={priorityAvatars}
             />
             <span className="lp-typing" aria-label="Maya is typing">
               <i />
@@ -330,9 +334,9 @@ function MemoryPanel({
             <li
               key={e.title}
               data-from={e.from}
-              className={`lp-wms-in rounded-lg border border-line bg-card p-2.5 shadow-sm ${
-                e.superseded ? "opacity-55" : ""
-              }`}
+              className={`rounded-lg border border-line bg-card p-2.5 shadow-sm ${
+                e.from > 0 ? "lp-wms-in " : ""
+              }${e.superseded ? "opacity-55" : ""}`}
             >
               <span
                 className={`inline-block rounded px-2 py-0.5 font-mono text-[11px] font-semibold uppercase tracking-wide ${KIND_STYLE[e.kind]}`}
@@ -378,6 +382,7 @@ export function WorkspaceMemoryStage({
     (e) => chapter >= e.from
   );
   const agentReading = chapter >= 4;
+  const priorityAvatars = chapter < 2;
 
   return (
     <div
@@ -392,12 +397,21 @@ export function WorkspaceMemoryStage({
       </div>
 
       {view === "split" ? (
-        <div className="grid grid-cols-1 sm:grid-cols-[1.3fr_1fr]">
-          <DiscussionPanel feed={feed} chapter={chapter} />
+        <div className="grid grid-cols-1 min-[900px]:grid-cols-[1.3fr_1fr]">
+          <DiscussionPanel
+            feed={feed}
+            chapter={chapter}
+            priorityAvatars={priorityAvatars}
+          />
           <MemoryPanel records={records} agentReading={agentReading} />
         </div>
       ) : view === "discussion" ? (
-        <DiscussionPanel feed={feed} chapter={chapter} full />
+        <DiscussionPanel
+          feed={feed}
+          chapter={chapter}
+          full
+          priorityAvatars={priorityAvatars}
+        />
       ) : (
         <MemoryPanel records={records} agentReading={agentReading} />
       )}
