@@ -150,24 +150,19 @@ function HeroCtas({ size = "desktop" }: { size?: "desktop" | "mobile" }) {
   );
 }
 
-const MOBILE_STORY_HEIGHT = `calc(100svh * ${MOBILE_STEPS.length * 0.85})`;
-const DESKTOP_STORY_HEIGHT = `calc(100svh * ${CHAPTERS.length + 0.5})`;
-
 /**
  * Pre-hydration shell: paint desktop + mobile heroes and let CSS pick which is
- * visible. Section heights match the interactive story so switching `ready`
- * does not resize the page and jump scroll on phones.
+ * visible. Avoids the desktop two-column layout flashing on phones (and the
+ * inverse on desktop).
  */
 function StoryBootShell() {
   return (
-    <section className="relative" aria-busy="true">
+    <section className="relative min-h-[100svh]" aria-busy="true">
+      <div className="lp-story-bg" aria-hidden />
+
       {/* Desktop (≥900px) */}
-      <div
-        className="lp-story max-[899px]:hidden motion-reduce:hidden"
-        style={{ height: DESKTOP_STORY_HEIGHT }}
-      >
+      <div className="max-[899px]:hidden motion-reduce:hidden">
         <div className="lp-story-sticky">
-          <div className="lp-story-bg" aria-hidden />
           <div className="lp-story-wrap">
             <div className="lp-story-copy">
               <div className="lp-story-panel is-active">
@@ -190,12 +185,8 @@ function StoryBootShell() {
       </div>
 
       {/* Mobile (&lt;900px) */}
-      <div
-        className="lp-story-m min-[900px]:hidden motion-reduce:hidden"
-        style={{ height: MOBILE_STORY_HEIGHT }}
-      >
+      <div className="min-[900px]:hidden motion-reduce:hidden">
         <div className="lp-story-m-sticky">
-          <div className="lp-story-bg" aria-hidden />
           <div className="lp-story-m-intro">
             <h1 className="font-serif text-[2.15rem] leading-[1.04] tracking-tight text-ink">
               {CHAPTERS[0].title}
@@ -275,29 +266,26 @@ export function ScrollStory() {
 
     let raf = 0;
     let ticking = false;
-    let lastWidth = window.innerWidth;
 
     const update = () => {
       ticking = false;
-      // Use sticky stage height (100svh), not window.innerHeight — on real
-      // phones the URL bar show/hide changes innerHeight and jumps progress.
-      const total = Math.max(1, section.offsetHeight - stage.offsetHeight);
-      const p = clamp(-section.getBoundingClientRect().top / total, 0, 1);
+      const total = section.offsetHeight - window.innerHeight;
+      const p =
+        total > 0
+          ? clamp(-section.getBoundingClientRect().top / total, 0, 1)
+          : 0;
       const pin = clamp(p / PIN_FRACTION, 0, 1);
       stage.style.setProperty("--p", p.toFixed(4));
       stage.style.setProperty("--pin", pin.toFixed(4));
       const ch = Math.min(CHAPTERS.length - 1, Math.floor(p * CHAPTERS.length));
       setChapter((prev) => (prev === ch ? prev : ch));
-      // Hold the mobile hero a beat longer so a tiny flick doesn't skip it.
-      const ms =
-        mode === "mobile" && p < 0.12
-          ? 0
-          : clamp(
-              Math.floor(p * MOBILE_STEPS.length),
-              0,
-              MOBILE_STEPS.length - 1
-            );
+      const ms = clamp(
+        Math.floor(p * MOBILE_STEPS.length),
+        0,
+        MOBILE_STEPS.length - 1
+      );
       setMStep((prev) => (prev === ms ? prev : ms));
+      // "At top" = essentially unscrolled, before the untilt is perceptible.
       const top = p < 0.05;
       setAtTop((prev) => (prev === top ? prev : top));
     };
@@ -309,19 +297,12 @@ export function ScrollStory() {
       }
     };
 
-    const onResize = () => {
-      // Ignore URL-bar-only resizes (height changes, width does not).
-      if (window.innerWidth === lastWidth) return;
-      lastWidth = window.innerWidth;
-      onScroll();
-    };
-
     update();
     window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onResize);
+    window.addEventListener("resize", onScroll);
     return () => {
       window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onResize);
+      window.removeEventListener("resize", onScroll);
       cancelAnimationFrame(raf);
     };
   }, [ready, mode]);
@@ -387,7 +368,7 @@ export function ScrollStory() {
       <section
         ref={sectionRef}
         className="lp-story-m"
-        style={{ height: MOBILE_STORY_HEIGHT }}
+        style={{ height: `calc(100svh * ${MOBILE_STEPS.length * 0.85})` }}
       >
         <div ref={stageRef} className="lp-story-m-sticky" data-enhanced>
           <div className="lp-story-bg" aria-hidden />
@@ -493,7 +474,7 @@ export function ScrollStory() {
     <section
       ref={sectionRef}
       className="lp-story"
-      style={{ height: DESKTOP_STORY_HEIGHT }}
+      style={{ height: `calc(100svh * ${CHAPTERS.length + 0.5})` }}
     >
       <div ref={stageRef} className="lp-story-sticky" data-enhanced>
         <div className="lp-story-bg" aria-hidden />
