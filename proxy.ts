@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { getDemoLoginCredentials } from "@/lib/demo-login";
 import {
   readOAuthReturnFromRequest,
   setOAuthReturnCookie,
@@ -56,10 +57,26 @@ export async function proxy(request: NextRequest) {
   // getClaims validates the JWT locally (cached JWKS) instead of a network
   // round trip to Supabase Auth on every navigation, and still refreshes
   // expired sessions. Do not remove.
-  const { data } = await supabase.auth.getClaims();
-  const user = data?.claims ? { id: data.claims.sub } : null;
+  let { data } = await supabase.auth.getClaims();
+  let user = data?.claims ? { id: data.claims.sub } : null;
 
   const { pathname } = request.nextUrl;
+
+  // Demo auto-login: when DEMO_LOGIN=true and there is no session, sign in as
+  // the seeded demo user before auth redirects. Uses real Supabase cookies.
+  if (!user) {
+    const demo = getDemoLoginCredentials();
+    if (demo) {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: demo.email,
+        password: demo.password,
+      });
+      if (!error) {
+        ({ data } = await supabase.auth.getClaims());
+        user = data?.claims ? { id: data.claims.sub } : null;
+      }
+    }
+  }
 
   // Social recording demos — dev-only unless explicitly enabled in production.
   if (

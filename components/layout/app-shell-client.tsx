@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { AppChatFab } from "@/components/app-chat/app-chat-fab";
+import { AppAnnouncementBanner } from "@/components/layout/app-announcement-banner";
 import { CreateWorkspaceModalProvider } from "@/components/layout/create-workspace-modal-provider";
 import { MainColumn } from "@/components/layout/main-column";
 import { MobileHeader } from "@/components/layout/mobile-header";
@@ -28,16 +29,19 @@ export function AppShellClient({
       <AccountSettingsProvider>
         <CreateWorkspaceModalProvider>
           <div className="app-scope contents">
-            <div className="app-canvas flex min-h-screen items-start">
-              {sidebar}
+            <div className="app-canvas flex min-h-screen flex-col">
+              <AppAnnouncementBanner />
+              <div className="flex min-h-0 min-w-0 flex-1 items-start">
+                {sidebar}
 
-              <div className="flex min-w-0 flex-1 flex-col">
-                <MobileHeader userChrome={mobileUser} />
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <MobileHeader userChrome={mobileUser} />
 
-                <MainColumn>
-                  {integrations}
-                  {children}
-                </MainColumn>
+                  <MainColumn>
+                    {integrations}
+                    {children}
+                  </MainColumn>
+                </div>
               </div>
             </div>
             {modal}

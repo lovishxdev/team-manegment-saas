@@ -11,6 +11,7 @@ import {
 } from "@/lib/actions/workspace";
 import { ui } from "@/components/ui/ui";
 import { MarkdownContent } from "@/components/markdown/markdown-content";
+import { formatDayMonthYear } from "@/lib/format-date";
 import type { MemoryFeedbackReason } from "@/lib/generated/prisma/client";
 
 const KIND_STYLES: Record<string, string> = {
@@ -36,14 +37,6 @@ const chipCls =
 
 const cardCls =
   "rounded-xl border border-line bg-card px-4 py-4 shadow-[0_1px_3px_rgba(26,26,26,0.04)] transition-[border-color,box-shadow] duration-150 hover:border-line-strong hover:shadow-[0_4px_12px_rgba(26,26,26,0.06)]";
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-GB", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
 
 export function MemoryEventCard({
   workspaceId,
@@ -151,7 +144,7 @@ export function MemoryEventCard({
           </span>
         )}
         <span className="ml-auto font-mono text-[11px] text-ink-faint">
-          {formatDate(event.createdAt)}
+          {formatDayMonthYear(event.createdAt)}
           {event.authorLabel ? ` · @${event.authorLabel}` : ""}
         </span>
       </div>

@@ -1,4 +1,5 @@
 import { OpenTaskLink } from "@/components/board/open-task-link";
+import { formatDayMonth } from "@/lib/format-date";
 import type { DashboardTaskPeek } from "@/lib/services/workspace";
 
 const STATUS_STYLES: Record<DashboardTaskPeek["status"], string> = {
@@ -13,13 +14,6 @@ const STATUS_LABELS: Record<DashboardTaskPeek["status"], string> = {
   IN_PROGRESS: "In progress",
   DONE: "Done",
 };
-
-function formatDue(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-GB", {
-    month: "short",
-    day: "numeric",
-  });
-}
 
 export function DashboardTaskRow({
   task,
@@ -62,7 +56,7 @@ export function DashboardTaskRow({
       </span>
       {task.dueDate ? (
         <span className="shrink-0 font-mono text-[11px] text-ink-faint">
-          {formatDue(task.dueDate)}
+          {formatDayMonth(task.dueDate)}
         </span>
       ) : null}
     </OpenTaskLink>

@@ -22,6 +22,8 @@
     "test:memory": "tsx scripts/test-memory-layer.ts",
     "seed:task-updates": "tsx scripts/seed-task-update-stress-test.ts",
     "seed:discussions": "tsx scripts/seed-discussion-samples.ts",
+    "seed:demo-user": "tsx scripts/seed-demo-user.ts",
+    "seed:demo-board": "tsx scripts/seed-demo-board.ts",
     "set:plan": "tsx scripts/set-workspace-plan.ts",
     "test:whatsapp": "tsx scripts/test-whatsapp-agent.ts",
     "check:tools": "tsx scripts/check-tool-registry.ts",

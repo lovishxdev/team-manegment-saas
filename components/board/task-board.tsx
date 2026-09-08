@@ -25,6 +25,7 @@ import {
   updateTaskAction,
 } from "@/lib/actions/workspace";
 import { formatTaskTitle } from "@/lib/format-task-title";
+import { formatDayMonth } from "@/lib/format-date";
 import { markdownToPlainText } from "@/lib/markdown/parse";
 import { MessageCircle, Plus } from "lucide-react";
 import {
@@ -35,6 +36,8 @@ import {
 import { Select } from "@/components/ui/select";
 import { tagColor } from "@/components/ui/ui";
 import { MemberAvatarStack } from "@/components/members/member-avatar-stack";
+import { TaskCardActionsSheet } from "@/components/board/task-card-actions-sheet";
+import { useIsMobileBoard } from "@/lib/use-media-query";
 
 export type TaskAttachment = {
   id: string;
@@ -170,13 +173,8 @@ function formatDue(iso: string): { label: string; overdue: boolean } {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const overdue = due < today;
-  // Explicit locale: server and browser locales can differ, and a mismatch
-  // ("13 Jun" vs "Jun 13") breaks React hydration.
-  const label = due.toLocaleDateString("en-GB", {
-    month: "short",
-    day: "numeric",
-  });
-  return { label, overdue };
+  // Fixed month table — Node ICU "Sept" vs browser "Sep" breaks hydration.
+  return { label: formatDayMonth(due), overdue };
 }
 
 function TaskCardBody({
@@ -363,36 +361,38 @@ const taskCardSurface =
 
 function TaskCard({
   task,
-  onOpen,
+  dragEnabled,
+  onActivate,
   onOpenUpdates,
 }: {
   task: BoardTask;
-  onOpen: (task: BoardTask) => void;
+  /** False on mobile — scroll-first; tap opens the action sheet. */
+  dragEnabled: boolean;
+  onActivate: (task: BoardTask) => void;
   onOpenUpdates: (task: BoardTask) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({ id: task.id });
+    useDraggable({ id: task.id, disabled: !dragEnabled });
 
   const style =
-    !isDragging && transform
+    dragEnabled && !isDragging && transform
       ? { transform: CSS.Translate.toString(transform) }
       : undefined;
 
   return (
     <article
       ref={setNodeRef}
-      {...listeners}
-      {...attributes}
+      {...(dragEnabled ? { ...listeners, ...attributes } : {})}
       data-task-id={task.id}
       onClick={() => {
-        if (!isDragging) onOpen(task);
+        if (!isDragging) onActivate(task);
       }}
       style={style}
-      className={`${taskCardSurface} touch-none transition-[border-color,box-shadow] duration-150 hover:border-line-strong hover:shadow-[0_4px_12px_rgba(26,26,26,0.08)] active:cursor-grabbing ${
-        isDragging
-          ? "pointer-events-none opacity-35"
-          : "cursor-grab"
-      }`}
+      className={`${taskCardSurface} transition-[border-color,box-shadow] duration-150 hover:border-line-strong hover:shadow-[0_4px_12px_rgba(26,26,26,0.08)] ${
+        dragEnabled
+          ? "cursor-grab touch-none active:cursor-grabbing"
+          : "cursor-pointer touch-manipulation"
+      } ${isDragging ? "pointer-events-none opacity-35" : ""}`}
     >
       <TaskCardBody task={task} onOpenUpdates={onOpenUpdates} />
     </article>
@@ -414,11 +414,13 @@ function ColumnEmptyState({
   emptyZone,
   onCreate,
   isDropTarget = false,
+  showDragHint = true,
 }: {
   status: BoardTask["status"];
   emptyZone: string;
   onCreate: (status: BoardTask["status"]) => void;
   isDropTarget?: boolean;
+  showDragHint?: boolean;
 }) {
   return (
     <button
@@ -434,7 +436,7 @@ function ColumnEmptyState({
       <span className="text-sm font-medium text-ink-soft transition group-hover:text-ink">
         {isDropTarget ? "Release to move here" : "Add task"}
       </span>
-      {!isDropTarget && (
+      {!isDropTarget && showDragHint && (
         <span className="text-xs text-ink-faint">or drag one here</span>
       )}
     </button>
@@ -478,7 +480,8 @@ function Column({
   dropRing,
   dropHint,
   tasks,
-  onOpen,
+  dragEnabled,
+  onActivate,
   onOpenUpdates,
   onCreate,
   dragSource,
@@ -491,14 +494,15 @@ function Column({
   dropRing: string;
   dropHint: string;
   tasks: BoardTask[];
-  onOpen: (task: BoardTask) => void;
+  dragEnabled: boolean;
+  onActivate: (task: BoardTask) => void;
   onOpenUpdates: (task: BoardTask) => void;
   onCreate: (status: BoardTask["status"]) => void;
   dragSource: BoardTask["status"] | null;
   overColumn: BoardTask["status"] | null;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
-  const isDragging = dragSource !== null;
+  const isDragging = dragEnabled && dragSource !== null;
   const isDropTarget =
     isDragging &&
     dragSource !== status &&
@@ -527,7 +531,8 @@ function Column({
           <TaskCard
             key={task.id}
             task={task}
-            onOpen={onOpen}
+            dragEnabled={dragEnabled}
+            onActivate={onActivate}
             onOpenUpdates={onOpenUpdates}
           />
         ))}
@@ -541,6 +546,7 @@ function Column({
             }
             onCreate={onCreate}
             isDropTarget={isDropTarget}
+            showDragHint={dragEnabled}
           />
         )}
         {isDropTarget && tasks.length > 0 && (
@@ -596,7 +602,9 @@ export function TaskBoard({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [, startTransition] = useTransition();
+  const isMobileBoard = useIsMobileBoard();
   const [error, setError] = useState<string | null>(null);
+  const [actionTask, setActionTask] = useState<BoardTask | null>(null);
   const pendingTaskShortId = useMemo(() => {
     const raw = searchParams.get("task");
     if (!raw) return null;
@@ -620,6 +628,9 @@ export function TaskBoard({
   const [localTasks, setLocalTasks] = useState(tasks);
   useEffect(() => setLocalTasks(tasks), [tasks]);
   useEffect(() => setMembers(seedMembersFromTasks(tasks)), [tasks]);
+  useEffect(() => {
+    if (!isMobileBoard) setActionTask(null);
+  }, [isMobileBoard]);
 
   useEffect(() => {
     if (pendingTaskShortId === null) return;
@@ -658,9 +669,43 @@ export function TaskBoard({
     router.push(taskNewPath(workspaceId, { status: columnStatus }));
   }
 
+  function activateTask(task: BoardTask) {
+    if (isMobileBoard) {
+      setActionTask(task);
+      return;
+    }
+    openTask(task);
+  }
+
+  function moveTask(taskId: string, target: BoardTask["status"]) {
+    const task = localTasks.find((t) => t.id === taskId);
+    if (!task || task.status === target) return;
+
+    setError(null);
+    setLocalTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, status: target } : t))
+    );
+    setActionTask((current) =>
+      current?.id === taskId ? { ...current, status: target } : current
+    );
+    startTransition(async () => {
+      const result = await updateTaskAction(workspaceId, taskId, {
+        status: target,
+      });
+      if (result.error) {
+        setError(result.error);
+        setLocalTasks(tasks); // roll back
+        setActionTask((current) =>
+          current?.id === taskId ? (tasks.find((t) => t.id === taskId) ?? null) : current
+        );
+      }
+    });
+  }
+
   // Distance threshold keeps plain clicks working (opens the task page).
+  // Slightly higher than before so trackpad clicks don't start a drag.
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
+    useSensor(PointerSensor, { activationConstraint: { distance: 10 } })
   );
 
   useEffect(() => {
@@ -759,22 +804,9 @@ export function TaskBoard({
   function handleDragEnd(event: DragEndEvent) {
     const taskId = String(event.active.id);
     const target = resolveDropColumn(event.over?.id, localTasks);
-    const task = localTasks.find((t) => t.id === taskId);
 
-    if (target && task && task.status !== target) {
-      setError(null);
-      setLocalTasks((prev) =>
-        prev.map((t) => (t.id === taskId ? { ...t, status: target } : t))
-      );
-      startTransition(async () => {
-        const result = await updateTaskAction(workspaceId, taskId, {
-          status: target,
-        });
-        if (result.error) {
-          setError(result.error);
-          setLocalTasks(tasks); // roll back
-        }
-      });
+    if (target) {
+      moveTask(taskId, target);
     }
 
     setDragSource(null);
@@ -854,7 +886,7 @@ export function TaskBoard({
           server and client render, causing a hydration mismatch. */}
       <DndContext
         id={`board-dnd-${workspaceId}`}
-        sensors={sensors}
+        sensors={isMobileBoard ? [] : sensors}
         collisionDetection={boardCollisionDetection}
         // Vertical-only autoscroll: long columns stay reachable mid-drag,
         // but no horizontal drift (threshold.x = 0 disables that axis).
@@ -880,7 +912,8 @@ export function TaskBoard({
               dropRing={col.dropRing}
               dropHint={col.dropHint}
               tasks={visibleTasks.filter((t) => t.status === col.status)}
-              onOpen={openTask}
+              dragEnabled={!isMobileBoard}
+              onActivate={activateTask}
               onOpenUpdates={openTaskUpdates}
               onCreate={createTaskInColumn}
               dragSource={dragSource}
@@ -892,6 +925,27 @@ export function TaskBoard({
           {activeTask ? <TaskCardOverlay task={activeTask} /> : null}
         </DragOverlay>
       </DndContext>
+
+      {actionTask && isMobileBoard ? (
+        <TaskCardActionsSheet
+          task={actionTask}
+          onClose={() => setActionTask(null)}
+          onOpen={() => {
+            const task = actionTask;
+            setActionTask(null);
+            openTask(task);
+          }}
+          onOpenUpdates={() => {
+            const task = actionTask;
+            setActionTask(null);
+            openTaskUpdates(task);
+          }}
+          onMove={(status) => {
+            moveTask(actionTask.id, status);
+            setActionTask(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
