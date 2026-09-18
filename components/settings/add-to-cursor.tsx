@@ -4,10 +4,9 @@ import { CopyField } from "@/components/ui/copy-field";
 import { ui } from "@/components/ui/ui";
 
 /**
- * Cursor setup: one-click MCP install (official deeplink), plus the
- * ambient-memory hook installer — a per-repo command that makes memory
- * build itself from agent sessions (capture on stop, brief injected into
- * every new session) with zero tool calls in the loop.
+ * Cursor setup: one-click MCP install (official deeplink), plus a reliable
+ * bearer-token config (skips OAuth — use this if Connect hangs / times out),
+ * plus the ambient-memory hook installer.
  */
 export function AddToCursor({
   mcpUrl,
@@ -19,7 +18,24 @@ export function AddToCursor({
   const config = btoa(JSON.stringify({ url: mcpUrl }));
   const deeplink = `cursor://anysphere.cursor-deeplink/mcp/install?name=euclis&config=${encodeURIComponent(config)}`;
 
-  const snippet = JSON.stringify(
+  // Bearer token skips the OAuth browser dance. Prefer this when Cursor
+  // sits on "Connecting…" / "did not respond within 30 seconds".
+  const tokenSnippet = JSON.stringify(
+    {
+      mcpServers: {
+        euclis: {
+          url: mcpUrl,
+          headers: {
+            Authorization: `Bearer ${mcpToken}`,
+          },
+        },
+      },
+    },
+    null,
+    2
+  );
+
+  const oauthSnippet = JSON.stringify(
     { mcpServers: { euclis: { url: mcpUrl } } },
     null,
     2
@@ -35,12 +51,18 @@ export function AddToCursor({
         Add to Cursor
       </a>
       <p className="text-xs text-ink-faint">
-        Opens Cursor and registers Euclis as an MCP server — sign in with your
-        Euclis account when Cursor prompts. If the button doesn&apos;t open
-        Cursor, paste this into <code className="rounded bg-paper-deep px-1 py-0.5 font-mono text-[11px]">.cursor/mcp.json</code>{" "}
-        instead:
+        If Connect hangs or times out after 30s, paste this into{" "}
+        <code className="rounded bg-paper-deep px-1 py-0.5 font-mono text-[11px]">
+          .cursor/mcp.json
+        </code>{" "}
+        (or Cursor Settings → MCP). Uses your personal token — no OAuth popup:
       </p>
-      <CopyField value={snippet} secret={false} />
+      <CopyField value={tokenSnippet} secret />
+      <p className="text-xs text-ink-faint">
+        OAuth-only config (browser sign-in) — only if the token config above
+        isn&apos;t an option:
+      </p>
+      <CopyField value={oauthSnippet} secret={false} />
       <p className="mt-1 text-xs text-ink-faint">
         <span className="font-medium text-ink">Ambient memory</span> — run this
         once in each repo. After every agent session, Euclis quietly captures
