@@ -43,8 +43,13 @@ export async function registerClient(input: {
   const valid = input.redirectUris.filter((uri) => {
     try {
       const u = new URL(uri);
+      // HTTPS + loopback for browser/CLI callbacks. Custom schemes for
+      // desktop MCP clients (Cursor hangs on "connecting" if we strip these
+      // and later authorize with a cursor:// redirect that was never stored).
       return (
         u.protocol === "https:" ||
+        u.protocol === "cursor:" ||
+        u.protocol === "vscode:" ||
         u.hostname === "localhost" ||
         u.hostname === "127.0.0.1"
       );
@@ -55,7 +60,7 @@ export async function registerClient(input: {
   if (valid.length === 0) {
     throw new OAuthError(
       "invalid_request",
-      "At least one valid https redirect_uri is required"
+      "At least one valid redirect_uri is required (https, localhost, or cursor://)"
     );
   }
 
