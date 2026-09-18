@@ -463,6 +463,37 @@ export async function saveWhiteboardAction(
   return {};
 }
 
+export async function vibeWhiteboardAction(
+  workspaceId: string,
+  prompt: string,
+  mode: "replace" | "append" = "replace"
+): Promise<{
+  error?: string;
+  status?: string;
+  boardPath?: string;
+  title?: string | null;
+}> {
+  const user = await requireUser();
+  try {
+    const { vibeWhiteboard } = await import("@/lib/whiteboard/vibe");
+    const result = await vibeWhiteboard({
+      workspaceId,
+      userId: user.id,
+      prompt,
+      mode,
+    });
+    return {
+      status: result.title
+        ? `Drew “${result.title}” (${result.nodeCount} boxes)`
+        : `Drew ${result.nodeCount} boxes on the board`,
+      boardPath: result.boardPath,
+      title: result.title,
+    };
+  } catch (err) {
+    return { error: errorMessage(err) };
+  }
+}
+
 export async function updateMemberRoleAction(
   workspaceId: string,
   targetUserId: string,

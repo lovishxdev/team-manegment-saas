@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { ServiceError } from "@/lib/services/project";
 import { getExcalidrawState } from "@/lib/services/workspace";
 import { Whiteboard } from "@/components/whiteboard/whiteboard";
+import { WhiteboardVibeBar } from "@/components/whiteboard/whiteboard-vibe-bar";
 import { displayUser } from "@/lib/username";
 
 export default async function WhiteboardPage({
@@ -40,6 +41,7 @@ export default async function WhiteboardPage({
           {workspace.name} · Whiteboard
         </h1>
       </header>
+      <WhiteboardVibeBar workspaceId={workspaceId} />
       <div className="min-h-0 flex-1">
         <Whiteboard
           workspaceId={workspaceId}

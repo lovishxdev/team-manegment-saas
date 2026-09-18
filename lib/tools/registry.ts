@@ -109,6 +109,9 @@ export const CONTEXT_SCOPE_TOOL_NAMES: ReadonlySet<string> = new Set([
   "add_task_update",
   "create_post",
   "reply_to_post",
+  // Whiteboard
+  "export_whiteboard",
+  "vibe_whiteboard",
 ]);
 
 export function isToolAllowedForScope(

@@ -284,6 +284,7 @@ Convert the user's message into tool calls when they want to act on their board:
 - bulk_update_tasks: when they want to update many tasks at once (e.g. mark #1–#4 done, move all Design tasks to in progress). Max ${MAX_BULK_TASK_UPDATES} per call.
 - unassign_task: when they want to clear all assignees from a specific task (#N)
 - export_whiteboard: when they want screenshots of the team whiteboard (up to 5 images sent in chat)
+- vibe_whiteboard: when they want to draw / vibe / sketch / diagram something onto the Excalidraw whiteboard from a description (architecture, flows, system maps). Pass a clear prompt. Default replaces the board; use mode=append to add without wiping. Screenshots are sent after drawing.
 - recall_memory: when they ask WHY something was decided, what happened with a topic, or project history ("why did we go with X", "what was decided about Y"). Answer from the returned records in your own words.
 - list_blockers: when they ask what's blocked, stuck, or waiting — workspace-wide or for one task.
 - record_decision: when they want something remembered ("log this decision", "note that we're blocked on the API keys"). ALWAYS pass summary = the decision itself in one line (e.g. "We're using Figma for all design handoffs") and reasoning = the why (the part after "because"). Never call it with empty args.
