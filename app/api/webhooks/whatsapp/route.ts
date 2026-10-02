@@ -80,6 +80,7 @@ import {
   pickReplyOutcomes,
 } from "@/lib/whatsapp-reply-guard";
 import { recordUndoable } from "@/lib/services/action-log";
+import { isWhatsAppAgentEnabled } from "@/lib/whatsapp-graph";
 import { workspaceUrl } from "@/lib/app-url";
 import { getAppOrigin } from "@/lib/app-origin";
 import { isWhatsAppGreeting } from "@/lib/whatsapp-bot";
@@ -367,6 +368,11 @@ export async function POST(req: NextRequest) {
       hasBody: rawBody.length > 0,
     });
     return new Response("Invalid signature", { status: 401 });
+  }
+
+  if (!isWhatsAppAgentEnabled()) {
+    waWebhookLog("POST ignored — WhatsApp agent disabled (WHATSAPP_AGENT_ENABLED=0)");
+    return NextResponse.json({ status: "disabled" });
   }
 
   let payload: unknown;
